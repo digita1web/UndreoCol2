@@ -1,0 +1,15 @@
+# Dependencias y build
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Entorno — nunca se commitean valores reales (CLAUDE.md §11)
+.env
+.env.*
+!.env.example
+
+# Tests y herramientas
+coverage/
+*.dump
+supabase/.temp/
