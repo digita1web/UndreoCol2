@@ -49,10 +49,27 @@ psql "$DATABASE_URL" -c "select relname, relforcerowsecurity from pg_class where
 **Resultado esperado:** la migración aplica sobre una base con datos existentes sin perder filas de
 `usuarios_servicio`; las 3 tablas y la función quedan con la forma del plan; RLS `FORCE` en ambas
 tablas nuevas.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-02) — con desviación de entorno, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+Mismo entorno de 002 (PostgreSQL 16 nativo + shim, sin Docker/PostgREST en este contenedor).
+
+001 + 002 + fixtures de 001/002 + 003 aplican en secuencia, EXIT=0.
+select count(*) from usuarios_servicio antes de 003: 3. Después: 3 (sin pérdida de filas).
+Las 3 filas del fixture conservan codigo_suscriptor/nombre/estado; columnas nuevas quedan NULL
+  (numero_documento, categoria, etc.) tal como se esperaba de columnas NULLABLE agregadas sobre
+  filas existentes.
+
+\d usuarios_servicio: 10 columnas nuevas, todas NULLABLE salvo fecha_vinculacion (default
+  current_date); FK fk_contador_actual ON DELETE SET NULL.
+\d contadores: uq_contador_activo (único parcial WHERE estado='activo'), chk_capacidad,
+  FK usuario_servicio_id ON DELETE RESTRICT, trigger trg_contadores_updated.
+\d reemplazos_contador: chk_distintos, ambas FKs de contador ON DELETE RESTRICT.
+reemplazar_contador: security_type=INVOKER, EXECUTE revocado anon/public, otorgado authenticated.
+relforcerowsecurity: contadores=t, reemplazos_contador=t.
+
+Pendiente para Mateo: repetir `supabase db reset` en un entorno con Docker para la verificación
+oficial completa (mismo pendiente que 002 T-001).
 ```
 **Commit:** (pendiente)
 
