@@ -245,10 +245,22 @@ grep -rn "@supabase" frontend/app/ frontend/components/ frontend/lib/
 ```
 **Resultado esperado:** `tsc --noEmit` sin errores; el `grep` de `@supabase` sigue en cero resultados
 (regla de portabilidad, CLAUDE.md §5.2).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-(pendiente)
+$ npm ci   (node_modules no estaba instalado en este contenedor)
+added 657 packages
+
+$ npx tsc --noEmit → sin salida, sin errores
+
+$ grep -rn "@supabase" frontend/app/ frontend/components/ frontend/lib/
+lib/api.ts:1:// Wrapper fetch hacia la API de Hono (backend/). Nunca importa `@supabase/*`
+
+1 resultado, pero es el propio comentario de cabecera del archivo (menciona la cadena para
+explicar la regla, no un import real) — no hay ningún `import ... from '@supabase/...'`. El
+grep original de 001 (T-011) solo cubría app/ y components/, sin lib/, por eso no lo había
+encontrado antes; aquí se corrige el alcance del grep y se confirma que sigue siendo un falso
+positivo, no una violación de CLAUDE.md §5.2.
 ```
 **Commit:** (pendiente)
 
