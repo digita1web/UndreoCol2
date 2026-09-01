@@ -469,12 +469,57 @@ del portal (D-4), §11 cierre de facturación en Queues, §12 portabilidad. Cons
 **Verificación:** revisión del documento: cada sección referenciada por CLAUDE.md/DECISIONES.md/spec
 existe y coincide con los valores de D-7 (300/400/480, retención 30 días, Session Pooler).
 **Resultado esperado:** el documento operativo vuelve a ser la fuente de la configuración operativa.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
+
+**Nota de proceso:** el contenido de reemplazo se recibió del usuario en varios envíos, redactado ANTES
+de que existiera el código real de T-002 a T-009 (de una sesión anterior no vista). Cada sección se
+verificó contra el código/config real y contra `plan.md`/`docs/DECISIONES.md` antes de escribirse; donde
+hubo contradicción, ganó el código/plan aprobado, no el borrador. Contradicciones encontradas y
+corregidas:
+- **§5 (keepalive):** el borrador proponía cron `0 9 * * *` y `fetch()` REST manual; el código real
+  (`backend/wrangler.keepalive.toml`, `keepalive.ts`, T-007) usa `0 5 * * *` y
+  `crearClienteServicio()` + `@supabase/supabase-js`. Se documentó el código real.
+- **§6 (backup):** `.github/workflows/backup-diario.yml` **no existe** (T-013 sigue pendiente). El
+  borrador usaba puerto `5432`, secreto `SUPABASE_SESSION_POOLER_URL`, una GitHub Action de terceros
+  para subir a R2, y un paso de purga manual en CI. `plan.md D-7` exige puerto **6543**, secreto
+  `SUPABASE_DB_URL`, `wrangler r2 object put`, y retención por regla *lifecycle* de R2 (el borrado
+  manual en CI es la alternativa que D-7 descartó explícitamente). Se documentó la intención aprobada
+  de D-7, dejando explícito que T-013 está pendiente.
+- **§8 (monitoreo):** verificado contra `monitor-db.ts`/`nivel-monitoreo.ts` reales — cron `30 5 * * *`,
+  mecanismo `rpc('tamano_base_mb')`, alerta como stub (`console.error` + TODO feature 010). Coincidía en
+  espíritu, se documentó con el detalle exacto del código.
+- **§9 (limpieza):** confirmado que `limpieza.ts` solo verifica conexión y loguea "sin tablas que
+  purgar" — se documentó tal cual, sin inventar reglas de purga que no existen (llegan con la feature
+  015).
+- **§10 (sesión del suscriptor) — hallazgo mayor:** el enunciado asumía un mecanismo ya implementado con
+  detalles de firma/cookie. La realidad: `sesion-suscriptor.ts` es solo el **contrato reservado** de la
+  feature 008 — las tres funciones lanzan `ErrorSesionSuscriptorPendiente` sin excepción. Se documentó
+  como contrato pendiente, con las constantes y la interfaz que sí están fijadas en código, sin inventar
+  un mecanismo de firma inexistente.
+- **§11 (Queues):** confirmado no implementado y fuera de alcance de esta feature (`plan.md §9`); se
+  documentó la intención de `CLAUDE.md §5.5`/`ARQUITECTURA.md` sin asignar un número de feature no
+  verificado.
+
 **Evidencia:**
 ```
-<revisión de secciones / diff>
+head -10 docs/INFRAESTRUCTURA.md →
+  # INFRAESTRUCTURA.md — UndreoCol
+  **Versión:** 3.0 — Arquitectura Cloudflare + Supabase, sin VPS
+  **Fecha:** 2026-08-31
+  **Estado:** Vigente. Reemplaza toda versión anterior de este documento.
+  ---
+  ## 1. Principio rector
+
+wc -l docs/INFRAESTRUCTURA.md → 379 docs/INFRAESTRUCTURA.md
+
+Las 12 secciones referenciadas por CLAUDE.md/DECISIONES.md/spec están presentes y cada una con
+contenido operativo real (o su estado real de "pendiente"/"no implementado" cuando corresponde),
+verificado contra: backend/wrangler.keepalive.toml, backend/src/cron/keepalive.ts,
+backend/wrangler.monitor-db.toml, backend/src/cron/monitor-db.ts, backend/src/cron/nivel-monitoreo.ts,
+backend/wrangler.limpieza.toml, backend/src/cron/limpieza.ts, backend/src/lib/sesion-suscriptor.ts,
+supabase/migrations/20260831150000_fundacion-tenancy.sql, plan.md, docs/DECISIONES.md.
 ```
-**Commit:** `docs:` (tras completar)
+**Commit:** (este commit)
 
 ## T-015 — Cierre: CHANGELOG + flujo manual CA-11 + push
 

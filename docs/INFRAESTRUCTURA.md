@@ -1,174 +1,485 @@
-# ARQUITECTURA.md — UndreoCol
+# INFRAESTRUCTURA.md — UndreoCol
 
-**Versión:** 3.0 — Arquitectura definitiva (Cloudflare + Supabase, sin VPS)
+**Versión:** 3.0 — Arquitectura Cloudflare + Supabase, sin VPS
 **Fecha:** 2026-08-31
 **Estado:** Vigente. Reemplaza toda versión anterior de este documento.
 
 ---
 
-## 1. Qué es UndreoCol
+## 1. Principio rector
 
-SaaS colombiano para la gestión de acueductos comunitarios y pequeñas empresas de
-servicios públicos: facturación por consumo, lecturas de contador, pagos, cortes y
-reconexiones, RRHH e indicadores. Fundador: Mateo Castro.
+> Cero infraestructura de pago hasta el primer cliente. El primer gasto es
+> mínimo. Ningún componente de pago se activa sin un disparador medible.
 
-**Estado del proyecto:** nuevo, sin producción, sin clientes todavía. El repositorio
-anterior en Frappe Framework (`Mateo2888/UndreoCol`, ahora en la rama `frappe-legacy`)
-es **especificación funcional de referencia**, nunca código a trasplantar.
+Ver `ARQUITECTURA.md` §2 y §6 para la tabla completa de disparadores de costo.
 
 ---
 
-## 2. Principio rector
+## 2. Cuentas y servicios a crear
 
-> El costo de infraestructura no debe ser un obstáculo para conseguir el primer
-> cliente, y no debe crecer más rápido que los ingresos después de conseguirlo.
-
-De ahí se derivan tres reglas que gobiernan toda decisión técnica de este documento:
-
-1. **Cero infraestructura de pago hasta el primer cliente.** El desarrollo, las
-   demos y las pruebas corren enteramente en planes gratuitos.
-2. **El primer gasto es mínimo y justificado.** Se activa un componente de pago
-   solo cuando cubre un riesgo real (uso comercial, backups), nunca por
-   comodidad.
-3. **Ningún componente de pago se activa "por si acaso".** Cada aumento de costo
-   tiene un disparador medible y documentado en este archivo.
-
----
-
-## 3. Decisión de arquitectura: sin VPS
-
-Se descartó explícitamente un VPS propio (Hetzner, Hostinger, LightNode) como base
-de producción. Motivo: para una aplicación liviana como UndreoCol (CRUD con cálculos
-aritméticos, sin IA, sin procesamiento pesado), un servidor propio implica pagar por
-capacidad ociosa la mayor parte del tiempo, además de asumir en solitario el trabajo
-de actualizar el sistema operativo, renovar certificados, vigilar el uptime y
-reaccionar a caídas — todo esto sin ingresos que lo respalden en los primeros meses.
-
-La arquitectura elegida traslada esa responsabilidad operativa a proveedores que la
-asumen como su negocio principal (Cloudflare, Supabase), y cuyo modelo de costos
-empieza en cero y crece solo con el uso real.
-
-**Documentado como decisión D-6.** Ver `docs/DECISIONES.md`.
-
----
-
-## 4. Stack definitivo
-
-| Capa | Tecnología | Rol |
+| Servicio | Para qué | Plan de inicio |
 |---|---|---|
-| Frontend administrativo y portal | Next.js 15 (App Router) + TypeScript | Interfaz del acueducto y del suscriptor |
-| Frontend del lector | Next.js + PWA (Service Worker) | App instalable en Android, offline-first |
-| Hosting del frontend | Cloudflare Pages | Entrega global, SSL automático, gratis |
-| API y lógica de negocio | Hono.js | Framework ligero para Cloudflare Workers |
-| Ejecución de la API | Cloudflare Workers | Cómputo en el edge, sin servidor |
-| Procesos por lotes | Cloudflare Queues | Cierre de facturación masivo |
-| Base de datos | Supabase PostgreSQL (Free) | Fuente de verdad de los datos |
-| Autenticación administrativa | Supabase Auth | Login del admin de acueducto y del lector |
-| Sesión del portal del suscriptor | JWT propio firmado en Worker | Sin cuenta en el sistema de identidad (D-2) |
-| Autorización | Row Level Security (PostgreSQL nativo) | Aislamiento multi-tenant |
-| Archivos (fotos, adjuntos) | Cloudflare R2 | Sin cobro de egress |
-| Correo transaccional | Cloudflare Email Service | Envío de factura por correo (secundario) |
-| Entrega principal de factura | Impresión (CSS `@media print`) | Flujo dominante en Colombia |
-| Estilos | Tailwind CSS + shadcn/ui | — |
-| Backups | GitHub Actions + `pg_dump` → R2 | Suple la ausencia de backups en Supabase Free |
-| Monitoreo de base de datos | Cloudflare Cron Worker | Alerta antes de llegar al límite de 500 MB |
-| Disponibilidad de Supabase | Cloudflare Cron Worker (ping diario) | Evita la pausa por inactividad |
-| Observabilidad de errores | Sentry (plan gratuito) | Frontend y Workers |
-| Verificación de caída | UptimeRobot (plan gratuito) | Alerta si el sistema no responde |
+| Cloudflare | DNS, Pages, Workers, R2, Queues, Cron, Email Service | Free |
+| Supabase | PostgreSQL, Auth, RLS | Free |
+| GitHub | Repositorio, GitHub Actions (backup) | Free |
+| Sentry | Observabilidad de errores | Free |
+| UptimeRobot | Verificación de disponibilidad | Free |
 
-Todas las piezas tienen plan gratuito suficiente para el desarrollo, las demos, y
-un primer cliente en producción durante un periodo largo (ver sección 6).
+Ninguno requiere tarjeta de crédito para el nivel gratuito, excepto Cloudflare al
+activar Workers Paid (solo en el momento del primer cliente).
 
 ---
 
-## 5. Diagrama de arquitectura
+## 3. Entornos
+
+### 3.1 Desarrollo local — costo $0
+
+```bash
+# Supabase local (PostgreSQL + Auth en Docker)
+supabase start
+
+# API en Workers, modo local
+cd backend && npx wrangler dev
+
+# Frontend Next.js
+cd frontend && npm run dev
+```
+
+Todo el desarrollo ocurre sin tocar ningún servicio de pago. `wrangler dev` simula
+el entorno de Workers localmente, incluyendo bindings de R2 y Queues.
+
+### 3.2 Staging — costo $0
+
+Un segundo proyecto de Cloudflare Pages + Workers, apuntando a un segundo proyecto
+de Supabase Free. Sirve para:
+
+- Probar el cierre de facturación antes de ejecutarlo en producción
+- Verificar cada despliegue antes de promoverlo
+- Restaurar y validar backups mensualmente (ver §7.3)
+
+**Regla absoluta:** ningún cierre de prueba se ejecuta contra la base de producción.
+
+### 3.3 Producción — costo desde $0, sube a $5 con el primer cliente
+
+Mismo stack que staging, en el proyecto principal de Cloudflare y Supabase.
+
+---
+
+## 4. Estructura del repositorio
 
 ```
-                         Usuario (Colombia)
-                                │
-                                ▼
-                   Cloudflare (DNS · CDN · WAF · SSL)
-                                │
-                 ┌──────────────┴───────────────┐
-                 │                               │
-          Cloudflare Pages                Cloudflare Workers (Hono.js)
-       ┌─────────┴─────────┐                     │
-       │                   │           ┌─────────┼─────────────┐
-   Next.js admin      Next.js PWA      │         │             │
-   + portal           (lector)      Queues       R2      Supabase PostgreSQL
-                                   (cierre de   (fotos,      + Auth + RLS
-                                  facturación)    PDFs)     (Free tier)
-                                                                  │
-                                              ┌───────────────────┼───────────────┐
-                                              │                   │               │
-                                     Cron: ping diario   Cron: monitor tamaño   GitHub Actions:
-                                     (evita pausa)        (alerta > 400MB)      backup diario a R2
+undreocol/
+├── frontend/               → Next.js (admin + portal + PWA del lector)
+│   └── (Cloudflare Pages)
+├── backend/                → Hono.js
+│   ├── src/
+│   │   ├── index.ts        → Worker principal (API)
+│   │   ├── cron/
+│   │   │   ├── keepalive.ts    → Ping diario a Supabase
+│   │   │   ├── monitor-db.ts   → Alerta de tamaño de base de datos
+│   │   │   └── limpieza.ts     → Purga de tablas de sistema
+│   │   ├── queues/
+│   │   │   └── cierre-facturacion.ts
+│   │   └── core/            → Lógica de negocio pura (ver CLAUDE.md §5.3)
+│   └── wrangler.toml
+├── supabase/
+│   └── migrations/          → SQL versionado
+└── .github/
+    └── workflows/
+        └── backup-diario.yml
 ```
 
 ---
 
-## 6. Umbrales de costo — cuándo se activa cada gasto
+## 5. Mantener Supabase Free vivo — Worker de keepalive
 
-Ninguno de estos gastos se activa "por adelantado". Cada uno tiene un disparador
-concreto y verificable.
+**Problema que resuelve:** los proyectos gratuitos de Supabase se pausan tras 7 días
+sin actividad de base de datos.
 
-| Componente | Disparador | Costo que se activa |
-|---|---|---|
-| Cloudflare Workers Paid | El sistema entra en uso comercial (primer cliente pagando) | USD $5/mes |
-| Cloudflare Email Service | Incluido en Workers Paid | USD $0 adicional hasta 3.000 correos/mes |
-| Supabase Pro | La base de datos supera 400 MB (80% del límite de 500 MB), **o** se necesita backup gestionado con SLA | USD $25/mes |
-| Cloudflare R2 de pago | Almacenamiento supera 10 GB | Variable, muy bajo (~$0.015/GB) |
+**Solución:** un Cloudflare Cron Trigger que ejecuta una consulta real contra
+Supabase todos los días. No es un truco — es tráfico legítimo de una aplicación
+en uso, exactamente el tipo de actividad que el mecanismo de pausa está diseñado
+para detectar.
 
-**Estimación para 1 acueducto de ~1.000 suscriptores:** con el modelo de datos de
-UndreoCol (sin fotos por defecto, ver `ESPECIFICACION-FUNCIONAL.md`), la base de
-datos crece aproximadamente 30-50 MB por año de operación completa. **El umbral de
-Supabase Pro no se alcanza antes de varios años con un solo cliente de ese tamaño.**
-Esta proyección se revisa trimestralmente contra el uso real (ver
-`INFRAESTRUCTURA.md` §5).
+### Tabla de soporte
+
+```sql
+create table if not exists _keepalive (
+  id           smallint primary key default 1,
+  ultimo_ping  timestamptz not null default now(),
+  constraint chk_singleton check (id = 1)
+);
+
+insert into _keepalive (id, ultimo_ping) values (1, now())
+  on conflict (id) do nothing;
+```
+
+### Worker (`backend/src/cron/keepalive.ts`)
+
+```typescript
+export interface Env {
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
+}
+
+export default {
+  async scheduled(
+    _event: ScheduledEvent,
+    env: Env,
+    _ctx: ExecutionContext
+  ): Promise<void> {
+    const response = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/_keepalive?id=eq.1`,
+      {
+        method: "PATCH",
+        headers: {
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({ ultimo_ping: new Date().toISOString() }),
+      }
+    );
+
+    if (!response.ok) {
+      // No se silencia: si el ping falla, hay que saberlo.
+      throw new Error(
+        `Keepalive falló: ${response.status} ${await response.text()}`
+      );
+    }
+  },
+};
+```
+
+### Configuración (`wrangler.toml`)
+
+```toml
+[triggers]
+crons = ["0 9 * * *"]  # Todos los días a las 09:00 UTC (04:00 hora Colombia)
+```
+
+**Verificación de que funciona:** revisar en el panel de Supabase que
+`ultimo_ping` se actualiza cada día, y que el proyecto nunca muestra el estado
+"Paused".
 
 ---
 
-## 7. Costos por etapa — resumen
+## 6. Backup diario — GitHub Actions + Cloudflare R2
 
-| Etapa | Componentes de pago | Costo/mes |
-|---|---|---|
-| Desarrollo y demos | Ninguno | **USD $0** |
-| Primer cliente pagando | Cloudflare Workers Paid | **USD $5** |
-| Base de datos > 400 MB | + Supabase Pro | **USD $30** |
+**Problema que resuelve:** Supabase Free no incluye backups automáticos.
 
----
+**Solución:** un workflow de GitHub Actions que corre `pg_dump` todos los días y
+sube el resultado, cifrado y comprimido, a un bucket de R2 propio.
 
-## 8. Entrega de facturas
+### Workflow (`.github/workflows/backup-diario.yml`)
 
-**Flujo principal: impresión.** La mayoría de acueductos colombianos entregan la
-factura impresa en papel. El sistema renderiza la factura en pantalla con una hoja
-de estilos de impresión (`@media print`) y el administrador imprime con el navegador,
-sin generación de PDF ni librería adicional. Costo adicional: cero.
+```yaml
+name: backup-diario
 
-**Flujo secundario: correo electrónico.** Para el subconjunto de suscriptores con
-email registrado, el sistema puede enviar la factura por correo usando Cloudflare
-Email Service, con el contenido en HTML o como PDF generado con `pdf-lib` (no
-`pdfme`, ver `docs/DECISIONES.md` D-9). Este flujo es opcional y de baja frecuencia.
+on:
+  schedule:
+    - cron: "0 7 * * *"  # 07:00 UTC = 02:00 hora Colombia
+  workflow_dispatch: {}
 
-Documentado como decisión **D-8**.
+permissions:
+  contents: read
 
----
+concurrency:
+  group: backup-diario
+  cancel-in-progress: false
 
-## 9. Roadmap de features
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-Ver `.specify/config.md` para el detalle completo del flujo Spec-Driven Development
-y la lista de features en orden. La Fase 0 (inventario desde Frappe) y la Fase 1
-(fundación) están especificadas en `specs/`.
+      - name: Ejecutar pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+        run: |
+          FECHA=$(date +%Y%m%d-%H%M%S)
+          pg_dump "$DATABASE_URL" --no-acl --no-owner -Fc \
+            -f "backup-${FECHA}.dump"
+          gzip "backup-${FECHA}.dump"
+          echo "ARCHIVO=backup-${FECHA}.dump.gz" >> "$GITHUB_ENV"
 
----
+      - name: Subir a Cloudflare R2
+        uses: shallwefootball/s3-upload-action@master
+        with:
+          aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          aws_bucket: ${{ secrets.R2_BUCKET_BACKUPS }}
+          endpoint: ${{ secrets.R2_ENDPOINT }}
+          source_dir: "."
+          destination_dir: "backups/"
 
-## 10. Documentos relacionados
+      - name: Purgar backups con más de 30 días
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          aws s3 ls "s3://${{ secrets.R2_BUCKET_BACKUPS }}/backups/" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}" | \
+          awk '{print $4}' | \
+          while read -r archivo; do
+            FECHA_ARCHIVO=$(echo "$archivo" | grep -oP '\d{8}' | head -1)
+            FECHA_LIMITE=$(date -d '30 days ago' +%Y%m%d)
+            if [[ "$FECHA_ARCHIVO" < "$FECHA_LIMITE" ]]; then
+              aws s3 rm "s3://${{ secrets.R2_BUCKET_BACKUPS }}/backups/${archivo}" \
+                --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+            fi
+          done
+```
 
-| Documento | Contiene |
+### Secretos requeridos en GitHub
+
+| Secreto | De dónde sale |
 |---|---|
-| `docs/DECISIONES.md` | Registro completo de decisiones (D-1 a D-9), con contexto, opciones evaluadas y razón |
-| `docs/INFRAESTRUCTURA.md` | Configuración operativa: keepalive, backups, monitoreo, variables de entorno, despliegue |
-| `docs/ESPECIFICACION-FUNCIONAL.md` | Comportamiento completo del sistema |
-| `docs/ESTRATEGIA-CALIDAD.md` | Prevención y contención de errores |
-| `CLAUDE.md` | Reglas de desarrollo obligatorias |
-| `docs/esquema-propuesto.sql` | Esquema PostgreSQL de referencia |
+| `SUPABASE_SESSION_POOLER_URL` | Supabase → Settings → Database → Connection string (Session pooler, puerto 5432) |
+| `R2_ACCESS_KEY_ID` | Cloudflare → R2 → Manage API tokens |
+| `R2_SECRET_ACCESS_KEY` | Igual que el anterior |
+| `R2_BUCKET_BACKUPS` | Nombre del bucket, ej. `undreocol-backups` |
+| `R2_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
+
+**Importante:** usar el **Session Pooler** de Supabase, no la conexión directa —
+GitHub Actions no soporta IPv6 y la conexión directa de Supabase la requiere.
+
+### Retención
+
+30 días rotativos en R2. Costo: dentro del límite gratuito de 10 GB para bases de
+datos de este tamaño.
+
+### Consumo de cuotas gratuitas
+
+| Recurso | Cuota gratuita | Uso de este backup |
+|---|---|---|
+| Minutos de GitHub Actions | 2.000/mes | ~90 min/mes (3 min × 30 días) |
+| R2 — almacenamiento | 10 GB | Depende del tamaño de la base, holgado por años |
+| R2 — escrituras | 1.000.000/mes | ~30/mes |
+
+---
+
+## 7. Restauración de backup — protocolo obligatorio
+
+**Regla:** un backup sin restaurar no es un backup.
+
+### 7.1 Restauración de emergencia
+
+```bash
+# Descargar el backup más reciente de R2
+aws s3 cp "s3://undreocol-backups/backups/backup-<fecha>.dump.gz" . \
+  --endpoint-url "$R2_ENDPOINT"
+
+gunzip "backup-<fecha>.dump.gz"
+
+# Restaurar en un proyecto de Supabase (staging o uno nuevo)
+pg_restore --no-acl --no-owner -d "$DATABASE_URL_STAGING" "backup-<fecha>.dump"
+```
+
+### 7.2 Verificación tras restaurar
+
+1. Contar filas de las tablas principales y comparar contra lo esperado
+2. Confirmar que las políticas RLS siguen activas (`\d+ facturas` en `psql`
+   debe mostrar "Row Security: enabled")
+3. Levantar la aplicación de staging contra la base restaurada y hacer login
+
+### 7.3 Ritual mensual
+
+El primer lunes de cada mes:
+
+1. Tomar el backup más reciente
+2. Restaurarlo en staging
+3. Ejecutar la verificación de §7.2
+4. Registrar el resultado en `CHANGELOG.md`
+
+Si la restauración falla, es una prioridad inmediata — no una tarea pendiente.
+
+---
+
+## 8. Monitoreo del tamaño de la base de datos
+
+**Problema que resuelve:** saber con anticipación cuándo la base se acerca al
+límite de 500 MB del plan Free, para decidir con tiempo si se sube a Supabase Pro.
+
+### Worker (`backend/src/cron/monitor-db.ts`)
+
+```typescript
+export interface Env {
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
+  RESEND_ALERTA_EMAIL: string; // o el correo de destino de la alerta
+}
+
+const LIMITE_MB = 500;
+const UMBRAL_INFORMATIVO_MB = 300;
+const UMBRAL_ALERTA_MB = 400;
+const UMBRAL_CRITICO_MB = 480;
+
+export default {
+  async scheduled(
+    _event: ScheduledEvent,
+    env: Env,
+    ctx: ExecutionContext
+  ): Promise<void> {
+    const resp = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/tamano_base_mb`, {
+      method: "POST",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+
+    if (!resp.ok) {
+      throw new Error(`No se pudo consultar el tamaño de la base: ${resp.status}`);
+    }
+
+    const tamanoMb: number = await resp.json();
+    const porcentaje = ((tamanoMb / LIMITE_MB) * 100).toFixed(1);
+
+    let nivel: "informativo" | "alerta" | "critico" | null = null;
+    if (tamanoMb >= UMBRAL_CRITICO_MB) nivel = "critico";
+    else if (tamanoMb >= UMBRAL_ALERTA_MB) nivel = "alerta";
+    else if (tamanoMb >= UMBRAL_INFORMATIVO_MB) nivel = "informativo";
+
+    if (nivel) {
+      ctx.waitUntil(
+        enviarAlerta(env, nivel, tamanoMb, porcentaje)
+      );
+    }
+  },
+};
+
+async function enviarAlerta(
+  env: Env,
+  nivel: string,
+  tamanoMb: number,
+  porcentaje: string
+): Promise<void> {
+  const asunto =
+    nivel === "critico"
+      ? `🔴 CRÍTICO: base de datos al ${porcentaje}% (${tamanoMb} MB de 500 MB)`
+      : nivel === "alerta"
+      ? `🟠 Alerta: base de datos al ${porcentaje}%`
+      : `ℹ️ Informativo: base de datos al ${porcentaje}%`;
+
+  // Envío vía Cloudflare Email Service — ver docs/DECISIONES.md D-8
+  // Implementación exacta en backend/src/lib/email.ts
+}
+```
+
+### Función SQL de soporte
+
+```sql
+create or replace function tamano_base_mb()
+returns numeric
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select round(pg_database_size(current_database()) / 1024.0 / 1024.0, 2);
+$$;
+```
+
+### Configuración
+
+```toml
+[triggers]
+crons = ["0 12 * * *"]  # Todos los días a mediodía UTC
+```
+
+---
+
+## 9. Limpieza automática de tablas de sistema
+
+Reduce el crecimiento de tablas que no aportan valor histórico indefinido.
+
+| Tabla | Regla de limpieza |
+|---|---|
+| Sesiones expiradas de auth | Purgar al expirar |
+| `auditoria` | Archivar a R2 y purgar registros con más de 90 días |
+| `trabajos` completados | Purgar con más de 30 días |
+| `notificaciones` enviadas | Purgar con más de 60 días |
+
+Implementado como Worker semanal (`backend/src/cron/limpieza.ts`), con cron
+`0 5 * * 0` (domingos 5am UTC). El detalle de implementación se especifica en la
+feature correspondiente del roadmap (`.specify/config.md`).
+
+---
+
+## 10. Variables de entorno
+
+```bash
+# Supabase
+SUPABASE_URL=
+SUPABASE_ANON_KEY=              # pública, protegida por RLS
+SUPABASE_SERVICE_ROLE_KEY=      # SOLO en Workers/GitHub Actions, nunca en frontend
+
+# Sesión del portal del suscriptor (D-2, D-4)
+SESSION_SECRET=                 # mínimo 32 caracteres aleatorios
+
+# Cloudflare
+CLOUDFLARE_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_BACKUPS=
+R2_BUCKET_ARCHIVOS=              # fotos, adjuntos de correo
+
+# Alertas
+ALERTA_EMAIL_DESTINO=            # correo de Mateo para monitor-db y uptime
+
+# Backup (solo en GitHub Actions, no en Workers)
+SUPABASE_SESSION_POOLER_URL=
+```
+
+### Reglas de seguridad
+
+- `SUPABASE_SERVICE_ROLE_KEY` y `SESSION_SECRET` nunca llegan al navegador — son
+  secretos de Worker, configurados con `wrangler secret put`.
+- `SUPABASE_SESSION_POOLER_URL` vive únicamente en los secretos de GitHub Actions.
+- Ningún valor real se commitea. `.env.example` documenta las claves sin valores.
+
+---
+
+## 11. Despliegue
+
+```bash
+# Backend (Workers)
+cd backend
+npx wrangler deploy
+
+# Frontend (Pages) — automático al hacer push a main,
+# vía integración GitHub de Cloudflare Pages
+```
+
+### Migraciones de base de datos
+
+```bash
+supabase db push --project-ref <ref-produccion>
+```
+
+**Regla:** ningún cambio de esquema se hace manualmente desde el panel de
+Supabase. Toda migración vive en `supabase/migrations/` y se aplica con el CLI.
+
+---
+
+## 12. Ruta de salida — portabilidad
+
+Si en el futuro Cloudflare o Supabase cambian condiciones de forma desfavorable:
+
+- **Salir de Supabase:** es PostgreSQL estándar. `pg_dump` / `pg_restore` a
+  cualquier proveedor (Neon, RDS, un VPS propio). El único trabajo adicional es
+  reemplazar Supabase Auth por otra solución para la sesión administrativa — la
+  sesión del suscriptor (D-2) ya es independiente y no requiere cambios.
+- **Salir de Cloudflare Workers:** Hono.js corre en cualquier runtime compatible
+  con Fetch API (Node, Deno, Bun) con cambios mínimos de adaptador.
+- **Salir de Cloudflare Pages:** Next.js se despliega en cualquier plataforma
+  compatible (Vercel, un VPS con Docker) sin cambios de código.
+
+Ningún componente crítico del negocio (esquema SQL, lógica de `core/`, políticas
+RLS) depende de una API propietaria irremplazable.
