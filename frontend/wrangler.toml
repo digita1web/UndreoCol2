@@ -1,0 +1,10 @@
+name = "undreocol-frontend"
+main = ".open-next/worker.js"
+# Misma fecha que backend/wrangler.toml — máxima soportada por el runtime local
+# (wrangler 4.86.0). Revisar antes de desplegar con fechas más nuevas.
+compatibility_date = "2026-05-03"
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"

@@ -90,6 +90,7 @@ features de negocio) ni `backend/src/queues/` (Cloudflare Queues fuera de alcanc
 | `frontend/package.json` | Crear | Next 15, React 19, TS estricto, Tailwind; dev: `@opennextjs/cloudflare`, `eslint` + `eslint-config-next`, `@types/*`. Scripts: `dev`, `build`, `lint`. |
 | `frontend/tsconfig.json` | Crear | TS estricto, `paths` `@/*`. |
 | `frontend/next.config.ts` | Crear | Config del adaptador OpenNext para Cloudflare. |
+| `frontend/open-next.config.ts` | Crear | Config requerida por `@opennextjs/cloudflare` (build falla sin ella — descubierto en `/implement` de T-010). `defineCloudflareConfig({})` **sin `incrementalCache`**: UndreoCol es un panel administrativo con datos siempre dinámicos (facturas, pagos, lecturas), sin contenido estático que se beneficie de ISR/SSG por ahora. Se descarta explícitamente `r2IncrementalCache` (la plantilla por defecto del paquete) porque exigiría un binding R2 en el frontend fuera del alcance aprobado — el R2 de `backend/` (fotos/PDFs) no se toca. Decisión de Mateo (2026-09-01). |
 | `frontend/postcss.config.mjs` + `frontend/tailwind.config.ts` | Crear | PostCSS + Tailwind (`content`: `app/`, `components/`, `lib/`). |
 | `frontend/eslint.config.mjs` | Crear | ESLint flat config (`eslint-config-next`). |
 | `frontend/.env.example` | Crear | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`. Nunca valores reales. |

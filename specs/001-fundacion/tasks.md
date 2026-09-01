@@ -300,12 +300,96 @@ cd frontend && npm ci && npm run build
 **Resultado esperado:** build sin errores ni warnings de TypeScript (CA-6, parte frontend).
 **Nota:** verificar en `/implement` que la versión instalada de `@opennextjs/cloudflare` es compatible con
 Next 15 y sigue vigente (riesgo del plan §10). Si no es viable: **detener y reportar** (decisión de Mateo).
-**Estado:** Pendiente
+
+**Hallazgos durante la verificación (los 4, cada uno detenido y reportado a Mateo antes de resolverse):**
+
+1. **Falta `open-next.config.ts`** (no listado originalmente en `plan.md §1.2`): el adaptador lo exige para
+   el build. Decisión de Mateo: `defineCloudflareConfig({})` **sin** `incrementalCache` — sin caché R2 (no
+   hay contenido estático que cachear en un panel administrativo de datos siempre dinámicos; el R2 de
+   `backend/` para fotos/PDFs no se toca). `plan.md §1.2` actualizado con este archivo y la nota.
+2. **Falta `frontend/wrangler.toml`** (tampoco listado en el plan): requerido por
+   `opennextjs-cloudflare build`. Propuesto y aprobado: `name`, `main=".open-next/worker.js"`,
+   `compatibility_date="2026-05-03"` (igual a `backend/wrangler.toml`), `compatibility_flags=["nodejs_compat",
+   "global_fetch_strictly_public"]`, bloque `[assets]`. Formato `.toml` (no `.jsonc`, consistente con
+   `backend/`). Se omitieron deliberadamente `r2_buckets`, `services` (self-reference) e `images` de la
+   plantilla oficial del paquete: no aplican sin caché incremental.
+3. **Bug de recursión infinita en `package.json`:** el script `"build": "opennextjs-cloudflare build"` se
+   autoinvocaba sin fin, porque `@opennextjs/aws/dist/build/buildNextApp.js` ejecuta internamente
+   `npm run build` esperando que sea el build normal de Next.js. Generó decenas de procesos
+   `opennextjs-cloudflare build` anidados (>40 niveles) más sus pares de `esbuild`. Diagnosticado con
+   `pstree`/`ps --forest` antes de matar nada; corregido separando los scripts:
+   `"build": "next build"` + `"pages:build": "opennextjs-cloudflare build"` (convención estándar de
+   OpenNext). Proceso runaway eliminado con `kill -9 -- -<PGID>` sobre el proceso raíz + `pkill -9 -f` por
+   patrón sobre los ~268 huérfanos reparentados.
+4. **`eslint.config.mjs` roto en dos capas:**
+   - (a) import sin extensión (`'eslint-config-next/core-web-vitals'` → `Cannot find module`).
+   - (b) tras corregir la extensión, incompatibilidad real de formato: `eslint-config-next@15.5.25` exporta
+     **eslintrc clásico** (`module.exports = { extends: [...] }`), no flat config nativo — `...nextVitals`
+     no es iterable. Confirmado inspeccionando el paquete instalado (no es un problema de versión: no
+     existe una versión de `eslint-config-next` con export flat-config nativo; el patrón vigente y
+     soportado es `FlatCompat` de `@eslint/eslintrc@3.3.6`, ya presente en `node_modules/`, igual al que
+     genera `create-next-app` por defecto). Corregido reescribiendo `eslint.config.mjs` con
+     `FlatCompat` + `compat.extends('next/core-web-vitals')`.
+   - (c) `npm run lint` reveló además 2 errores sobre `.open-next/.build/*.mjs` (artefactos residuales del
+     incidente de recursión del punto 3, con timestamp coincidente) por falta de `.open-next/**` en
+     `ignores` — agregado, mismo criterio que `.next/**`. Y un warning preexistente en
+     `postcss.config.mjs` (`import/no-anonymous-default-export`) — corregido asignando el objeto de config
+     a una variable antes de exportarlo.
+
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-<salida de npm run build>
+npm ci → 657 paquetes, EXIT=0 (2 vulnerabilidades preexistentes en devDependencies, no bloqueantes)
+
+npm run lint → eslint . → LINT_EXIT=0 (sin errores ni warnings)
+
+npm run build → next build
+  ▲ Next.js 15.5.25
+  Creating an optimized production build ...
+  ✓ Compiled successfully in 1229ms
+  Linting and checking validity of types ...
+  Collecting page data ...
+  ✓ Generating static pages (4/4)
+  Finalizing page optimization ...
+  Collecting build traces ...
+  Route (app)                                 Size  First Load JS
+  ┌ ○ /                                      123 B         103 kB
+  └ ○ /_not-found                            994 B         104 kB
+  + First Load JS shared by all             103 kB
+  ○  (Static)  prerendered as static content
+  BUILD_EXIT=0 — sin errores ni warnings de ESLint/TypeScript
+
+npm run pages:build → opennextjs-cloudflare build (corrido en primer plano, vigilado, sin timeout de
+background — confirmado que NO se repite la recursión: internamente invoca "npm run build" (next build)
+UNA sola vez, no en loop)
+  ┌─────────────────────────────┐
+  │ OpenNext — Cloudflare build │
+  └─────────────────────────────┘
+  Next.js version : 15.5.25
+  @opennextjs/cloudflare version: 1.20.5
+  @opennextjs/aws version: 4.1.3
+  workerd compatibility_date: 2026-05-03
+  ┌─────────────────────────────────┐
+  │ OpenNext — Building Next.js app │
+  └─────────────────────────────────┘
+  > next build → ✓ Compiled successfully in 1748ms → Generating static pages (4/4) → OK
+  ┌──────────────────────────────┐
+  │ OpenNext — Generating bundle │
+  └──────────────────────────────┘
+  Bundling middleware function...
+  Bundling static assets...
+  Bundling cache assets...
+  Building server function: default...
+  Applying code patches: 3.413s
+  ⚙️ Bundling the OpenNext server...
+  Worker saved in `.open-next/worker.js` 🚀
+  OpenNext build complete.
+  PAGES_BUILD_EXIT=0
+  (nota: warning informativo de Node "[DEP0040] DeprecationWarning: punycode module is deprecated" —
+  interno de una dependencia, no de nuestro código; no bloquea ni cuenta como warning de build de CLAUDE.md
+  §11, que se refiere a TypeScript/ESLint)
 ```
-**Commit:** (tras completar)
+**Commit:** (este commit)
 
 ## T-011 — Frontend auth: login + middleware + api (CA-4, CA-5)
 
