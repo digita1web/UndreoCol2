@@ -181,7 +181,7 @@ $ grep -rn "@supabase" frontend/app/ frontend/components/ frontend/lib/
 lib/api.ts:1:// Wrapper fetch hacia la API de Hono (backend/). Nunca importa `@supabase/*`
 1 resultado, mismo falso positivo documentado en 002 T-006 (comentario, no import real).
 ```
-**Commit:** (pendiente)
+**Commit:** `80644ec`
 
 ## T-006 — Frontend: `/app/suscriptores` — lista y alta
 
