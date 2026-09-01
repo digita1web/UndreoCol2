@@ -7,6 +7,7 @@ import {
   obtenerAccessToken,
   verificarSesionAdministrativa,
 } from './lib/auth';
+import { resolverClienteActivo } from './lib/tenant';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -121,6 +122,66 @@ app.get('/auth/sesion', async (c) => {
     return c.json({ error: 'No se pudo leer el perfil' }, 500);
   }
   return c.json({ sesion, perfil, membresias });
+});
+
+// POST /onboarding — crea el acueducto del usuario en UNA transacción vía
+// rpc('crear_tenant_con_admin') (CA-7: sin huérfanos). Requiere sesión.
+app.post('/onboarding', async (c) => {
+  const sesion = await verificarSesionAdministrativa(c);
+  if (!sesion) return c.json({ error: 'No autenticado' }, 401);
+  const body = await c.req
+    .json<{ nombre?: string; slug?: string }>()
+    .catch(() => ({ nombre: undefined, slug: undefined }));
+  const nombre = body.nombre?.trim();
+  const slug = body.slug?.trim().toLowerCase();
+  // Misma regla que clientes.chk_slug.
+  if (!nombre || !slug || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
+    return c.json({ error: 'Nombre requerido y slug en minúsculas, sin espacios ni símbolos' }, 400);
+  }
+  const accessToken = obtenerAccessToken(c);
+  const supabase = crearClienteSuscriptor(c.env, accessToken ?? '');
+  const { data, error } = await supabase.rpc('crear_tenant_con_admin', {
+    p_nombre_cliente: nombre,
+    p_slug: slug,
+    p_email: sesion.email,
+  });
+  if (error) {
+    const msg = error.message.includes('El slug ya está en uso')
+      ? 'El slug ya está en uso'
+      : error.message.includes('El usuario ya tiene un acueducto')
+        ? 'El usuario ya tiene un acueducto'
+        : error.message;
+    return c.json({ error: msg }, 409);
+  }
+  return c.json({ clienteId: data }, 201);
+});
+
+// GET /dashboard — payload de /app/dashboard (spec §4.7): nombre del acueducto,
+// nombre y rol del usuario, y conteo de usuarios_servicio del cliente.
+app.get('/dashboard', async (c) => {
+  const sesion = await verificarSesionAdministrativa(c);
+  if (!sesion) return c.json({ error: 'No autenticado' }, 401);
+  const accessToken = obtenerAccessToken(c);
+  const supabase = crearClienteSuscriptor(c.env, accessToken ?? '');
+  const { activo, lista } = await resolverClienteActivo(supabase, sesion.perfilId);
+  if (!activo) {
+    return c.json({ error: 'Sin acueducto', clientes: lista }, 400);
+  }
+  const { data: perfil } = await supabase
+    .from('perfiles')
+    .select('nombre')
+    .eq('id', sesion.perfilId)
+    .maybeSingle();
+  const { count, error } = await supabase
+    .from('usuarios_servicio')
+    .select('id', { count: 'exact', head: true })
+    .eq('cliente_id', activo.clienteId);
+  if (error) return c.json({ error: 'No se pudo consultar usuarios_servicio' }, 500);
+  return c.json({
+    cliente: activo,
+    perfil: { id: sesion.perfilId, email: sesion.email, nombre: (perfil as { nombre?: string } | null)?.nombre ?? sesion.email },
+    conteoUsuariosServicio: count ?? 0,
+  });
 });
 
 export default app;

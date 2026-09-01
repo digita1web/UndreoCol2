@@ -191,12 +191,21 @@ curl -s -b /tmp/cookies.txt http://localhost:8787/dashboard
 ```
 **Resultado esperado:** onboarding `201 {clienteId}`; slug duplicado → `409` (o 400) y **sin huérfanos**
 (verificar conteos con `psql` antes/después); `/dashboard` devuelve el payload del spec §4.7.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-<salidas de curl + consultas psql de conteo>
+npm run lint → 0 | npm run build (tsc) → 0 | wrangler deploy --dry-run → gzip 155.99 KiB
+POST /auth/registro admin-e@test.local → 201; login → 200
+POST /onboarding {nombre:"Acueducto E", slug:"acueducto-e"} → 201 {"clienteId":"4ae18ae4-..."}
+GET  /dashboard → 200 {cliente:{clienteId,rol:"admin_acueducto",nombre:"Acueducto E"},
+                        perfil:{...,nombre:"Acueducto E"}, conteoUsuariosServicio:0}
+POST /onboarding 2ª vez (mismo usuario) → 409 "El usuario ya tiene un acueducto"
+POST /onboarding admin-f con slug "acueducto-e" → 409 "El slug ya está en uso"
+GET  /dashboard admin-f (sin acueducto) → 400 "Sin acueducto" clientes:[]
+BD: cliente acueducto-e tiene membresía admin_acueducto y su configuracion (sin huérfanos);
+    total clientes = 3 (A, B y E)
 ```
-**Commit:** (tras completar)
+**Commit:** (este commit)
 
 ## T-007 — Cron keepalive (CA-8)
 
