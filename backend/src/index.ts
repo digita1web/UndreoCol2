@@ -15,8 +15,19 @@ import {
   listarServicios,
   listarTarifas,
   matrizTarifas,
-  validarCamposEditables,
+  validarCamposEditables as validarCamposEditablesServicio,
 } from './lib/catalogo';
+import {
+  actualizarSuscriptor,
+  contadorActual,
+  crearContador,
+  crearSuscriptor,
+  historialReemplazos,
+  listarSuscriptores,
+  obtenerSuscriptor,
+  reemplazarContador,
+  validarCamposEditables as validarCamposEditablesSuscriptor,
+} from './lib/suscriptores';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -257,7 +268,7 @@ app.patch('/catalogo/servicios/:id', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({}));
-  const errorCampos = validarCamposEditables(body);
+  const errorCampos = validarCamposEditablesServicio(body);
   if (errorCampos) return c.json({ error: errorCampos }, 400);
   const { nombre, facturable_en_ciclo, orden, activo } = body as {
     nombre?: string; facturable_en_ciclo?: boolean; orden?: number; activo?: boolean;
@@ -326,6 +337,159 @@ app.get('/catalogo/matriz-tarifas', async (c) => {
     return c.json({ matriz });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'Error al consultar la matriz de tarifas' }, 500);
+  }
+});
+
+// --- Suscriptores y contadores (003-suscriptores-contadores) ---------------
+
+app.get('/suscriptores', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const suscriptores = await listarSuscriptores(ctx.supabase, ctx.clienteId, c.req.query('estado'));
+    return c.json({ suscriptores });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al listar suscriptores' }, 500);
+  }
+});
+
+app.post('/suscriptores', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{
+      codigo_suscriptor?: string; nombre?: string; tipo_documento?: string; numero_documento?: string;
+      telefono?: string; email?: string; direccion?: string; sector?: string; categoria?: string; notas?: string;
+    }>()
+    .catch(() => ({
+      codigo_suscriptor: undefined, nombre: undefined, tipo_documento: undefined, numero_documento: undefined,
+      telefono: undefined, email: undefined, direccion: undefined, sector: undefined, categoria: undefined, notas: undefined,
+    }));
+  const codigoSuscriptor = body.codigo_suscriptor?.trim();
+  const nombre = body.nombre?.trim();
+  const numeroDocumento = body.numero_documento?.trim();
+  const direccion = body.direccion?.trim();
+  const categoria = body.categoria?.trim();
+  if (!codigoSuscriptor || !nombre || !numeroDocumento || !direccion || !categoria) {
+    return c.json({ error: 'codigo_suscriptor, nombre, numero_documento, direccion y categoria son requeridos' }, 400);
+  }
+  try {
+    const suscriptor = await crearSuscriptor(ctx.supabase, ctx.clienteId, {
+      codigo_suscriptor: codigoSuscriptor,
+      nombre,
+      numero_documento: numeroDocumento,
+      direccion,
+      categoria,
+      tipo_documento: body.tipo_documento,
+      telefono: body.telefono,
+      email: body.email,
+      sector: body.sector,
+      notas: body.notas,
+    });
+    return c.json({ suscriptor }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al crear el suscriptor' }, 400);
+  }
+});
+
+app.get('/suscriptores/:id', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const id = c.req.param('id');
+  try {
+    const suscriptor = await obtenerSuscriptor(ctx.supabase, id);
+    if (!suscriptor) return c.json({ error: 'Suscriptor no encontrado' }, 404);
+    const [contador, reemplazos] = await Promise.all([
+      contadorActual(ctx.supabase, id),
+      historialReemplazos(ctx.supabase, id),
+    ]);
+    return c.json({ suscriptor, contador, reemplazos });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al obtener el suscriptor' }, 500);
+  }
+});
+
+app.patch('/suscriptores/:id', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({}));
+  const errorCampos = validarCamposEditablesSuscriptor(body);
+  if (errorCampos) return c.json({ error: errorCampos }, 400);
+  const {
+    nombre, estado, tipo_documento, numero_documento, telefono, email, direccion, sector, categoria, notas,
+  } = body as {
+    nombre?: string; estado?: string; tipo_documento?: string; numero_documento?: string; telefono?: string;
+    email?: string; direccion?: string; sector?: string; categoria?: string; notas?: string;
+  };
+  try {
+    const suscriptor = await actualizarSuscriptor(ctx.supabase, c.req.param('id'), {
+      nombre, estado, tipo_documento, numero_documento, telefono, email, direccion, sector, categoria, notas,
+    });
+    return c.json({ suscriptor });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al actualizar el suscriptor' }, 400);
+  }
+});
+
+app.post('/suscriptores/:id/contador', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const usuarioServicioId = c.req.param('id');
+  const body = await c.req
+    .json<{ serial?: string; marca?: string; capacidad_maxima?: number; lectura_inicial?: number; fecha_instalacion?: string }>()
+    .catch(() => ({
+      serial: undefined, marca: undefined, capacidad_maxima: undefined, lectura_inicial: undefined, fecha_instalacion: undefined,
+    }));
+  const serial = body.serial?.trim();
+  const fechaInstalacion = body.fecha_instalacion?.trim();
+  if (!serial || body.capacidad_maxima === undefined || !fechaInstalacion) {
+    return c.json({ error: 'serial, capacidad_maxima y fecha_instalacion son requeridos' }, 400);
+  }
+  try {
+    const contador = await crearContador(ctx.supabase, ctx.clienteId, {
+      usuario_servicio_id: usuarioServicioId,
+      serial,
+      marca: body.marca,
+      capacidad_maxima: body.capacidad_maxima,
+      lectura_inicial: body.lectura_inicial,
+      fecha_instalacion: fechaInstalacion,
+    });
+    return c.json({ contador }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al crear el contador' }, 400);
+  }
+});
+
+app.post('/suscriptores/:id/reemplazar-contador', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const usuarioServicioId = c.req.param('id');
+  const body = await c.req
+    .json<{
+      serial_nuevo?: string; marca_nuevo?: string; capacidad_maxima_nuevo?: number;
+      lectura_final_anterior?: number; lectura_inicial_nuevo?: number; motivo?: string;
+    }>()
+    .catch(() => ({
+      serial_nuevo: undefined, marca_nuevo: undefined, capacidad_maxima_nuevo: undefined,
+      lectura_final_anterior: undefined, lectura_inicial_nuevo: undefined, motivo: undefined,
+    }));
+  const serialNuevo = body.serial_nuevo?.trim();
+  if (!serialNuevo || body.capacidad_maxima_nuevo === undefined || body.lectura_final_anterior === undefined) {
+    return c.json({ error: 'serial_nuevo, capacidad_maxima_nuevo y lectura_final_anterior son requeridos' }, 400);
+  }
+  try {
+    const reemplazoId = await reemplazarContador(ctx.supabase, {
+      usuario_servicio_id: usuarioServicioId,
+      serial_nuevo: serialNuevo,
+      marca_nuevo: body.marca_nuevo,
+      capacidad_maxima_nuevo: body.capacidad_maxima_nuevo,
+      lectura_final_anterior: body.lectura_final_anterior,
+      lectura_inicial_nuevo: body.lectura_inicial_nuevo,
+      motivo: body.motivo,
+    });
+    return c.json({ reemplazoId }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al reemplazar el contador' }, 400);
   }
 });
 

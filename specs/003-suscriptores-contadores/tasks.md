@@ -127,10 +127,18 @@ cd backend && npx tsc --noEmit && npx eslint .
 npx wrangler deploy --dry-run -c wrangler.toml
 ```
 **Resultado esperado:** `tsc`/`eslint` sin errores; el Worker sigue empaquetando.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-02) — implementada junto con T-004, mismo archivo, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+$ npx tsc --noEmit → sin salida, sin errores
+$ npx eslint .     → sin salida, sin errores
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  Total Upload: 803.22 KiB / gzip: 158.87 KiB — sin errores
+
+Nota de alcance: se quitó una ruta GET /suscriptores/:id/contadores que no estaba en plan.md §3
+(6 rutas exactas) — GET /suscriptores/:id ya devuelve el contador activo y el historial de
+reemplazos, que es lo que pide spec.md §3.4; se eliminó la función historialContadores() de
+lib/suscriptores.ts por quedar sin uso tras esa corrección.
 ```
 **Commit:** (pendiente)
 
@@ -146,10 +154,10 @@ cd backend && npx tsc --noEmit && npx eslint .
 npx wrangler deploy --dry-run -c wrangler.toml
 ```
 **Resultado esperado:** igual que T-003.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-02) — implementada junto con T-003, mismo commit
 **Evidencia:**
 ```
-(pendiente)
+Misma corrida que T-003 (un solo tsc/eslint/dry-run cubre ambas rutas nuevas del mismo archivo).
 ```
 **Commit:** (pendiente)
 
