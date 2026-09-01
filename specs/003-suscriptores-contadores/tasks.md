@@ -71,7 +71,7 @@ relforcerowsecurity: contadores=t, reemplazos_contador=t.
 Pendiente para Mateo: repetir `supabase db reset` en un entorno con Docker para la verificación
 oficial completa (mismo pendiente que 002 T-001).
 ```
-**Commit:** (pendiente)
+**Commit:** `f7053c8`
 
 ## T-002 — Fixtures + test de aislamiento (CA-2, CA-5)
 
@@ -114,7 +114,7 @@ defensa adicional en vez de ruta principal para este caso.
 
 Pendiente para Mateo: repetir contra Supabase local real (mismo pendiente que T-001).
 ```
-**Commit:** (pendiente)
+**Commit:** `6203a60`
 
 ## T-003 — Backend: `lib/suscriptores.ts` + CRUD de suscriptores
 
