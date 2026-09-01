@@ -445,12 +445,66 @@ cd frontend && npm run build
 # registro → onboarding → dashboard → logout → login → dashboard
 ```
 **Resultado esperado:** build OK; flujo completo navegable en local (prepara CA-11).
-**Estado:** Pendiente
+**Estado:** Completado parcialmente (2026-09-01) — build y lint verificados; flujo manual en navegador
+**NO VERIFICADO**
+
+**Nota:** `frontend/lib/api.ts` (creado en T-011) se extiende con `crearAcueducto()` — no está en la lista
+de archivos de esta tarea porque ya existía; es el mismo wrapper, solo se le agrega la llamada a
+`POST /onboarding` que el formulario de esta tarea necesita.
+
 **Evidencia:**
 ```
-<salida de build + captura del flujo>
+npm run lint → eslint . → LINT_EXIT=0
+
+npm run build → next build
+  ▲ Next.js 15.5.25
+  Creating an optimized production build ...
+  ✓ Compiled successfully in 3.0s
+  Linting and checking validity of types ...
+  Collecting page data ...
+  ✓ Generating static pages (7/7)
+  Finalizing page optimization ...
+  Collecting build traces ...
+  Route (app)                                 Size  First Load JS
+  ┌ ○ /                                      131 B         103 kB
+  ├ ○ /_not-found                            994 B         104 kB
+  ├ ƒ /app/dashboard                         131 B         103 kB
+  ├ ○ /login                               1.74 kB         113 kB
+  └ ○ /onboarding                          1.82 kB         113 kB
+  ƒ Middleware                             34.2 kB
+  ○  (Static)   prerendered as static content
+  ƒ  (Dynamic)  server-rendered on demand — /app/dashboard, correcto: usa cookies() en cada request
+  BUILD_EXIT=0
 ```
-**Commit:** (tras completar)
+
+**NO VERIFICADO — requiere validación manual de Mateo:** el flujo de navegador (registro → onboarding →
+dashboard → logout → login → dashboard) no se pudo probar en este contenedor porque el CLI de `supabase`
+no está instalado aquí (`supabase: command not found`) — no hay forma de levantar `wrangler dev` contra una
+base de datos real para completar el flujo end-to-end. Pasos exactos para Mateo:
+```bash
+# 1. Terminal 1 — Supabase local
+supabase start
+
+# 2. Terminal 2 — backend
+cd backend && npx wrangler dev
+
+# 3. Terminal 3 — frontend
+cd frontend && npm run dev
+
+# 4. En el navegador (http://localhost:3000):
+#    a. /login → intentar entrar sin cuenta (falla, esperado)
+#    b. crear un usuario con POST /auth/registro (curl, ya que no hay página de
+#       registro en el frontend todavía — no está en el alcance de T-011/T-012)
+#    c. /login → iniciar sesión con ese usuario → debe redirigir a /app/dashboard
+#    d. sin acueducto → /app/dashboard debe redirigir a /onboarding
+#    e. crear acueducto (nombre + slug) → debe redirigir a /app/dashboard con los
+#       datos reales (nombre del acueducto, rol admin_acueducto, conteo en 0)
+#    f. cerrar sesión (no hay botón de logout en el frontend todavía — probar con
+#       curl -X POST .../auth/logout) → /app/dashboard debe redirigir a /login
+```
+Esto queda pendiente de cierre en T-015 (CA-11), junto con el resto del flujo manual.
+
+**Commit:** (este commit)
 
 ## T-013 — Workflow de backup diario (CA-10)
 
