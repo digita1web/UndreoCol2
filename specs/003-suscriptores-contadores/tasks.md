@@ -193,10 +193,14 @@ lib/api.ts:1:// Wrapper fetch hacia la API de Hono (backend/). Nunca importa `@s
 cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** build y lint sin errores ni warnings de TypeScript.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-02)
 **Evidencia:**
 ```
-(pendiente)
+$ npx tsc --noEmit → sin salida
+$ npm run lint     → sin salida
+$ npm run build
+  ✓ Compiled successfully · ✓ Generating static pages (9/9)
+  Route (app): /app/suscriptores 2.84 kB, First Load JS 117 kB — registrada correctamente
 ```
 **Commit:** (pendiente)
 
@@ -212,10 +216,11 @@ no tiene tarifa vigente configurada (consulta `matrizTarifas()` de 002).
 cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** build y lint sin errores ni warnings de TypeScript.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-02)
 **Evidencia:**
 ```
-(pendiente)
+Mismo build que T-006 (una sola corrida cubre todo el proyecto):
+  Route (app): /app/suscriptores/[id] 3.35 kB, First Load JS 115 kB — registrada correctamente
 ```
 **Commit:** (pendiente)
 
