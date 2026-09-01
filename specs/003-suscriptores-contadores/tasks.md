@@ -202,7 +202,7 @@ $ npm run build
   ✓ Compiled successfully · ✓ Generating static pages (9/9)
   Route (app): /app/suscriptores 2.84 kB, First Load JS 117 kB — registrada correctamente
 ```
-**Commit:** (pendiente)
+**Commit:** `8c76e3c`
 
 ## T-007 — Frontend: `/app/suscriptores/[id]` — detalle, contador y reemplazo
 
@@ -222,7 +222,7 @@ cd frontend && npm run build && npm run lint
 Mismo build que T-006 (una sola corrida cubre todo el proyecto):
   Route (app): /app/suscriptores/[id] 3.35 kB, First Load JS 115 kB — registrada correctamente
 ```
-**Commit:** (pendiente)
+**Commit:** `8c76e3c`
 
 ## T-008 — Verificación manual end-to-end (CA-6)
 
