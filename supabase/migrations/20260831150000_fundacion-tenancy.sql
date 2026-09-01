@@ -1,9 +1,11 @@
 -- =============================================================================
 -- UndreoCol — Migración 001: Fundación multi-tenant
--- Referencia: specs/001-fundacion/plan.md §3 (aprobado 2026-08-31)
+-- Referencia: specs/001-fundacion/plan.md §2 (aprobado 2026-09-01)
 --
--- Alcance: solo las 6 tablas de la fundación:
+-- Alcance: las 6 tablas de la fundación más el soporte operativo:
 --   planes, clientes, perfiles, membresias, configuracion, usuarios_servicio
+--   §10 crear_tenant_con_admin() — onboarding transaccional (CA-7)
+--   §11 _keepalive + tamano_base_mb() — soporte D-7 (Workers de mantenimiento)
 -- Reglas de la fundación:
 --   - RLS con FORCE en todas las tablas desde esta migración.
 --   - rol_usuario con EXACTAMENTE 3 valores (decisión D-2: sin 'suscriptor').
@@ -266,6 +268,98 @@ create policy usuarios_servicio_lectura on usuarios_servicio for select
   using (es_admin_plataforma() or cliente_id in (select mis_clientes()));
 create policy usuarios_servicio_escritura on usuarios_servicio for all
   using (es_admin_de(cliente_id)) with check (es_admin_de(cliente_id));
+
+-- -----------------------------------------------------------------------------
+-- 10. Onboarding transaccional (spec §4.5, CA-7)
+-- -----------------------------------------------------------------------------
+-- Crea cliente + perfil + membresia(admin_acueducto) + configuracion en UNA
+-- transacción. SECURITY DEFINER: la política clientes_plataforma solo permite
+-- escritura de clientes a la plataforma, así que el onboarding del admin del
+-- acueducto pasa por esta función. Revoca a anon; otorga a authenticated.
+
+create or replace function crear_tenant_con_admin(
+  p_nombre_cliente text,
+  p_slug          text,
+  p_email         text
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  v_cliente_id uuid;
+begin
+  -- Solo el propio usuario autenticado (auth.uid()) puede crear SU tenant.
+  if auth.uid() is null then
+    raise exception 'No autenticado';
+  end if;
+  -- Un usuario con membresía activa no crea otro acueducto (el multi-tenant por
+  -- usuario lo gestiona el panel maestro de la plataforma, feature posterior).
+  if exists (select 1 from membresias where perfil_id = auth.uid() and activo) then
+    raise exception 'El usuario ya tiene un acueducto';
+  end if;
+  begin
+    insert into clientes (nombre, slug) values (p_nombre_cliente, p_slug)
+      returning id into v_cliente_id;
+  exception when unique_violation then
+    -- Duplicado de slug (unique clientes.slug): revierte TODO por atomicidad.
+    raise exception 'El slug ya está en uso';
+  end;
+  insert into perfiles (id, nombre, email) values (auth.uid(), p_nombre_cliente, p_email);
+  insert into membresias (perfil_id, cliente_id, rol)
+    values (auth.uid(), v_cliente_id, 'admin_acueducto');
+  insert into configuracion (cliente_id) values (v_cliente_id);
+  return v_cliente_id;
+end $$;
+
+revoke execute on function crear_tenant_con_admin(text, text, text) from anon, public;
+grant  execute on function crear_tenant_con_admin(text, text, text) to authenticated;
+
+-- -----------------------------------------------------------------------------
+-- 11. Soporte D-7 — Supabase Free explotado al máximo
+--     Ver docs/DECISIONES.md D-7 e INFRAESTRUCTURA.md §5 y §8.
+--     (equivalente a la sección 18 de docs/esquema-propuesto.sql)
+-- -----------------------------------------------------------------------------
+
+-- --- Worker de keepalive (INFRAESTRUCTURA.md §5) -----------------------------
+-- Evita que el proyecto se pause tras 7 días de inactividad en el plan Free.
+
+create table if not exists _keepalive (
+  id           smallint primary key default 1,
+  ultimo_ping  timestamptz not null default now(),
+  constraint chk_singleton check (id = 1)
+);
+
+insert into _keepalive (id, ultimo_ping) values (1, now())
+  on conflict (id) do nothing;
+
+comment on table _keepalive is
+  'Tabla técnica de soporte para el Worker de keepalive (D-7). '
+  'Sin cliente_id ni RLS de negocio: solo accesible con service_role_key '
+  'desde el Worker de cron, nunca desde una ruta de la API pública.';
+
+alter table _keepalive enable row level security;
+alter table _keepalive force row level security;
+-- Sin políticas: por defecto nadie (anon/authenticated) puede tocarla.
+-- service_role bypasea RLS por diseño de Supabase.
+
+-- --- Worker de monitoreo de tamaño de base (INFRAESTRUCTURA.md §8) ----------
+-- Alerta antes de llegar al límite de 500 MB del plan Free.
+
+create or replace function tamano_base_mb()
+returns numeric
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select round(pg_database_size(current_database()) / 1024.0 / 1024.0, 2);
+$$;
+
+comment on function tamano_base_mb is
+  'Tamaño actual de la base de datos en MB. Usada por el Worker de '
+  'monitoreo (INFRAESTRUCTURA.md §8) para alertar en 300/400/480 MB, '
+  'antes del límite de 500 MB del plan Free de Supabase (D-7).';
+
+revoke execute on function tamano_base_mb from anon, authenticated, public;
+grant execute on function tamano_base_mb to service_role;
 
 -- -----------------------------------------------------------------------------
 -- COMPATIBILIDAD SELF-HOSTED (sin Supabase) — solo documentación
