@@ -26,7 +26,11 @@ export function crearClienteSuscriptor(env: Env, accessToken: string): SupabaseC
 }
 
 // Solo para Workers de cron y GitHub Actions (backup). CLAUDE.md §5.4.
-export function crearClienteServicio(env: Env): SupabaseClient {
+// Acepta un Env mínimo: los Workers de mantenimiento no necesitan las demás
+// variables (anon key, CORS).
+export function crearClienteServicio(
+  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SERVICE_ROLE_KEY'>,
+): SupabaseClient {
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });

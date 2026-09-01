@@ -1,0 +1,10 @@
+name = "undreocol-keepalive"
+main = "src/cron/keepalive.ts"
+# Fecha máxima que soporta el runtime local (wrangler 4.86.0).
+compatibility_date = "2026-05-03"
+
+[triggers]
+crons = ["0 5 * * *"]
+
+# SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY se inyectan por entorno:
+# local → backend/.dev.vars; producción → secrets de Mateo (`wrangler secret put`).

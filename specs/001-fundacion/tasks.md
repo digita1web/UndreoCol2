@@ -221,12 +221,17 @@ psql "$DATABASE_URL" -c "select ultimo_ping, now() as ahora from _keepalive;"
 **Resultado esperado:** el log del Worker muestra el ping; `ultimo_ping` queda ≈ `ahora` (CA-8 con
 evidencia). El despliegue real (`wrangler deploy -c wrangler.keepalive.toml`) y el secreto
 `SUPABASE_SERVICE_ROLE_KEY` requieren a Mateo → **NO VERIFICADO** hasta entonces.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01) — despliegue real NO VERIFICADO (requiere Mateo)
 **Evidencia:**
 ```
-<salida de wrangler dev --test-scheduled + consulta psql>
+npm run lint → 0 | npm run build (tsc) → 0 | dry-run keepalive → gzip 137.22 KiB
+wrangler dev --test-scheduled -c wrangler.keepalive.toml --port 8788
+curl 'http://localhost:8788/__scheduled?cron=0+5+*+*+*' → "Ran scheduled event" HTTP=200
+_keepalive.ultimo_ping ANTES: 2026-09-01 03:34:25+00
+_keepalive.ultimo_ping DESPUÉS: 2026-09-01 04:37:36+00   ← ping registrado (CA-8)
+Log del Worker: "keepalive: ping registrado a las 2026-09-01T04:37:36.651+00:00"
 ```
-**Commit:** (tras completar)
+**Commit:** (este commit)
 
 ## T-008 — Cron monitor-db + unit test (CA-9)
 
