@@ -92,10 +92,27 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/suscriptores.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/003_suscriptores_aislamiento.sql
 ```
 **Resultado esperado:** ambos scripts en verde, terminan con `SUSCRIPTORES-AISLAMIENTO OK`.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-02)
 **Evidencia:**
 ```
-(pendiente)
+Mismo entorno de T-001. Reconstrucción completa desde cero (001+002+003+grants+fixtures 001/002/003)
+antes de correr el test, para validar el archivo final tal cual queda commiteado.
+
+tests/aislamiento/003_suscriptores_aislamiento.sql → 7 pasos en verde → "SUSCRIPTORES-AISLAMIENTO OK".
+Regresión: 001_fundacion_aislamiento.sql → "FUNDACION-AISLAMIENTO OK";
+           002_catalogo_aislamiento.sql → "CATALOGO-AISLAMIENTO OK" (sin romper nada).
+
+HALLAZGO REAL (no anticipado en el plan): PASO 5 mostró que reemplazar_contador() nunca llega a
+su propio chequeo es_admin_de() cuando lo llama un lector del MISMO acueducto — no por un bug,
+sino porque PostgreSQL aplica la política RLS de ESCRITURA (usuarios_servicio_escritura, que
+exige es_admin_de()) a la cláusula SELECT ... FOR UPDATE, no la de lectura. Confirmado
+directamente: un SELECT plano de lector A sobre un suscriptor de A devuelve la fila; el mismo
+SELECT ... FOR UPDATE devuelve 0 filas. El mensaje real es "no existe", no "No autorizado" como
+asumía el plan/test original — corregido el test para reflejarlo, y se agregó un comentario en
+la migración (T-001, mismo commit) explicando por qué el chequeo es_admin_de() queda como
+defensa adicional en vez de ruta principal para este caso.
+
+Pendiente para Mateo: repetir contra Supabase local real (mismo pendiente que T-001).
 ```
 **Commit:** (pendiente)
 

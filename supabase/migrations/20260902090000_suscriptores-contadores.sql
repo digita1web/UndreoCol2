@@ -139,6 +139,12 @@ begin
   if v_cliente_id is null then
     raise exception 'Suscriptor % no existe', p_usuario_servicio_id;
   end if;
+  -- Defensa adicional: en la práctica, el SELECT ... FOR UPDATE de arriba ya
+  -- aplicó la política RLS de ESCRITURA de usuarios_servicio (Postgres usa la
+  -- política de UPDATE, no la de SELECT, para las cláusulas de bloqueo de
+  -- filas) — confirmado en tests/aislamiento/003_suscriptores_aislamiento.sql
+  -- PASO 5: un lector del mismo cliente ya recibe "no existe" arriba, nunca
+  -- llega aquí. Este chequeo queda como segunda barrera explícita.
   if not es_admin_de(v_cliente_id) then
     raise exception 'No autorizado';
   end if;
