@@ -9,12 +9,13 @@ Una tarea = un commit. Sin evidencia no hay commit (CLAUDE.md §4 y §9). Nunca 
 
 ## Notas de entorno y prerrequisitos
 
-- **Mismo entorno que 002/003:** este contenedor no tiene Docker funcional ni PostgREST. La
-  verificación de esquema/RLS/funciones se hace contra PostgreSQL 16 nativo con el shim de
-  compatibilidad ya usado en 002/003 (`auth.uid()` vía GUC, roles `anon`/`authenticated`/`service_role`).
-  Las rutas HTTP (curl real contra `wrangler dev`) y el flujo en navegador quedan "NO VERIFICADO —
-  requiere validación manual de Mateo" si el contenedor de turno sigue sin esas piezas, con los pasos
-  exactos.
+- **Entorno actual (2026-09-04, distinto de 002/003):** este contenedor ahora DISPONE de
+  Docker con Supabase local completo (CLI 2.116.0, PostgreSQL 17.6, esquemas auth/storage/realtime,
+  rol `authenticated`, `auth.uid()` nativo). La verificación de esquema/RLS/funciones se hace contra
+  **Supabase local real** (MÁS fiel que el shim de 002/003): `supabase db reset --local` aplica las
+  migraciones 001→004 desde cero. Las rutas HTTP (curl contra `wrangler dev`) y el flujo en
+  navegador siguen como pendiente de Mateo si el Worker no puede apuntar a una base real durante
+  `/implement`; si no, "NO VERIFICADO" con pasos exactos.
 - **Orden de verificación (plan.md §8):** migración + aislamiento primero (bloquea todo lo demás),
   luego `core/consumo.ts` + unit, luego `lib/lecturas.ts` + rutas, luego frontend, luego cierre.
 - **Orden de aplicación antes de cada paso de base:** `001 + 002 + 003` migraciones, luego
@@ -52,11 +53,39 @@ psql "$DATABASE_URL" -c "select relname, relforcerowsecurity from pg_class where
 perder filas (los fixtures ya aplicados siguen intactos); `periodos` y `lecturas` tienen la forma del
 plan.md §2; RLS `FORCE` en ambas; existe `uq_periodo_abierto`, el unique `(contador_id, periodo_id)`,
 el unique de `id_cliente_offline` y el trigger `bloquear_lectura_periodo_cerrado`.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
+Entorno: Supabase local completo (CLI 2.116.0, PostgreSQL 17.6) vía docker.
+Base previa solo tenía 001; faltaban 002/003. Se usó `supabase db reset --local`
+(aplica las migraciones 001→004 desde cero, lo más fiel posible):
 
+$ supabase db reset --local --debug (tail)
+  Applying migration 20260831150000_fundacion-tenancy.sql...
+  Applying migration 20260901120000_catalogo-y-tarifas.sql...
+  Applying migration 20260902090000_suscriptores-contadores.sql...
+  Applying migration 20260904090000_lecturas-consumo.sql...     <-- 004 SIN ERRORES
+  Finished supabase db reset on branch claude/sleepy-einstein-jehcn4.
+  (WARN benigno: no seed.sql. "NotFound profile" al inicio es solo config, no bloquea.)
+
+Verificación estructural tras el reset (psql -tAc contra postgres:postgres@localhost:54322/postgres):
+  tablas: lecturas, periodos existen.
+  enums:  estado_periodo = abierto,cerrado
+          revision_lectura = normal,consumo_alto,consumo_bajo,consumo_cero
+  RLS:    lecturas force=true ; periodos force=true
+  trigger: trg_lectura_periodo_cerrado on lecturas
+  índice: uq_periodo_abierto ON periodos (cliente_id) WHERE (estado='abierto')
+  unique: lecturas_contador_id_periodo_id_key (UNIQUE (contador_id, periodo_id))
+          lecturas_id_cliente_offline_key (UNIQUE (id_cliente_offline))
+  check:  chk_consumo (CHECK (consumo_m3 >= 0)); chk_rango (fecha_fin >= fecha_inicio)
+  FKs:    lecturas_contador_id_fkey/periodo_id_fkey ON DELETE RESTRICT
+
+Fixtures 001/002/003 cargados tras el reset (base lista para T-002):
+  fundacion.sql: 5 perfiles, 5 membresias, 2 configuracion, 3 usuarios_servicio (COMMIT)
+  catalogo.sql:  3 servicios, 2 tarifas (COMMIT)
+  suscriptores.sql: 2 contadores (A1/B1), 2 UPDATE contador_actual_id (COMMIT)
 ```
+
 **Commit:** (tras completar)
 ## T-002 — Fixtures + test de aislamiento (CA-2, CA-5)
 
