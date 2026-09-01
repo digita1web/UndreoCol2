@@ -405,12 +405,31 @@ grep -rn "@supabase" frontend/app/ frontend/components/   # CA-4
 grep -rn "SERVICE_ROLE" frontend/                          # CA-5
 ```
 **Resultado esperado:** build OK; ambos grep devuelven **cero resultados** (CA-4 y CA-5 con salida pegada).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-<salida de build + de ambos grep>
+npm run lint → eslint . → LINT_EXIT=0
+
+npm run build → next build
+  ▲ Next.js 15.5.25
+  Creating an optimized production build ...
+  ✓ Compiled successfully in 11.4s
+  Linting and checking validity of types ...
+  Collecting page data ...
+  ✓ Generating static pages (5/5)
+  Finalizing page optimization ...
+  Collecting build traces ...
+  Route (app)                                 Size  First Load JS
+  ┌ ○ /                                      123 B         103 kB
+  ├ ○ /_not-found                            994 B         104 kB
+  └ ○ /login                               10.2 kB         113 kB
+  ƒ Middleware                             34.2 kB
+  BUILD_EXIT=0
+
+grep -rn "@supabase" frontend/app/ frontend/components/ → sin salida, EXIT=1 (CA-4: cero resultados)
+grep -rn "SERVICE_ROLE" frontend/ (excluyendo node_modules/.next/.open-next) → sin salida, EXIT=1 (CA-5: cero resultados)
 ```
-**Commit:** (tras completar)
+**Commit:** (este commit)
 
 ## T-012 — Frontend onboarding + dashboard protegido
 
