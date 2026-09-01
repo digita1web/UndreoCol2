@@ -125,12 +125,20 @@ curl -s -i http://localhost:8787/salud
 ```
 **Resultado esperado:** lint limpio; `deploy --dry-run` exitoso; `/salud` → `200 {"estado":"ok"}` (y el
 origen CORS configurado responde el header correcto).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-<salidas de lint, dry-run y curl>
+npm run lint → LINT_EXIT=0
+npm run build (tsc --noEmit) → BUILD_EXIT=0
+wrangler deploy --dry-run → Total Upload: 770.86 KiB / gzip: 152.65 KiB; DRYRUN_EXIT=0
+wrangler dev + curl /salud →
+  HTTP/1.1 200 OK
+  Access-Control-Allow-Origin: http://localhost:3000
+  Access-Control-Allow-Credentials: true
+  {"estado":"ok"}
+Nota: compatibility_date fijada en 2026-05-03 (máx. del runtime local de wrangler 4.86.0).
 ```
-**Commit:** (tras completar)
+**Commit:** (este commit)
 
 ## T-005 — Backend auth: sesión administrativa + contrato del suscriptor
 

@@ -1,0 +1,13 @@
+name = "undreocol-api"
+main = "src/index.ts"
+# Fecha máxima que soporta el runtime local (wrangler 4.86.0). Subirla exige
+# actualizar wrangler; revisar antes de desplegar con fechas más nuevas.
+compatibility_date = "2026-05-03"
+
+# SUPABASE_URL y SUPABASE_ANON_KEY se inyectan por entorno: en local viven en
+# .dev.vars (gitignored); en producción son [vars]/secrets de Mateo.
+[vars]
+ALLOWED_ORIGIN = "http://localhost:3000"
+
+[observability]
+enabled = true
