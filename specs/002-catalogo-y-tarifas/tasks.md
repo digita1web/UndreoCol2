@@ -149,7 +149,7 @@ $ npx vitest run tests/unit/tarifas.test.ts
 $ npx tsc --noEmit
 (sin salida — sin errores)
 ```
-**Commit:** (pendiente)
+**Commit:** `e9c7f55`
 
 ## T-004 — Backend: `lib/catalogo.ts` + rutas de servicios
 
@@ -192,7 +192,7 @@ Pendiente para Mateo: correr los curl exactos del bloque de Verificación de arr
 `wrangler dev` + Supabase local real, con un access_token de un admin_acueducto de prueba
 (mismo mecanismo manual que documentó 001 en tasks.md T-011/T-012).
 ```
-**Commit:** (pendiente)
+**Commit:** `0ff21df`
 
 ## T-005 — Backend: rutas de tarifas + matriz (CA-3, CA-4)
 
@@ -230,7 +230,7 @@ HTTP (forma del body, códigos de estado), no la lógica de negocio.
 Pendiente para Mateo: correr los curl exactos de arriba contra `wrangler dev` + Supabase local
 real, mismo mecanismo manual de 001 T-011/T-012.
 ```
-**Commit:** (pendiente)
+**Commit:** `0ff21df`
 
 ## T-006 — Frontend: `lib/api.ts` — funciones de catálogo
 
@@ -262,11 +262,11 @@ grep original de 001 (T-011) solo cubría app/ y components/, sin lib/, por eso 
 encontrado antes; aquí se corrige el alcance del grep y se confirma que sigue siendo un falso
 positivo, no una violación de CLAUDE.md §5.2.
 ```
-**Commit:** (pendiente)
+**Commit:** `7634932`
 
 ## T-007 — Frontend: `/app/catalogo` — lista y alta de servicios
 
-**Archivos:** `frontend/app/app/catalogo/page.tsx`
+**Archivos:** `frontend/app/app/catalogo/page.tsx`, `frontend/components/servicio-form.tsx`
 **Hace:** Página protegida por el `middleware.ts` existente (`/app/*`). Lista los servicios del acueducto
 activo, formulario de alta, botón activar/desactivar.
 **Verificación:**
@@ -274,16 +274,21 @@ activo, formulario de alta, botón activar/desactivar.
 cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** build y lint sin errores ni warnings de TypeScript.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-(pendiente)
+$ npx tsc --noEmit → sin salida
+$ npm run lint     → sin salida (eslint .)
+$ npm run build
+  ✓ Compiled successfully in 8.9s
+  ✓ Generating static pages (8/8)
+  Route (app): /app/catalogo 5.81 kB, First Load JS 117 kB — registrada correctamente
 ```
 **Commit:** (pendiente)
 
 ## T-008 — Frontend: `/app/catalogo/[servicioId]` — historial y alta de tarifa
 
-**Archivos:** `frontend/app/app/catalogo/[servicioId]/page.tsx`
+**Archivos:** `frontend/app/app/catalogo/[servicioId]/page.tsx`, `frontend/components/tarifa-form.tsx`
 **Hace:** Historial de tarifas del servicio (vigentes e históricas, con sus fechas de vigencia) y
 formulario de tarifa nueva por categoría, dejando explícito en la UI que esto cierra la vigente y crea una
 nueva (nunca la edita).
@@ -292,10 +297,12 @@ nueva (nunca la edita).
 cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** build y lint sin errores ni warnings de TypeScript.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-(pendiente)
+Mismo build que T-007 (una sola corrida cubre todo el proyecto):
+  Route (app): /app/catalogo/[servicioId] 2.85 kB, First Load JS 114 kB — registrada correctamente
+  npx tsc --noEmit y npm run lint sin salida en ambos casos.
 ```
 **Commit:** (pendiente)
 
