@@ -808,3 +808,52 @@ create policy auditoria_lectura on auditoria for select
 -- La aplicación ejecuta al inicio de cada transacción:
 --   set local app.perfil_id = '<uuid del usuario autenticado>';
 -- =============================================================================
+
+
+-- =============================================================================
+-- 18. SOPORTE PARA D-7 — Supabase Free explotado al máximo
+--     Ver docs/DECISIONES.md D-7 e INFRAESTRUCTURA.md §5 y §8.
+-- =============================================================================
+
+-- --- Worker de keepalive (INFRAESTRUCTURA.md §5) -----------------------------
+-- Evita que el proyecto se pause tras 7 días de inactividad en el plan Free.
+
+create table if not exists _keepalive (
+  id           smallint primary key default 1,
+  ultimo_ping  timestamptz not null default now(),
+  constraint chk_singleton check (id = 1)
+);
+
+insert into _keepalive (id, ultimo_ping) values (1, now())
+  on conflict (id) do nothing;
+
+comment on table _keepalive is
+  'Tabla técnica de soporte para el Worker de keepalive (D-7). '
+  'Sin cliente_id ni RLS de negocio: solo accesible con service_role_key '
+  'desde el Worker de cron, nunca desde una ruta de la API pública.';
+
+alter table _keepalive enable row level security;
+alter table _keepalive force row level security;
+-- Sin políticas: por defecto nadie (anon/authenticated) puede tocarla.
+-- service_role bypasea RLS por diseño de Supabase.
+
+-- --- Worker de monitoreo de tamaño de base (INFRAESTRUCTURA.md §8) ----------
+-- Alerta antes de llegar al límite de 500 MB del plan Free.
+
+create or replace function tamano_base_mb()
+returns numeric
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select round(pg_database_size(current_database()) / 1024.0 / 1024.0, 2);
+$$;
+
+comment on function tamano_base_mb is
+  'Tamaño actual de la base de datos en MB. Usada por el Worker de '
+  'monitoreo (INFRAESTRUCTURA.md §8) para alertar en 300/400/480 MB, '
+  'antes del límite de 500 MB del plan Free de Supabase (D-7).';
+
+revoke execute on function tamano_base_mb from anon, authenticated;
+grant execute on function tamano_base_mb to service_role;

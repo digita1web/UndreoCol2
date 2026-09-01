@@ -1,8 +1,9 @@
 # ESPECIFICACION-FUNCIONAL.md — UndreoCol
 
-**Versión:** 1.0
+**Versión:** 2.0
 **Fecha:** 2026-08-31
-**Fuente:** especificación entregada por Mateo Castro, fundador
+**Fuente:** especificación entregada por Mateo Castro, fundador, refinada en sesión
+conjunta.
 
 Este documento es la fuente de verdad de **qué debe hacer el sistema**.
 No describe implementación. Si hay contradicción entre este documento y el
@@ -22,13 +23,18 @@ de suscriptores activos (~$700 COP/suscriptor/mes).
 
 **Fundador:** Mateo Castro — más de 3 años de experiencia en el sector.
 
+**Infraestructura:** Cloudflare (Pages, Workers, R2, Queues) + Supabase
+(PostgreSQL, Auth, RLS), sin servidor propio. Ver `ARQUITECTURA.md` y
+`docs/DECISIONES.md` D-6.
+
 ---
 
 ## 2. Modelo de datos y reglas de negocio
 
 ### 2.1 Acueducto (cliente de UndreoCol)
 
-Cada acueducto cliente tiene sus datos completamente aislados de otros clientes.
+Cada acueducto cliente tiene sus datos completamente aislados de otros clientes,
+garantizado por Row Level Security de PostgreSQL.
 
 Atributos: nombre, NIT, dirección, municipio, departamento, teléfono, logo,
 plan de suscripción, estado de la cuenta (activa / vencida / suspendida /
@@ -104,7 +110,7 @@ subtotal = cargo_fijo
 El `limite_basico_m3` es **inclusivo**: con límite 22 m³ y consumo 25 m³,
 los m³ 1–22 van a precio básico y los m³ 23–25 a precio no básico.
 
-**Ejemplo real validado (Soacha, datos de referencia):**
+**Ejemplo real de referencia (Soacha, ⚠️ valores aproximados — D-5):**
 
 > Estrato 3, consumo 25 m³ → Acueducto $69.104 + Alcantarillado $63.554 =
 > Total $132.658
@@ -135,43 +141,19 @@ Después de cambiar el precio el 15 de septiembre de 2026:
 El sistema **siempre busca la tarifa vigente en la fecha de emisión del
 periodo**, no la más reciente.
 
-#### Qué ve el administrador en el panel
-
-- Lista de tarifas vigentes (las activas hoy)
-- Botón "Actualizar precio" que abre un formulario con los valores actuales
-- Al guardar, los nuevos precios quedan activos **de inmediato** para el
-  próximo cierre de facturación
-- Historial de cambios: tabla de todas las versiones anteriores con sus fechas
-
-El administrador nunca ve ni manipula `vigencia_desde` ni `vigencia_hasta`
-directamente. El sistema los gestiona automáticamente.
-
 #### Reglas de integridad de los cambios
 
 | Regla | Por qué |
 |---|---|
-| Una sola tarifa activa por servicio + categoría en un momento dado | No puede haber dos precios simultáneos para el mismo servicio y estrato |
+| Una sola tarifa activa por servicio + categoría en un momento dado | No puede haber dos precios simultáneos |
 | La tarifa anterior queda cerrada automáticamente | No se puede eliminar: las facturas históricas la referencian |
-| Una tarifa con facturas emitidas **nunca se elimina**, solo se cierra | `factura_detalles.tarifa_id` apunta a la tarifa que se usó al facturar |
-| No se puede crear una tarifa con `vigencia_desde` anterior al primer periodo cerrado | Evita alterar facturas ya emitidas |
-
-#### Efecto sobre facturas históricas
-
-**Cero.** Las facturas ya emitidas guardan en `factura_detalles.tarifa_id` una
-referencia a la tarifa exacta que se usó. Si el precio cambia mañana, las
-facturas del mes pasado no cambian. Siempre se puede auditar con qué tarifa se
-calculó cada renglón.
+| Una tarifa con facturas emitidas **nunca se elimina**, solo se cierra | `factura_detalles.tarifa_id` apunta a la tarifa usada al facturar |
 
 #### Cambio de tarifa dentro de un periodo abierto
 
 Si el administrador cambia la tarifa **durante** un periodo que aún no se ha
 cerrado, el cierre usa la tarifa vigente **en la fecha en que se ejecuta el
 cierre**, no la que estaba vigente al inicio del periodo.
-
-Esta es la regla más simple y la que menos confunde a los acueductos. Si
-necesitan que el cambio aplique desde el periodo siguiente, simplemente ponen
-`vigencia_desde` como el primer día del mes siguiente. El panel les muestra
-esta opción.
 
 #### Resumen para el administrador del acueducto
 
@@ -192,9 +174,14 @@ Un suscriptor en estado `cortado` sale del ciclo normal de lecturas y
 facturación hasta reconexión.
 
 **Acceso al portal (decisión D-2):**
-El suscriptor no tiene cuenta en el sistema de autenticación. El portal valida
-`numero_documento` + `codigo_suscriptor` en el servidor y emite una sesión propia
-firmada. No necesita contraseña.
+El suscriptor no tiene cuenta en el sistema de autenticación (Supabase Auth).
+El portal valida `numero_documento` + `codigo_suscriptor` en un Worker de
+Cloudflare y emite una sesión propia firmada. No necesita contraseña.
+
+La sesión dura **30 días con renovación automática** (D-4). Se guarda en una
+cookie HttpOnly + Secure + SameSite=Lax. Si el suscriptor no visita en 30 días,
+debe volver a autenticarse. Si pierde su `codigo_suscriptor`, el administrador
+del acueducto puede regenerarlo desde el panel.
 
 ---
 
@@ -255,7 +242,13 @@ algo de un periodo cerrado exige una nota de ajuste en el periodo actual.
 ### 2.8 Lectura
 
 Atributos: contador, periodo, fecha, lectura anterior, lectura actual, consumo
-calculado, si hubo rollover, estado de revisión, tomada por, foto, coordenadas.
+calculado, si hubo rollover, estado de revisión, tomada por, foto (opcional),
+coordenadas.
+
+**Toma de lectura desde la PWA del lector:** el lector escanea un código QR para
+identificar el contador (evita error de digitación del serial), introduce la
+lectura, y opcionalmente toma una foto. La app funciona sin conexión y
+sincroniza al recuperar señal.
 
 **Consumo:** se calcula automáticamente al guardar, incluyendo rollover.
 
@@ -325,6 +318,25 @@ acueducto.
 
 ---
 
+### 2.9.1 Entrega de la factura (decisión D-8)
+
+**Flujo principal: impresión.** La mayoría de acueductos colombianos entregan la
+factura impresa en papel. El administrador ve el listado de facturas del
+periodo cerrado en pantalla y las imprime con el navegador, usando una hoja de
+estilos diseñada para impresión (formato carta o media carta, logo del
+acueducto, desglose completo por servicio). No se genera ningún archivo PDF en
+este flujo — es una impresión directa desde la vista web.
+
+**Flujo secundario: correo electrónico.** Para el subconjunto de suscriptores
+que tienen email registrado y para acueductos que quieran usar este canal,
+el sistema puede enviar la factura por correo electrónico, con el desglose
+como PDF adjunto (generado con `pdf-lib`, ver `docs/DECISIONES.md` D-9). Este
+envío es opcional, se activa por suscriptor o de forma masiva a petición del
+administrador, y **nunca bloquea el cierre del periodo** si falla: queda
+registrado como una notificación pendiente que se reintenta.
+
+---
+
 ### 2.10 Pago
 
 Un pago puede aplicar a una o varias facturas. Puede quedar un sobrante a favor
@@ -357,12 +369,14 @@ Al ejecutar el corte (desde el celular del lector), el suscriptor pasa a estado
 
 ### 2.12 Notificaciones
 
-**Eventos que generan notificación:** factura generada · recordatorio de
-vencimiento · aviso de mora · confirmación de pago.
+**Eventos que generan notificación:** factura generada (solo si se solicitó
+envío por correo, ver 2.9.1) · recordatorio de vencimiento · aviso de mora ·
+confirmación de pago.
 
 **Regla crítica:** un fallo de envío **nunca** bloquea el flujo principal. La
 cola de notificaciones es desacoplada. Un suscriptor sin email no rompe la
-facturación.
+facturación — de hecho, la mayoría de suscriptores no requieren correo, porque
+reciben su factura impresa.
 
 ---
 
@@ -371,17 +385,42 @@ facturación.
 El suscriptor consulta:
 - Su factura actual
 - Su historial de consumo
-- Descarga del PDF de su factura
+- Descarga del PDF de su factura (generado bajo demanda con `pdf-lib`)
 
 Autenticación: `numero_documento` + `codigo_suscriptor`. Sin contraseña.
-Sin cuenta en el sistema de identidad.
+Sin cuenta en el sistema de identidad (D-2).
 
 ---
 
 ### 2.14 App móvil de lecturas (PWA)
 
-Usada por el lector/fontanero en campo. Funciona **sin señal** (offline-first).
-Al recuperar conexión, sincroniza las lecturas tomadas. Idempotente: no duplica.
+Usada por el lector/fontanero en campo. Es una Progressive Web App (Next.js +
+Service Worker) instalable desde el navegador en Android, sin necesidad de
+Play Store.
+
+**Flujo:**
+```
+Inicia sesión (Supabase Auth)
+       ↓
+Ve su ruta asignada
+       ↓
+Escanea el código QR del contador
+       ↓
+Contador identificado automáticamente
+       ↓
+Introduce la lectura
+       ↓
+Validación matemática (rollover, anomalías) en el dispositivo
+       ↓
+Foto opcional del contador
+       ↓
+Guarda (funciona sin conexión)
+       ↓
+Sincroniza al recuperar señal
+```
+
+Funciona **sin señal** (offline-first). Al recuperar conexión, sincroniza las
+lecturas tomadas. Idempotente: no duplica (`id_cliente_offline`).
 
 ---
 
@@ -449,12 +488,12 @@ antes de cualquier uso oficial.
 ### Lector / Fontanero
 - Solo puede crear y ver lecturas
 - Solo puede ver y ejecutar órdenes de corte/reconexión **asignadas a él**
-- Pensado para uso desde el celular, sin señal
+- Usa la PWA desde el celular, con soporte offline
 
 ### Suscriptor (portal)
-- No tiene cuenta en el sistema de identidad
+- No tiene cuenta en el sistema de identidad (D-2)
 - Accede con `numero_documento` + `codigo_suscriptor`
-- Solo ve sus propios datos: factura actual, historial, PDF
+- Solo ve sus propios datos: factura actual, historial, descarga de PDF
 - Nunca ve datos de otros suscriptores
 
 ---
@@ -465,3 +504,5 @@ antes de cualquier uso oficial.
 - Integración con bancos o pasarelas de pago en línea — fase posterior
 - Contabilidad completa — fase posterior
 - Multi-idioma
+- Generación de PDF como parte del flujo principal de facturación (ver D-8) —
+  la impresión directa desde el navegador es el flujo principal
