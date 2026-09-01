@@ -172,3 +172,143 @@ export interface FilaMatrizTarifas {
 export function matrizTarifas(): Promise<{ matriz: FilaMatrizTarifas[] }> {
   return peticion<{ matriz: FilaMatrizTarifas[] }>('/catalogo/matriz-tarifas');
 }
+
+// --- Suscriptores y contadores (003-suscriptores-contadores) ---------------
+
+export type EstadoSuscriptor = 'activo' | 'suspendido' | 'cortado' | 'inactivo';
+
+export interface Suscriptor {
+  id: string;
+  cliente_id: string;
+  codigo_suscriptor: string;
+  nombre: string;
+  estado: EstadoSuscriptor;
+  tipo_documento: string | null;
+  numero_documento: string | null;
+  telefono: string | null;
+  email: string | null;
+  direccion: string | null;
+  sector: string | null;
+  categoria: string | null;
+  contador_actual_id: string | null;
+  fecha_vinculacion: string;
+  notas: string | null;
+}
+
+export function listarSuscriptores(estado?: string): Promise<{ suscriptores: Suscriptor[] }> {
+  const query = estado ? `?estado=${encodeURIComponent(estado)}` : '';
+  return peticion<{ suscriptores: Suscriptor[] }>(`/suscriptores${query}`);
+}
+
+export interface DatosCrearSuscriptor {
+  codigo_suscriptor: string;
+  nombre: string;
+  numero_documento: string;
+  direccion: string;
+  categoria: string;
+  tipo_documento?: string;
+  telefono?: string;
+  email?: string;
+  sector?: string;
+  notas?: string;
+}
+
+export function crearSuscriptor(datos: DatosCrearSuscriptor): Promise<{ suscriptor: Suscriptor }> {
+  return peticion<{ suscriptor: Suscriptor }>('/suscriptores', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
+
+export interface Contador {
+  id: string;
+  cliente_id: string;
+  usuario_servicio_id: string;
+  serial: string;
+  marca: string | null;
+  capacidad_maxima: number;
+  lectura_inicial: number;
+  fecha_instalacion: string;
+  estado: 'activo' | 'danado' | 'reemplazado';
+  observaciones: string | null;
+}
+
+export interface ReemplazoContador {
+  id: string;
+  cliente_id: string;
+  usuario_servicio_id: string;
+  contador_anterior_id: string;
+  contador_nuevo_id: string;
+  fecha_reemplazo: string;
+  lectura_final_anterior: number;
+  lectura_inicial_nuevo: number;
+  motivo: string | null;
+}
+
+export interface RespuestaDetalleSuscriptor {
+  suscriptor: Suscriptor;
+  contador: Contador | null;
+  reemplazos: ReemplazoContador[];
+}
+
+export function obtenerSuscriptor(id: string): Promise<RespuestaDetalleSuscriptor> {
+  return peticion<RespuestaDetalleSuscriptor>(`/suscriptores/${id}`);
+}
+
+// codigo_suscriptor NUNCA se acepta aquí (es la credencial del futuro portal, D-2).
+export interface DatosActualizarSuscriptor {
+  nombre?: string;
+  estado?: EstadoSuscriptor;
+  tipo_documento?: string;
+  numero_documento?: string;
+  telefono?: string;
+  email?: string;
+  direccion?: string;
+  sector?: string;
+  categoria?: string;
+  notas?: string;
+}
+
+export function actualizarSuscriptor(
+  id: string,
+  datos: DatosActualizarSuscriptor,
+): Promise<{ suscriptor: Suscriptor }> {
+  return peticion<{ suscriptor: Suscriptor }>(`/suscriptores/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(datos),
+  });
+}
+
+export interface DatosCrearContador {
+  serial: string;
+  marca?: string;
+  capacidad_maxima: number;
+  lectura_inicial?: number;
+  fecha_instalacion: string;
+}
+
+export function crearContador(usuarioServicioId: string, datos: DatosCrearContador): Promise<{ contador: Contador }> {
+  return peticion<{ contador: Contador }>(`/suscriptores/${usuarioServicioId}/contador`, {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
+
+export interface DatosReemplazarContador {
+  serial_nuevo: string;
+  marca_nuevo?: string;
+  capacidad_maxima_nuevo: number;
+  lectura_final_anterior: number;
+  lectura_inicial_nuevo?: number;
+  motivo?: string;
+}
+
+export function reemplazarContador(
+  usuarioServicioId: string,
+  datos: DatosReemplazarContador,
+): Promise<{ reemplazoId: string }> {
+  return peticion<{ reemplazoId: string }>(`/suscriptores/${usuarioServicioId}/reemplazar-contador`, {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}

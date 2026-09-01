@@ -173,10 +173,13 @@ grep -rn "@supabase" frontend/app/ frontend/components/ frontend/lib/
 ```
 **Resultado esperado:** `tsc` sin errores; el `grep` de `@supabase` no encuentra ningún `import`
 real (el comentario de cabecera de `lib/api.ts` sigue siendo el único match esperado, como en 002 T-006).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-02)
 **Evidencia:**
 ```
-(pendiente)
+$ npx tsc --noEmit → sin salida, sin errores
+$ grep -rn "@supabase" frontend/app/ frontend/components/ frontend/lib/
+lib/api.ts:1:// Wrapper fetch hacia la API de Hono (backend/). Nunca importa `@supabase/*`
+1 resultado, mismo falso positivo documentado en 002 T-006 (comentario, no import real).
 ```
 **Commit:** (pendiente)
 
