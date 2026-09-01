@@ -140,7 +140,7 @@ Nota de alcance: se quitó una ruta GET /suscriptores/:id/contadores que no esta
 reemplazos, que es lo que pide spec.md §3.4; se eliminó la función historialContadores() de
 lib/suscriptores.ts por quedar sin uso tras esa corrección.
 ```
-**Commit:** (pendiente)
+**Commit:** `42305e2`
 
 ## T-004 — Backend: alta de contador + reemplazo (CA-4)
 
@@ -159,7 +159,7 @@ npx wrangler deploy --dry-run -c wrangler.toml
 ```
 Misma corrida que T-003 (un solo tsc/eslint/dry-run cubre ambas rutas nuevas del mismo archivo).
 ```
-**Commit:** (pendiente)
+**Commit:** `42305e2`
 
 ## T-005 — Frontend: `lib/api.ts` — funciones de suscriptores y contadores
 
