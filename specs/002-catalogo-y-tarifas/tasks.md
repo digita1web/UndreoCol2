@@ -384,4 +384,4 @@ CHANGELOG.md actualizado (Sesión 009) y checklist de spec.md §8 marcada con ev
 incluyendo los dos ítems NO VERIFICADOS (CA-3/CA-4 vía curl real, CA-7 en navegador) con sus
 pasos exactos para Mateo.
 ```
-**Commit:** (pendiente)
+**Commit:** `4396d41`
