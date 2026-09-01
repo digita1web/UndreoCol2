@@ -284,7 +284,7 @@ $ npm run build
   ✓ Generating static pages (8/8)
   Route (app): /app/catalogo 5.81 kB, First Load JS 117 kB — registrada correctamente
 ```
-**Commit:** (pendiente)
+**Commit:** `707c2bb`
 
 ## T-008 — Frontend: `/app/catalogo/[servicioId]` — historial y alta de tarifa
 
@@ -304,7 +304,7 @@ Mismo build que T-007 (una sola corrida cubre todo el proyecto):
   Route (app): /app/catalogo/[servicioId] 2.85 kB, First Load JS 114 kB — registrada correctamente
   npx tsc --noEmit y npm run lint sin salida en ambos casos.
 ```
-**Commit:** (pendiente)
+**Commit:** `707c2bb`
 
 ## T-009 — Verificación manual end-to-end (CA-7)
 
@@ -320,14 +320,26 @@ cd frontend && npm run dev
 # navegar manualmente el flujo descrito arriba
 ```
 **Resultado esperado:** el flujo completo funciona sin error visible en ninguno de los pasos.
-**Estado:** Pendiente
+**Estado:** NO VERIFICADO — requiere validación manual de Mateo
 **Evidencia:**
 ```
-(pendiente — si este contenedor no puede levantar wrangler dev + next dev simultáneos contra una base
-real, se declara "NO VERIFICADO — requiere validación manual de Mateo" con los pasos exactos de arriba,
-nunca se marca como completada sin evidencia)
+Confirmado: este contenedor no puede levantar el flujo real. Sin Docker no hay `supabase start`
+(T-001), y sin PostgREST no hay endpoint REST detrás de @supabase/supabase-js aunque
+`wrangler dev` sí arrancara (probado en T-004/T-005: el Worker empaqueta y tipa bien, pero no
+hay backend de datos real al que apuntar). `npm run dev` de frontend tampoco se probó por la
+misma razón — no tiene sentido navegar un flujo que fallaría en el primer fetch.
+
+NO VERIFICADO — requiere validación manual de Mateo:
+  1. `supabase start` (o apuntar a un proyecto Supabase real) y aplicar las migraciones de 001 y 002.
+  2. `cd backend && npx wrangler dev` en una terminal.
+  3. `cd frontend && npm run dev` en otra.
+  4. Login con un usuario admin_acueducto de prueba (ya con onboarding hecho, feature 001).
+  5. Navegar a /app/catalogo → crear un servicio → entrar a su historial → crear una tarifa →
+     cambiar el precio de la misma categoría (verificar que la anterior queda cerrada en el
+     historial, no editada) → volver a /app/catalogo y confirmar que activar/desactivar funciona.
+  6. Confirmar en la consola del navegador que no hay errores no manejados en ningún paso.
 ```
-**Commit:** (pendiente)
+**Commit:** (no aplica — tarea sin cambios de código)
 
 ## T-010 — Cierre: CHANGELOG + checklist CLAUDE.md §11
 
@@ -342,9 +354,34 @@ cd backend && npx vitest run
 ```
 **Resultado esperado:** los 5 comandos en verde, evidencia de cada uno pegada en el CHANGELOG y en esta
 tarea.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-(pendiente)
+$ cd backend && npx tsc --noEmit
+(sin salida)
+
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  Total Upload: 793.41 KiB / gzip: 157.45 KiB — sin errores
+
+$ npx vitest run
+  ✓ tests/unit/monitor-db.test.ts (6 tests)
+  ✓ tests/unit/tarifas.test.ts (8 tests)
+  Test Files  2 passed (2) · Tests  14 passed (14)
+
+$ cd frontend && npm run build
+  ✓ Compiled successfully · ✓ Generating static pages (8/8)
+  incluye /app/catalogo y /app/catalogo/[servicioId]
+
+$ npm run lint
+  (sin salida)
+
+Adicional (no en la lista de 5, pero parte del cierre real de la feature): re-corrida de ambos
+tests de aislamiento SQL contra el entorno de T-001/T-002 —
+  002_catalogo_aislamiento.sql → "CATALOGO-AISLAMIENTO OK"
+  001_fundacion_aislamiento.sql → "FUNDACION-AISLAMIENTO OK" (sin regresión)
+
+CHANGELOG.md actualizado (Sesión 009) y checklist de spec.md §8 marcada con evidencia real,
+incluyendo los dos ítems NO VERIFICADOS (CA-3/CA-4 vía curl real, CA-7 en navegador) con sus
+pasos exactos para Mateo.
 ```
 **Commit:** (pendiente)

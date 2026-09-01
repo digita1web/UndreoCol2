@@ -4,6 +4,55 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-01 — Sesión 009: 002-catalogo-y-tarifas completa (T-001 a T-010)
+
+**Hecho**
+- **T-001** — Migración `20260901120000_catalogo-y-tarifas.sql`: enums `categoria_tarifaria`/
+  `tipo_calculo`, tablas `servicios`/`tarifas` (DDL de `docs/esquema-propuesto.sql §6` + columna
+  `updated_at` en `servicios`), `tarifa_vigente()` (`SECURITY DEFINER`) y `crear_tarifa_version()`
+  nueva (`SECURITY INVOKER`, `SELECT FOR UPDATE`, cierra la tarifa vigente y crea la nueva en una
+  sola transacción). RLS `FORCE` + políticas reutilizando `es_admin_de()`/`mis_clientes()`/
+  `es_admin_plataforma()` de 001, sin funciones de seguridad nuevas. `servicios`/`tarifas` usan
+  `ON DELETE RESTRICT` (no `CASCADE` como la referencia): un servicio con tarifas nunca se borra
+  en cascada silenciosamente.
+- **T-002** — Fixtures (`tests/fixtures/catalogo.sql`, valores explícitamente marcados como no
+  reales — D-5 sigue pendiente) y test de aislamiento (`002_catalogo_aislamiento.sql`, 6 pasos)
+  cubriendo CA-2 (incluida `crear_tarifa_version()` contra un `servicio_id` de otro acueducto) y
+  CA-6 (una sola tarifa vigente tras cambios sucesivos). **El propio test encontró un bug real**
+  en `crear_tarifa_version()` de T-001: dos cambios de precio el mismo día violaban
+  `chk_vigencia` al cerrar una tarifa cuya `vigencia_desde` ya era hoy con `vigencia_hasta = hoy-1`.
+  Corregido: si la tarifa anterior nació hoy mismo se elimina en vez de cerrarse (nunca estuvo
+  vigente un día completo, y no puede tener facturas — esa tabla no existe todavía).
+- **T-003** — `core/tarifas.ts`: `calcularSubtotalServicio()` (fórmula D-1, límite inclusivo,
+  redondeo a la unidad una sola vez). 8 tests unitarios en verde (límite exacto, límite±1,
+  consumo 0, `tipo_calculo = 'fijo'`, redondeo).
+- **T-004/T-005** — Backend: `lib/catalogo.ts` (capa de acceso a datos) y las rutas
+  `GET/POST /catalogo/servicios`, `PATCH /catalogo/servicios/:id` (rechaza explícitamente cambios
+  a `codigo`/`tipo_calculo`), `GET/POST /catalogo/tarifas`, `GET /catalogo/matriz-tarifas`.
+- **T-006 a T-008** — Frontend: `lib/api.ts` ampliado (mismo wrapper `peticion<T>()`, sin
+  `@supabase/*`), panel `/app/catalogo` (lista, alta, activar/desactivar) y
+  `/app/catalogo/[servicioId]` (historial de tarifas por categoría + alta de tarifa nueva, con
+  nota explícita de que esto cierra la vigente y nunca la edita).
+- **T-010** — Cierre: checklist de `spec.md §8` y esta entrada.
+
+**Desviación de entorno señalada en cada tarea afectada (CLAUDE.md §8)**
+Este contenedor no tiene Docker funcional (el daemon no arranca — restricción del sandbox), así
+que no hay CLI de `supabase` ni forma de correr `supabase start`/`supabase db reset` ni
+PostgREST. La verificación de esquema, RLS y funciones (T-001, T-002) se hizo contra PostgreSQL 16
+nativo instalado en el contenedor, con un shim de compatibilidad (`auth.uid()` vía GUC, roles
+`anon`/`authenticated`/`service_role`) que la propia migración de 001 ya documentaba como opción
+self-hosted — real evidencia contra un motor Postgres real, pero no el stack completo de Supabase.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- **CA-3/CA-4** (T-004/T-005): correr los `curl` reales de `tasks.md` contra `wrangler dev` +
+  Supabase local real — este contenedor no tiene PostgREST, así que no hay endpoint REST real
+  detrás de `@supabase/supabase-js` para probar las rutas end-to-end, aunque `tsc`, `eslint` y
+  `wrangler deploy --dry-run` están en verde.
+- **CA-7** (T-009): flujo completo en navegador (`wrangler dev` + `next dev` simultáneos contra
+  una base real). Pasos exactos en `tasks.md` T-009.
+- Repetir `supabase db reset` en un entorno con Docker para la verificación oficial completa de
+  T-001 (incluye PostgREST/GoTrue, que el shim de este contenedor no cubre).
+
 ### 2026-09-01 — Sesión 008: T-010 (frontend base) y T-014 (restaura INFRAESTRUCTURA.md)
 
 **Hecho**

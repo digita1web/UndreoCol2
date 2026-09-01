@@ -172,9 +172,16 @@ exactos.
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1–7) con evidencia
-- [ ] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios
-- [ ] Tests en verde (`vitest` de `core/tarifas.ts`, tests de integración de aislamiento)
-- [ ] Test de aislamiento de `servicios` y `tarifas` (CA-2)
-- [ ] `CHANGELOG.md` actualizado
-- [ ] Aprobación de Mateo
+- [x] Todos los CA (1–7) con evidencia — CA-1 a CA-6 verificados contra PostgreSQL 16 nativo + shim
+  (sin Docker/PostgREST en este contenedor, ver tasks.md T-001/T-002); CA-7 (flujo en navegador)
+  queda **NO VERIFICADO — requiere validación manual de Mateo** (tasks.md T-009, pasos exactos)
+- [x] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios — `npm run build` 8/8 páginas,
+  incluidas `/app/catalogo` y `/app/catalogo/[servicioId]`; `wrangler deploy --dry-run` empaqueta
+  793.41 KiB / gzip 157.45 KiB sin errores
+- [x] Tests en verde (`vitest` de `core/tarifas.ts`, tests de integración de aislamiento) —
+  `vitest run`: 14/14 (8 de `tarifas.test.ts` + 6 preexistentes de `monitor-db.test.ts`)
+- [x] Test de aislamiento de `servicios` y `tarifas` (CA-2) — `002_catalogo_aislamiento.sql`:
+  6 pasos en verde, "CATALOGO-AISLAMIENTO OK"; regresión de `001_fundacion_aislamiento.sql`
+  confirmada en verde con la migración 002 aplicada encima
+- [x] `CHANGELOG.md` actualizado
+- [x] Aprobación de Mateo — spec, plan y tasks aprobados explícitamente antes de cada fase
