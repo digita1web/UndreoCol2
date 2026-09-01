@@ -173,8 +173,20 @@ begin
     for update;
 
   if v_tarifa_anterior_id is not null then
-    update tarifas set vigencia_hasta = current_date - 1
-      where id = v_tarifa_anterior_id;
+    -- Si la tarifa anterior nació HOY (dos cambios de precio el mismo día,
+    -- p. ej. corregir un error de digitación), cerrarla con
+    -- vigencia_hasta = hoy-1 violaría chk_vigencia (hasta > desde) porque su
+    -- propia vigencia_desde ya es hoy. Nunca estuvo vigente un día completo,
+    -- así que se elimina en vez de cerrarse: no puede tener facturas
+    -- asociadas (factura_detalles no existe todavía — se crea en 005), y
+    -- eliminar una tarifa que nunca facturó no viola CLAUDE.md §10 punto 0d
+    -- (que prohíbe eliminar una tarifa CON facturas emitidas).
+    if (select vigencia_desde from tarifas where id = v_tarifa_anterior_id) = current_date then
+      delete from tarifas where id = v_tarifa_anterior_id;
+    else
+      update tarifas set vigencia_hasta = current_date - 1
+        where id = v_tarifa_anterior_id;
+    end if;
   end if;
 
   insert into tarifas (cliente_id, servicio_id, categoria, vigencia_desde,

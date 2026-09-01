@@ -44,12 +44,29 @@ psql "$DATABASE_URL" -c "select relname, relforcerowsecurity from pg_class where
 **Resultado esperado:** reset sin errores; ambas tablas existen con las columnas del plan; ambas funciones
 definidas con los grants correctos (`crear_tarifa_version` revocado a `anon`/`public`, otorgado a
 `authenticated`); `relforcerowsecurity = true` en ambas tablas.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01) — con desviación de entorno, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+NO VERIFICADO con `supabase db reset` real: este contenedor no tiene Docker funcional (daemon no
+arranca), así que no hay CLI de `supabase` disponible. Verificado en su lugar contra PostgreSQL 16
+nativo con el shim de compatibilidad que 001 ya documenta (auth.uid() vía GUC + roles
+anon/authenticated/service_role) — no es el stack completo de Supabase (sin PostgREST/GoTrue).
+
+001 + 002 aplican limpias en secuencia, EXIT=0.
+\d servicios / \d tarifas: columnas correctas, FK tarifas_servicio_id_fkey ON DELETE RESTRICT,
+  constraint chk_vigencia, índice único (servicio_id, categoria, vigencia_desde), 2 políticas RLS
+  cada una.
+relforcerowsecurity: servicios=t, tarifas=t.
+tarifa_vigente: security_type=DEFINER, EXECUTE revocado anon/public, otorgado authenticated/service_role.
+crear_tarifa_version: security_type=INVOKER, EXECUTE revocado anon/public, otorgado authenticated.
+
+Corrección sobre plan.md: la función de trigger de 001 se llama set_updated_at(), no
+trigger_updated_at() como decía el plan — corregido en la migración.
+
+Pendiente para Mateo: repetir `supabase db reset` en un entorno con Docker para la verificación
+oficial completa (incluye PostgREST/GoTrue, que este shim no cubre).
 ```
-**Commit:** (pendiente)
+**Commit:** `123310d`
 
 ## T-002 — Fixtures + test de aislamiento (CA-2, CA-6)
 
@@ -73,12 +90,36 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/catalogo.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/002_catalogo_aislamiento.sql
 ```
 **Resultado esperado:** ambos scripts en verde, terminan con `CATALOGO-AISLAMIENTO OK`.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-(pendiente)
+Mismo entorno que T-001 (PostgreSQL 16 nativo + shim, sin Docker/supabase CLI en este contenedor).
+
+fixtures/fundacion.sql + fixtures/catalogo.sql aplican OK.
+tests/aislamiento/002_catalogo_aislamiento.sql → 6 pasos en verde → "CATALOGO-AISLAMIENTO OK".
+Regresión: tests/aislamiento/001_fundacion_aislamiento.sql sigue en verde con el mismo shim y
+  con la migración 002 aplicada encima → "FUNDACION-AISLAMIENTO OK" (sin romper la fundación).
+
+BUG REAL encontrado y corregido en crear_tarifa_version() (migración de T-001, no en este commit
+de test): dos cambios de precio el MISMO día para el mismo servicio+categoría violaban
+chk_vigencia (cerrar la anterior con vigencia_hasta = hoy-1 cuando su propia vigencia_desde ya
+era hoy, hasta > desde queda falso). PASO 6 del test lo reprodujo primero como error real de
+psql, no como suposición. Corrección: si la tarifa anterior nació hoy mismo, se ELIMINA en vez
+de cerrarse (nunca estuvo vigente un día completo y no puede tener facturas — esa tabla no
+existe todavía). Commit de la corrección: incluido en el commit de esta tarea junto con el test
+que lo expuso (T-001 ya estaba commiteado sin este caso; se corrige aquí porque el propio test
+de T-002 lo encontró).
+
+PASO 4 también reveló que crear_tarifa_version() (SECURITY INVOKER) para un servicio_id de otro
+acueducto falla con "no existe" (RLS lo hace invisible antes del chequeo es_admin_de()), no con
+"No autorizado" como asumía el plan original — corregido el mensaje esperado en el test para
+reflejar el comportamiento real verificado, no la suposición previa.
+
+Pendiente para Mateo: repetir contra Supabase local real (incluye la corrida con dos sesiones
+psql concurrentes reales sobre el FOR UPDATE, que aquí se simuló en una sola sesión — dos
+llamadas consecutivas, no dos conexiones simultáneas bloqueándose entre sí).
 ```
-**Commit:** (pendiente)
+**Commit:** (pendiente — se commitea junto con la corrección de T-001)
 
 ## T-003 — `core/tarifas.ts`: cálculo puro con casos límite (CA-5)
 
