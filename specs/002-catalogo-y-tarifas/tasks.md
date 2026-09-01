@@ -119,7 +119,7 @@ Pendiente para Mateo: repetir contra Supabase local real (incluye la corrida con
 psql concurrentes reales sobre el FOR UPDATE, que aquí se simuló en una sola sesión — dos
 llamadas consecutivas, no dos conexiones simultáneas bloqueándose entre sí).
 ```
-**Commit:** (pendiente — se commitea junto con la corrección de T-001)
+**Commit:** `694fb67`
 
 ## T-003 — `core/tarifas.ts`: cálculo puro con casos límite (CA-5)
 
@@ -133,10 +133,21 @@ cd backend && npx vitest run tests/unit/tarifas.test.ts
 ```
 **Resultado esperado:** todos los tests en verde, cubriendo: consumo == límite básico, límite−1, límite+1,
 consumo 0, `tipo_calculo = 'fijo'` (ignora `consumo_m3`), redondeo a la unidad.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-(pendiente)
+$ npm ci   (node_modules no estaba instalado en este contenedor; sin esto npx había resuelto
+            vitest 4.1.11 en vez del ^2.1.0 fijado en package.json — corregido antes de medir)
+added 198 packages
+
+$ npx vitest run tests/unit/tarifas.test.ts
+ RUN  v2.1.9 /home/user/UndreoCol/backend
+ ✓ tests/unit/tarifas.test.ts (8 tests) 5ms
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+
+$ npx tsc --noEmit
+(sin salida — sin errores)
 ```
 **Commit:** (pendiente)
 
