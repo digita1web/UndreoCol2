@@ -38,12 +38,17 @@ supabase init && supabase start && supabase db reset
 ```
 **Resultado esperado:** `supabase db reset` termina sin errores; el esquema de la fundación se reconstruye
 completo sin intervención manual.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-<salida real de supabase start / db reset>
+supabase init → "Finished supabase init."
+supabase start → 12 contenedores Up (healthy): supabase_db, rest, auth, kong, storage, realtime, ...
+                DB: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+supabase db reset → "Finished supabase db reset on branch main." EXIT=0
+Verificación psql: 6 tablas (clientes, configuracion, membresias, perfiles, planes, usuarios_servicio)
+                  6/6 con RLS+FORCE = true
 ```
-**Commit:** (tras completar)
+**Commit:** `71f7da3`
 
 ## T-002 — Migración: §10 onboarding transaccional + §11 soporte D-7
 
@@ -61,12 +66,18 @@ psql "$DATABASE_URL" -c "\df public.crear_tenant_con_admin"
 ```
 **Resultado esperado:** reset OK; fila singleton en `_keepalive`; ambas funciones definidas con sus
 grants (anon/authenticated revocados de `tamano_base_mb`).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-<salida de db reset + las 3 consultas>
+supabase db reset → "Finished supabase db reset on branch main." EXIT=0
+_keepalive: (1, 2026-09-01 03:30:58+00) — fila singleton
+\df: crear_tenant_con_admin(text,text,text) volatile; tamano_base_mb() stable
+tamano_base_mb: EXECUTE solo postgres y service_role (revoke a anon, authenticated, public)
+  anon → ERROR: permission denied for function tamano_base_mb
+  service_role → 10.91 MB
+crear_tenant_con_admin: EXECUTE solo authenticated/service_role/postgres
 ```
-**Commit:** (tras completar)
+**Commit:** `c662cc7`
 
 ## T-003 — Test de aislamiento: pasos 12–14 + brechas de CA-2
 
@@ -84,12 +95,17 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/001_fundacion_aisla
 ```
 **Resultado esperado:** salida con `FUNDACION-AISLAMIENTO OK` cubriendo pasos 2–14. Esto cierra CA-1,
 CA-2, CA-7 y el soporte de esquema de CA-8 y CA-9.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-<salida del script>
+psql fixture → BEGIN ... COMMIT (2 planes, 2 clientes, 5 perfiles, 5 membresias,
+               2 configuraciones, 3 usuarios_servicio). EXIT=0
+psql aislamiento → pasos 2–14 en verde → "FUNDACION-AISLAMIENTO OK". EXIT=0
+Correcciones incluidas: 4 RAISE con parámetro sin placeholder (preexistentes, PASO 7/10/11),
+  anon lee _keepalive 0 filas (RLS filtra, no error), PASO 14 separado en DO blocks
+  (subtransacción del handler) y conteo de huérfanos como postgres (bypasa RLS).
 ```
-**Commit:** (tras completar)
+**Commit:** (este commit)
 
 ## T-004 — Backend base: scaffolding Hono + `GET /salud`
 

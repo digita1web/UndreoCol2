@@ -1,6 +1,8 @@
 -- =============================================================================
--- UndreoCol — Test de aislamiento RLS de la fundación (plan §6.1, pasos 2-11)
--- Referencia: specs/001-fundacion/plan.md §6.1 y tasks.md T-13/T-14
+-- UndreoCol — Test de aislamiento RLS de la fundación (plan §8.2, pasos 2-14)
+-- Referencia: specs/001-fundacion/plan.md §8 y tasks.md T-003
+-- Cubre CA-1, CA-2, CA-7 (PASO 14) y el soporte de esquema de CA-8 (PASO 12)
+-- y CA-9 (PASO 13). CA-10 y CA-11 se verifican por fuera (workflow + manual).
 --
 -- Requiere tests/fixtures/fundacion.sql aplicado antes.
 -- Ejecutar con: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/001_fundacion_aislamiento.sql
@@ -119,7 +121,7 @@ begin
   select count(*) into n from clientes;
   if n <> 1 then raise exception 'PASO 7 FALLÓ: admin A ve % clientes (esperaba 1)', n; end if;
   select count(*) into n from clientes where id = 'b0000000-0000-0000-0000-000000000002';
-  if n <> 0 then raise exception 'PASO 7 FALLÓ: admin A ve el cliente B', n; end if;
+  if n <> 0 then raise exception 'PASO 7 FALLÓ: admin A ve el cliente B'; end if;
   select count(*) into n from configuracion;
   if n <> 1 then raise exception 'PASO 7 FALLÓ: admin A ve % configuraciones (esperaba 1)', n; end if;
   select count(*) into n from usuarios_servicio;
@@ -127,7 +129,7 @@ begin
   select count(*) into n from membresias;
   if n <> 2 then raise exception 'PASO 7 FALLÓ: admin A ve % membresias (esperaba 2)', n; end if;
   select count(*) into n from perfiles where id = 'a0000000-0000-0000-0000-0000000000a1';
-  if n <> 1 then raise exception 'PASO 7 FALLÓ: admin A no ve su propio perfil', n; end if;
+  if n <> 1 then raise exception 'PASO 7 FALLÓ: admin A no ve su propio perfil'; end if;
 end $$;
 rollback;
 
@@ -180,6 +182,20 @@ begin
   exception when others then
     if sqlerrm not like '%row-level security%' then raise; end if;
   end;
+  -- CA-2 paso 2: rol 'administrador' para OTRO perfil del mismo cliente (lector A)
+  begin
+    insert into membresias (perfil_id, cliente_id, rol)
+    values ('a0000000-0000-0000-0000-0000000000a2', 'a0000000-0000-0000-0000-000000000001', 'administrador');
+    raise exception 'PASO 9 FALLÓ: admin A otorgó el rol administrador a otro perfil';
+  exception when others then
+    if sqlerrm not like '%row-level security%' and sqlerrm not like '%chk_ambito_rol%' then raise; end if;
+  end;
+  -- CA-2 paso 5: admin A NO puede modificar plan_id/estado_cuenta de SU cliente
+  update clientes set plan_id = null, estado_cuenta = 'suspendida'
+    where id = 'a0000000-0000-0000-0000-000000000001';
+  if found then
+    raise exception 'PASO 9 FALLÓ: admin A modificó plan_id/estado_cuenta de su cliente';
+  end if;
 end $$;
 rollback;
 
@@ -205,7 +221,7 @@ begin
   insert into clientes (id, nombre, slug) values
     ('c0000000-0000-0000-0000-0000000000c1', 'Cliente Temporal', 'cliente-temporal');
   select count(*) into n from clientes;
-  if n <> 3 then raise exception 'PASO 10 FALLÓ: plataforma no pudo insertar un cliente', n; end if;
+  if n <> 3 then raise exception 'PASO 10 FALLÓ: plataforma no pudo insertar un cliente'; end if;
 end $$;
 rollback;
 
@@ -220,7 +236,7 @@ declare
   n integer;
 begin
   select count(*) into n from planes;
-  if n < 2 then raise exception 'PASO 11 FALLÓ: anon no ve los planes públicos', n; end if;
+  if n < 2 then raise exception 'PASO 11 FALLÓ: anon no ve los planes públicos'; end if;
   begin
     insert into planes (id, nombre, valor_suscriptor) values
       ('10000000-0000-0000-0000-000000000077', 'AnonPlanes', 1);
@@ -243,6 +259,192 @@ begin
   exception when others then
     if sqlerrm not like '%row-level security%' and sqlerrm not like '%permission denied%' then raise; end if;
   end;
+end $$;
+rollback;
+
+-- ---------------------------------------------------------------------------
+-- PASO 12: soporte del Worker keepalive (CA-8, parte de esquema)
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  n integer;
+begin
+  -- _keepalive existe con RLS + FORCE
+  select count(*) into n
+    from pg_class c join pg_namespace s on s.oid = c.relnamespace
+    where s.nspname = 'public' and c.relname = '_keepalive'
+      and c.relrowsecurity and c.relforcerowsecurity;
+  if n <> 1 then raise exception 'PASO 12 FALLÓ: _keepalive sin RLS+FORCE'; end if;
+  -- cero políticas (solo service_role la toca)
+  select count(*) into n from pg_policies where schemaname = 'public' and tablename = '_keepalive';
+  if n <> 0 then raise exception 'PASO 12 FALLÓ: _keepalive tiene % políticas (esperaba 0)', n; end if;
+  -- fila singleton sembrada por la migración
+  select count(*) into n from _keepalive;
+  if n <> 1 then raise exception 'PASO 12 FALLÓ: _keepalive tiene % filas (esperaba 1)', n; end if;
+end $$;
+
+-- anon no puede leer _keepalive (sin políticas, RLS FORCE filtra a 0 filas)
+begin;
+set local role anon;
+set local request.jwt.claim.sub = '';
+do $$
+declare
+  n integer;
+begin
+  select count(*) into n from _keepalive;
+  if n <> 0 then raise exception 'PASO 12 FALLÓ: anon vio % filas de _keepalive', n; end if;
+end $$;
+rollback;
+
+-- singleton: no se puede insertar un segundo id
+begin;
+do $$
+begin
+  insert into _keepalive (id, ultimo_ping) values (2, now());
+  raise exception 'PASO 12 FALLÓ: se insertó un segundo id en _keepalive';
+exception when others then
+  if sqlerrm not like '%chk_singleton%' then raise; end if;
+end $$;
+rollback;
+
+-- simulación del Worker: service_role actualiza ultimo_ping (mecanismo de cron/keepalive.ts)
+begin;
+set local role service_role;
+do $$
+declare
+  v_ping timestamptz;
+begin
+  update _keepalive set ultimo_ping = now() returning ultimo_ping into v_ping;
+  if v_ping is null then raise exception 'PASO 12 FALLÓ: el ping no se registró'; end if;
+  if now() - v_ping > interval '5 seconds' then
+    raise exception 'PASO 12 FALLÓ: ultimo_ping no quedó reciente';
+  end if;
+end $$;
+rollback;
+
+-- ---------------------------------------------------------------------------
+-- PASO 13: soporte del Worker de monitoreo (CA-9, parte de esquema)
+-- ---------------------------------------------------------------------------
+begin;
+set local role service_role;
+do $$
+declare
+  v_mb numeric;
+  v_pct numeric;
+begin
+  select public.tamano_base_mb() into v_mb;
+  if v_mb is null or v_mb <= 0 then
+    raise exception 'PASO 13 FALLÓ: tamano_base_mb() = %', v_mb;
+  end if;
+  v_pct := round(v_mb / 500.0 * 100, 2);
+  if v_pct >= 80 then
+    raise exception 'PASO 13 FALLÓ: base al % del límite de 500 MB en esta etapa', v_pct;
+  end if;
+end $$;
+rollback;
+
+-- anon no puede ejecutar tamano_base_mb()
+begin;
+set local role anon;
+set local request.jwt.claim.sub = '';
+do $$
+begin
+  perform public.tamano_base_mb();
+  raise exception 'PASO 13 FALLÓ: anon ejecutó tamano_base_mb()';
+exception when others then
+  if sqlerrm not like '%permission denied%' then raise; end if;
+end $$;
+rollback;
+
+-- authenticated no puede ejecutar tamano_base_mb()
+begin;
+set local role authenticated;
+set local request.jwt.claim.sub = 'a0000000-0000-0000-0000-0000000000a1';
+do $$
+begin
+  perform public.tamano_base_mb();
+  raise exception 'PASO 13 FALLÓ: authenticated ejecutó tamano_base_mb()';
+exception when others then
+  if sqlerrm not like '%permission denied%' then raise; end if;
+end $$;
+rollback;
+
+-- ---------------------------------------------------------------------------
+-- PASO 14: onboarding transaccional (CA-7)
+-- ---------------------------------------------------------------------------
+begin;
+set local role authenticated;
+set local request.jwt.claim.sub = 'e0000000-0000-0000-0000-0000000000e1';
+do $$
+declare
+  v_cliente_id uuid;
+  n integer;
+begin
+  select crear_tenant_con_admin('Acueducto Z', 'acueducto-z', 'z@test.local') into v_cliente_id;
+  if v_cliente_id is null then raise exception 'PASO 14 FALLÓ: crear_tenant_con_admin devolvió null'; end if;
+
+  select count(*) into n from clientes where id = v_cliente_id;
+  if n <> 1 then raise exception 'PASO 14 FALLÓ: cliente no creado'; end if;
+  select count(*) into n from perfiles where id = 'e0000000-0000-0000-0000-0000000000e1';
+  if n <> 1 then raise exception 'PASO 14 FALLÓ: perfil no creado'; end if;
+  select count(*) into n from membresias
+    where perfil_id = 'e0000000-0000-0000-0000-0000000000e1'
+      and cliente_id = v_cliente_id and rol = 'admin_acueducto' and activo;
+  if n <> 1 then raise exception 'PASO 14 FALLÓ: membresia admin_acueducto no creada'; end if;
+  select count(*) into n from configuracion where cliente_id = v_cliente_id;
+  if n <> 1 then raise exception 'PASO 14 FALLÓ: configuracion no creada'; end if;
+end $$;
+
+-- atomicidad: OTRO usuario (e2, sin acueducto) intenta el MISMO slug → error
+-- limpio. Se prueba en DO aparte para que el handler de excepción no revierta
+-- la creación de Z del primer bloque (subtransacción del DO).
+do $$
+begin
+  perform set_config('request.jwt.claim.sub', 'e0000000-0000-0000-0000-0000000000e2', true);
+  begin
+    perform crear_tenant_con_admin('Acueducto Z2', 'acueducto-z', 'z2@test.local');
+    raise exception 'PASO 14 FALLÓ: slug duplicado no fue rechazado';
+  exception when others then
+    if sqlerrm not like '%El slug ya está en uso%' then raise; end if;
+  end;
+end $$;
+
+-- sin huérfanos: verificación de estado como postgres (superusuario, bypasa RLS)
+-- para contar independientemente del aislamiento: quedan A, B y Z (3 filas)
+set local role postgres;
+do $$
+declare n integer;
+begin
+  select count(*) into n from clientes;
+  if n <> 3 then
+    raise exception 'PASO 14 FALLÓ: el fallo de slug dejó huérfanos (% clientes, esperaba 3)', n;
+  end if;
+end $$;
+rollback;
+
+-- un usuario con acueducto no crea otro
+begin;
+set local role authenticated;
+set local request.jwt.claim.sub = 'a0000000-0000-0000-0000-0000000000a1';
+do $$
+begin
+  perform crear_tenant_con_admin('Acueducto W', 'acueducto-w', 'admin-a@test.local');
+  raise exception 'PASO 14 FALLÓ: un usuario con acueducto creó otro';
+exception when others then
+  if sqlerrm not like '%El usuario ya tiene un acueducto%' then raise; end if;
+end $$;
+rollback;
+
+-- anon no puede ejecutar crear_tenant_con_admin
+begin;
+set local role anon;
+set local request.jwt.claim.sub = '';
+do $$
+begin
+  perform crear_tenant_con_admin('X', 'x-slug', 'x@test.local');
+  raise exception 'PASO 14 FALLÓ: anon ejecutó crear_tenant_con_admin';
+exception when others then
+  if sqlerrm not like '%permission denied%' then raise; end if;
 end $$;
 rollback;
 
