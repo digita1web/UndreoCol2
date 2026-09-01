@@ -236,13 +236,29 @@ cd frontend && npm run dev
 # navegar manualmente el flujo descrito arriba
 ```
 **Resultado esperado:** el flujo completo funciona sin error visible en ningún paso.
-**Estado:** Pendiente
+**Estado:** NO VERIFICADO — requiere validación manual de Mateo
 **Evidencia:**
 ```
-(pendiente — si este contenedor no puede levantar wrangler dev + next dev simultáneos contra una base
-real, se declara "NO VERIFICADO — requiere validación manual de Mateo" con los pasos exactos de arriba)
+Mismo bloqueador que 002 T-009: este contenedor no tiene Docker ni PostgREST, así que no hay
+backend de datos real detrás de @supabase/supabase-js para que wrangler dev + next dev naveguen
+un flujo real.
+
+NO VERIFICADO — requiere validación manual de Mateo:
+  1. Confirmar que las migraciones 001+002+003 están aplicadas en la base real.
+  2. cd backend && npx wrangler dev
+  3. cd frontend && npm run dev (otra terminal)
+  4. Login con un usuario admin_acueducto de prueba con acueducto ya creado.
+  5. /app/suscriptores → crear un suscriptor (código, nombre, documento, dirección, categoría) →
+     confirmar que aparece en la lista.
+  6. Entrar al detalle → confirmar que muestra "Sin contador instalado todavía" → crear el primer
+     contador → confirmar que aparece como activo.
+  7. Reemplazar el contador → confirmar que el formulario de alta desapareció y quedó el de
+     reemplazo, y que el historial de reemplazos muestra la fila nueva.
+  8. Si la categoría elegida no tiene tarifa vigente en el catálogo de 002, confirmar que aparece
+     la advertencia amarilla y que aun así se pudo crear el suscriptor (nunca bloquea).
+  9. Confirmar en la consola del navegador que no hay errores no manejados en ningún paso.
 ```
-**Commit:** (no aplica si queda NO VERIFICADO — tarea sin cambios de código)
+**Commit:** (no aplica — tarea sin cambios de código)
 
 ## T-009 — Cierre: CHANGELOG + checklist CLAUDE.md §11
 
@@ -256,9 +272,25 @@ cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** los 4 comandos en verde (no hay `vitest` nuevo: 003 no agrega `core/`),
 evidencia pegada en el CHANGELOG y en esta tarea.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-02)
 **Evidencia:**
 ```
-(pendiente)
+$ cd backend && npx tsc --noEmit → sin salida
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  Total Upload: 803.22 KiB / gzip: 158.87 KiB — sin errores
+$ cd frontend && npm run build
+  ✓ Compiled successfully · ✓ Generating static pages (9/9)
+  incluye /app/suscriptores y /app/suscriptores/[id]
+$ npm run lint → sin salida
+
+Adicional (no en la lista de 4, parte del cierre real): re-corrida de los 3 tests de aislamiento
+SQL sobre el mismo estado final —
+  001_fundacion_aislamiento.sql → "FUNDACION-AISLAMIENTO OK"
+  002_catalogo_aislamiento.sql → "CATALOGO-AISLAMIENTO OK"
+  003_suscriptores_aislamiento.sql → "SUSCRIPTORES-AISLAMIENTO OK"
+
+CHANGELOG.md actualizado (Sesión 010) y checklist de spec.md §8 marcada con evidencia real,
+incluyendo los dos ítems NO VERIFICADOS (CA-3/CA-4 vía curl real, CA-6 en navegador) con sus
+pasos exactos para Mateo.
 ```
 **Commit:** (pendiente)

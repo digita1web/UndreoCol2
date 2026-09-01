@@ -4,6 +4,48 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-02 — Sesión 010: 003-suscriptores-contadores completa (T-001 a T-009)
+
+**Hecho**
+- **T-001** — Migración `20260902090000_suscriptores-contadores.sql`: `ALTER TABLE
+  usuarios_servicio` con 10 columnas nuevas **NULLABLE** (la tabla ya tenía filas de fixtures de
+  001/002; un `NOT NULL` directo habría roto el reset — requerido real exigido en la capa de
+  aplicación para suscriptores nuevos). Enum `estado_contador`, tablas `contadores` (índice único
+  parcial de contador activo) y `reemplazos_contador` (FKs de contador `ON DELETE RESTRICT`).
+  Función `reemplazar_contador()` (`SECURITY INVOKER`, `SELECT FOR UPDATE` sobre
+  `usuarios_servicio`, no sobre `contadores` — es la fila que decide cuál es "el activo"). RLS
+  `FORCE` + políticas reutilizando `es_admin_de()`/`mis_clientes()`/`es_admin_plataforma()` de
+  001, sin funciones de seguridad nuevas. Verificado explícitamente que la migración no pierde
+  las 3 filas existentes de `usuarios_servicio`.
+- **T-002** — Fixtures y test de aislamiento (7 pasos) cubriendo CA-2 y CA-5. **Hallazgo real**: el
+  `SELECT ... FOR UPDATE` de `reemplazar_contador()` aplica la política RLS de **escritura** de
+  `usuarios_servicio`, no la de lectura — confirmado directamente comparando un `SELECT` plano
+  contra el mismo `SELECT ... FOR UPDATE` para un lector del mismo acueducto (0 filas). El chequeo
+  `es_admin_de()` explícito dentro de la función queda como defensa adicional, no como ruta
+  principal, para ese caso — documentado en la migración y en el test.
+- **T-003/T-004** — Backend: `lib/suscriptores.ts` y las rutas `GET/POST /suscriptores`,
+  `GET/PATCH /suscriptores/:id` (contador activo + historial de reemplazos en el detalle),
+  `POST /suscriptores/:id/contador`, `POST /suscriptores/:id/reemplazar-contador`. Corrección de
+  alcance sobre el plan: se quitó una ruta `GET /suscriptores/:id/contadores` que no estaba en
+  `plan.md §3` (el detalle ya cubre lo que pide el spec).
+- **T-005 a T-007** — Frontend: `lib/api.ts` ampliado, panel `/app/suscriptores` (lista con filtro
+  por estado, alta) y `/app/suscriptores/[id]` (datos, contador activo/alta/reemplazo, historial
+  de reemplazos, advertencia — nunca bloqueo — si la categoría no tiene tarifa vigente configurada
+  en el catálogo de 002).
+- **T-009** — Cierre: checklist de `spec.md §8` y esta entrada.
+
+**Desviación de entorno (igual que la sesión de 002, CLAUDE.md §8)**
+Este contenedor sigue sin Docker funcional ni PostgREST. Verificación de esquema/RLS/funciones
+contra PostgreSQL 16 nativo con el mismo shim de compatibilidad de la sesión anterior.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- **CA-3/CA-4** (T-003/T-004): correr los `curl` reales de `tasks.md` contra `wrangler dev` +
+  Supabase local real — sin PostgREST en este contenedor no hay endpoint REST real detrás de
+  `@supabase/supabase-js`, aunque `tsc`, `eslint` y `wrangler deploy --dry-run` están en verde.
+- **CA-6** (T-008): flujo completo en navegador. Pasos exactos en `tasks.md` T-008.
+- Repetir `supabase db reset` en un entorno con Docker para la verificación oficial completa de
+  T-001 (incluye PostgREST/GoTrue).
+
 ### 2026-09-01 — Sesión 009: 002-catalogo-y-tarifas completa (T-001 a T-010)
 
 **Hecho**

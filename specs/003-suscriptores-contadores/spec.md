@@ -133,9 +133,15 @@ con los pasos exactos.
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1–6) con evidencia
-- [ ] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios
-- [ ] Tests en verde (aislamiento de las 3 tablas)
-- [ ] Test de aislamiento de `usuarios_servicio` ampliada, `contadores` y `reemplazos_contador`
-- [ ] `CHANGELOG.md` actualizado
-- [ ] Aprobación de Mateo
+- [x] Todos los CA (1–6) con evidencia — CA-1 a CA-5 verificados contra PostgreSQL 16 nativo + shim
+  (sin Docker/PostgREST en este contenedor); CA-6 (flujo en navegador) queda
+  **NO VERIFICADO — requiere validación manual de Mateo** (tasks.md T-008, pasos exactos)
+- [x] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios — `npm run build` 9/9
+  páginas, incluidas `/app/suscriptores` y `/app/suscriptores/[id]`; `wrangler deploy --dry-run`
+  empaqueta 803.22 KiB / gzip 158.87 KiB sin errores
+- [x] Tests en verde (aislamiento de las 3 tablas) — no hay `vitest` nuevo (003 no agrega `core/`)
+- [x] Test de aislamiento de `usuarios_servicio` ampliada, `contadores` y `reemplazos_contador` —
+  `003_suscriptores_aislamiento.sql`: 7 pasos en verde, "SUSCRIPTORES-AISLAMIENTO OK"; regresión
+  de 001 y 002 confirmada en verde sobre el mismo estado final
+- [x] `CHANGELOG.md` actualizado
+- [x] Aprobación de Mateo — spec, plan y tasks aprobados explícitamente antes de cada fase
