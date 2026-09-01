@@ -523,12 +523,32 @@ npx wrangler r2 object list undreocol-backups
 **Resultado esperado:** YAML OK; tras `workflow_dispatch`, el listado de R2 muestra `undreocol-backup-<fecha>-<sha>.sql.gz` con su tamaño. **NO VERIFICADO** hasta que Mateo configure los secretos
 (`SUPABASE_DB_URL`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`) y el bucket `undreocol-backups` con
 su regla lifecycle.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01) — ejecución real NO VERIFICADO (requiere Mateo)
 **Evidencia:**
 ```
-<salida de validación YAML + listado R2>
+python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/backup-diario.yml')); print('YAML OK')"
+→ YAML OK
 ```
-**Commit:** (tras completar)
+
+**NO VERIFICADO — requiere validación manual de Mateo:** este contenedor no tiene los secretos de GitHub
+(`SUPABASE_DB_URL`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`) ni acceso al repositorio real en
+GitHub, así que no hay forma de disparar `workflow_dispatch` ni de correr
+`npx wrangler r2 object list undreocol-backups` contra el bucket real. No se simuló ni se inventó
+ningún valor de esos secretos ni una salida de `wrangler`. Pasos exactos para Mateo:
+```bash
+# 1. Configurar en GitHub → Settings → Secrets and variables → Actions:
+#    SUPABASE_DB_URL       (Session Pooler, puerto 6543 — no el puerto directo 5432)
+#    CLOUDFLARE_ACCOUNT_ID
+#    CLOUDFLARE_API_TOKEN  (con permiso de escritura sobre el bucket undreocol-backups)
+# 2. Crear el bucket R2 `undreocol-backups` con una regla lifecycle de expiración a 30 días.
+# 3. Disparar manualmente: GitHub → Actions → backup-diario → Run workflow (workflow_dispatch).
+# 4. Verificar:
+npx wrangler r2 object list undreocol-backups
+#    → debe mostrar undreocol-backup-<fecha>-<sha>.sql.gz con su tamaño.
+```
+Esto cierra CA-10 solo cuando Mateo complete estos pasos; queda referenciado también en T-015.
+
+**Commit:** (este commit)
 
 ## T-014 — Restaurar `docs/INFRAESTRUCTURA.md` (D-10)
 

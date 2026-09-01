@@ -1,0 +1,52 @@
+name: backup-diario
+
+# Backup diario de Supabase a Cloudflare R2 (spec §4.9, CA-10, decisión D-7 en
+# docs/DECISIONES.md). Restauración documentada como ritual mensual en
+# docs/INFRAESTRUCTURA.md §7.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # diario, 06:00 UTC (plan.md §2.4)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-diario
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      # postgres:16-alpine (imagen contenedor) da pg_dump sin instalar nada en
+      # el runner (plan.md §6, tabla de dependencias de CI).
+      - name: Generar el dump con pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          FECHA=$(date -u +%Y%m%d)
+          SHA_CORTO=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          ARCHIVO="undreocol-backup-${FECHA}-${SHA_CORTO}.sql"
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/backup" \
+            postgres:16-alpine \
+            pg_dump "$DATABASE_URL" --format=custom --no-owner -f "/backup/${ARCHIVO}"
+          gzip "${ARCHIVO}"
+          echo "ARCHIVO=${ARCHIVO}.gz" >> "$GITHUB_ENV"
+
+      # wrangler r2 object put (D-7): sin dependencia AWS, sin credenciales
+      # estilo S3. CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN son leídos
+      # automáticamente por wrangler desde el entorno.
+      - name: Subir el backup a Cloudflare R2
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx wrangler@4 r2 object put "undreocol-backups/${ARCHIVO}" --file="${ARCHIVO}"
+
+# Retención de 30 días: regla *lifecycle* del bucket `undreocol-backups` en R2
+# (configuración del proveedor). Deliberadamente NO se purga nada en este
+# workflow -- D-7 descarta el borrado manual en CI por ser un paso frágil.
