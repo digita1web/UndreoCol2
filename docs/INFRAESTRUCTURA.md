@@ -11,7 +11,7 @@
 > Cero infraestructura de pago hasta el primer cliente. El primer gasto es
 > mínimo. Ningún componente de pago se activa sin un disparador medible.
 
-Ver `ARQUITECTURA.md` §2 y §6 para la tabla completa de disparadores de costo.
+Ver `ARQUITECTURA.md §2` y `§6` para la tabla completa de disparadores de costo.
 
 ---
 
@@ -35,27 +35,17 @@ activar Workers Paid (solo en el momento del primer cliente).
 ### 3.1 Desarrollo local — costo $0
 
 ```bash
-# Supabase local (PostgreSQL + Auth en Docker)
 supabase start
-
-# API en Workers, modo local
 cd backend && npx wrangler dev
-
-# Frontend Next.js
 cd frontend && npm run dev
 ```
 
-Todo el desarrollo ocurre sin tocar ningún servicio de pago. `wrangler dev` simula
-el entorno de Workers localmente, incluyendo bindings de R2 y Queues.
+Todo el desarrollo ocurre sin tocar ningún servicio de pago.
 
 ### 3.2 Staging — costo $0
 
 Un segundo proyecto de Cloudflare Pages + Workers, apuntando a un segundo proyecto
-de Supabase Free. Sirve para:
-
-- Probar el cierre de facturación antes de ejecutarlo en producción
-- Verificar cada despliegue antes de promoverlo
-- Restaurar y validar backups mensualmente (ver §7.3)
+de Supabase Free.
 
 **Regla absoluta:** ningún cierre de prueba se ejecuta contra la base de producción.
 
@@ -69,25 +59,25 @@ Mismo stack que staging, en el proyecto principal de Cloudflare y Supabase.
 
 ```
 undreocol/
-├── frontend/               → Next.js (admin + portal + PWA del lector)
-│   └── (Cloudflare Pages)
-├── backend/                → Hono.js
+├── frontend/
+├── backend/
 │   ├── src/
-│   │   ├── index.ts        → Worker principal (API)
+│   │   ├── index.ts
 │   │   ├── cron/
-│   │   │   ├── keepalive.ts    → Ping diario a Supabase
-│   │   │   ├── monitor-db.ts   → Alerta de tamaño de base de datos
-│   │   │   └── limpieza.ts     → Purga de tablas de sistema
-│   │   ├── queues/
-│   │   │   └── cierre-facturacion.ts
-│   │   └── core/            → Lógica de negocio pura (ver CLAUDE.md §5.3)
+│   │   │   ├── keepalive.ts
+│   │   │   ├── monitor-db.ts
+│   │   │   └── limpieza.ts
+│   │   └── core/
 │   └── wrangler.toml
 ├── supabase/
-│   └── migrations/          → SQL versionado
+│   └── migrations/
 └── .github/
     └── workflows/
         └── backup-diario.yml
 ```
+
+Estructura completa y detallada (todas las carpetas y archivos reales) en
+`CLAUDE.md §5.1`.
 
 ---
 
@@ -96,12 +86,12 @@ undreocol/
 **Problema que resuelve:** los proyectos gratuitos de Supabase se pausan tras 7 días
 sin actividad de base de datos.
 
-**Solución:** un Cloudflare Cron Trigger que ejecuta una consulta real contra
-Supabase todos los días. No es un truco — es tráfico legítimo de una aplicación
-en uso, exactamente el tipo de actividad que el mecanismo de pausa está diseñado
-para detectar.
+**Solución:** un Cloudflare Worker (`undreocol-keepalive`) con Cron Trigger diario
+que ejecuta un `UPDATE` real sobre una tabla de soporte en Supabase. No es un
+truco — es tráfico legítimo de escritura, el tipo de actividad que el mecanismo
+de pausa de Supabase está diseñado para detectar.
 
-### Tabla de soporte
+### Tabla de soporte (`supabase/migrations/20260831150000_fundacion-tenancy.sql`)
 
 ```sql
 create table if not exists _keepalive (
@@ -112,56 +102,42 @@ create table if not exists _keepalive (
 
 insert into _keepalive (id, ultimo_ping) values (1, now())
   on conflict (id) do nothing;
+
+alter table _keepalive enable row level security;
+alter table _keepalive force row level security;
+-- Sin políticas: ni anon ni authenticated pueden tocarla.
+-- Solo service_role (bypasa RLS por diseño) — el Worker de keepalive.
 ```
 
-### Worker (`backend/src/cron/keepalive.ts`)
+### Worker (`backend/src/cron/keepalive.ts`, `backend/wrangler.keepalive.toml`)
 
-```typescript
-export interface Env {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
-}
+Cron diario `0 5 * * *` (05:00 UTC). Usa el cliente de servicio
+(`crearClienteServicio(env)`, `backend/src/lib/db.ts`) — **nunca** una llamada
+REST manual — con `SUPABASE_SERVICE_ROLE_KEY` como secreto del Worker (nunca en
+código ni en `.env` versionado; en local vive en `backend/.dev.vars`, gitignored).
 
-export default {
-  async scheduled(
-    _event: ScheduledEvent,
-    env: Env,
-    _ctx: ExecutionContext
-  ): Promise<void> {
-    const response = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/_keepalive?id=eq.1`,
-      {
-        method: "PATCH",
-        headers: {
-          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({ ultimo_ping: new Date().toISOString() }),
-      }
-    );
+Actualiza `_keepalive.ultimo_ping = now()` filtrando por `id = 1`. Si el `update`
+falla (`error` de Supabase) **o afecta 0 filas** (la fila singleton no existe),
+el Worker **lanza una excepción** — la falla queda visible en los logs de
+Cloudflare en vez de fallar en silencio (mitiga el riesgo de que el proyecto se
+pause sin que nadie se entere).
 
-    if (!response.ok) {
-      // No se silencia: si el ping falla, hay que saberlo.
-      throw new Error(
-        `Keepalive falló: ${response.status} ${await response.text()}`
-      );
-    }
-  },
-};
+**Verificación local (evidencia real, T-007):**
+```
+npx wrangler dev --test-scheduled -c wrangler.keepalive.toml --port 8788
+curl 'http://localhost:8788/__scheduled?cron=0+5+*+*+*' → "Ran scheduled event" HTTP=200
+_keepalive.ultimo_ping ANTES: 2026-09-01 03:34:25+00
+_keepalive.ultimo_ping DESPUÉS: 2026-09-01 04:37:36+00
+Log: "keepalive: ping registrado a las 2026-09-01T04:37:36.651+00:00"
 ```
 
-### Configuración (`wrangler.toml`)
+**Despliegue real** (`wrangler deploy -c wrangler.keepalive.toml` + el secreto
+`SUPABASE_SERVICE_ROLE_KEY` vía `wrangler secret put`) requiere las credenciales
+de Cloudflare de Mateo — **NO VERIFICADO** hasta entonces (`tasks.md` T-007).
 
-```toml
-[triggers]
-crons = ["0 9 * * *"]  # Todos los días a las 09:00 UTC (04:00 hora Colombia)
-```
-
-**Verificación de que funciona:** revisar en el panel de Supabase que
-`ultimo_ping` se actualiza cada día, y que el proyecto nunca muestra el estado
-"Paused".
+**Verificación de que funciona en producción:** revisar en el panel de Supabase
+que `ultimo_ping` se actualiza cada día, y que el proyecto nunca muestra el
+estado "Paused".
 
 ---
 
@@ -169,96 +145,42 @@ crons = ["0 9 * * *"]  # Todos los días a las 09:00 UTC (04:00 hora Colombia)
 
 **Problema que resuelve:** Supabase Free no incluye backups automáticos.
 
-**Solución:** un workflow de GitHub Actions que corre `pg_dump` todos los días y
-sube el resultado, cifrado y comprimido, a un bucket de R2 propio.
+**Estado real: no implementado.** `.github/workflows/backup-diario.yml` **no
+existe todavía** — `tasks.md` T-013 sigue "Pendiente". Lo que sigue es la
+**intención aprobada** en `plan.md §2.4` (decisión D-7), para cuando se
+implemente — no un workflow ya funcionando.
 
-### Workflow (`.github/workflows/backup-diario.yml`)
+### Diseño aprobado (D-7)
 
-```yaml
-name: backup-diario
+- **Programación:** `schedule` diario + `workflow_dispatch` (para poder disparar
+  el backup manualmente y verificar CA-10).
+- **Conexión a Supabase:** secreto `SUPABASE_DB_URL` con la cadena del
+  **Session Pooler**, puerto **6543** (modo transaction) — **nunca** el puerto
+  directo `5432`. GitHub Actions no soporta IPv6 y la conexión directa de
+  Supabase lo requiere; el Session Pooler es IPv4-compatible.
+- **Dump:** en un contenedor `postgres:16-alpine`, `pg_dump --format=custom
+  --no-owner`, comprimido con `gzip`. Nombre:
+  `undreocol-backup-<fecha-UTC>-<sha>.sql.gz`.
+- **Subida a R2:** `wrangler r2 object put undreocol-backups/<archivo>
+  --file=<archivo>`, usando `CLOUDFLARE_ACCOUNT_ID` y `CLOUDFLARE_API_TOKEN` —
+  sin dependencia de herramientas de terceros ni de credenciales estilo AWS.
+- **Retención de 30 días:** regla ***lifecycle*** del bucket `undreocol-backups`
+  en R2 (configuración del proveedor), **no** un paso de borrado manual dentro
+  del workflow — se descartó deliberadamente esa alternativa por ser un paso
+  frágil en CI.
 
-on:
-  schedule:
-    - cron: "0 7 * * *"  # 07:00 UTC = 02:00 hora Colombia
-  workflow_dispatch: {}
-
-permissions:
-  contents: read
-
-concurrency:
-  group: backup-diario
-  cancel-in-progress: false
-
-jobs:
-  backup:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Instalar cliente de PostgreSQL
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
-      - name: Ejecutar pg_dump
-        env:
-          DATABASE_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
-        run: |
-          FECHA=$(date +%Y%m%d-%H%M%S)
-          pg_dump "$DATABASE_URL" --no-acl --no-owner -Fc \
-            -f "backup-${FECHA}.dump"
-          gzip "backup-${FECHA}.dump"
-          echo "ARCHIVO=backup-${FECHA}.dump.gz" >> "$GITHUB_ENV"
-
-      - name: Subir a Cloudflare R2
-        uses: shallwefootball/s3-upload-action@master
-        with:
-          aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
-          aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          aws_bucket: ${{ secrets.R2_BUCKET_BACKUPS }}
-          endpoint: ${{ secrets.R2_ENDPOINT }}
-          source_dir: "."
-          destination_dir: "backups/"
-
-      - name: Purgar backups con más de 30 días
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        run: |
-          aws s3 ls "s3://${{ secrets.R2_BUCKET_BACKUPS }}/backups/" \
-            --endpoint-url "${{ secrets.R2_ENDPOINT }}" | \
-          awk '{print $4}' | \
-          while read -r archivo; do
-            FECHA_ARCHIVO=$(echo "$archivo" | grep -oP '\d{8}' | head -1)
-            FECHA_LIMITE=$(date -d '30 days ago' +%Y%m%d)
-            if [[ "$FECHA_ARCHIVO" < "$FECHA_LIMITE" ]]; then
-              aws s3 rm "s3://${{ secrets.R2_BUCKET_BACKUPS }}/backups/${archivo}" \
-                --endpoint-url "${{ secrets.R2_ENDPOINT }}"
-            fi
-          done
-```
-
-### Secretos requeridos en GitHub
+### Secretos de GitHub necesarios (nunca en el repo)
 
 | Secreto | De dónde sale |
 |---|---|
-| `SUPABASE_SESSION_POOLER_URL` | Supabase → Settings → Database → Connection string (Session pooler, puerto 5432) |
-| `R2_ACCESS_KEY_ID` | Cloudflare → R2 → Manage API tokens |
-| `R2_SECRET_ACCESS_KEY` | Igual que el anterior |
-| `R2_BUCKET_BACKUPS` | Nombre del bucket, ej. `undreocol-backups` |
-| `R2_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
+| `SUPABASE_DB_URL` | Supabase → Settings → Database → Connection string, **Session Pooler, puerto 6543** |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare → panel de la cuenta |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → API Tokens, con permiso de escritura sobre el bucket `undreocol-backups` |
 
-**Importante:** usar el **Session Pooler** de Supabase, no la conexión directa —
-GitHub Actions no soporta IPv6 y la conexión directa de Supabase la requiere.
-
-### Retención
-
-30 días rotativos en R2. Costo: dentro del límite gratuito de 10 GB para bases de
-datos de este tamaño.
-
-### Consumo de cuotas gratuitas
-
-| Recurso | Cuota gratuita | Uso de este backup |
-|---|---|---|
-| Minutos de GitHub Actions | 2.000/mes | ~90 min/mes (3 min × 30 días) |
-| R2 — almacenamiento | 10 GB | Depende del tamaño de la base, holgado por años |
-| R2 — escrituras | 1.000.000/mes | ~30/mes |
+**Evidencia de CA-10:** `wrangler r2 object list undreocol-backups` mostrando el
+archivo subido y su tamaño, tras ejecutar `workflow_dispatch` — pendiente hasta
+que Mateo configure los secretos y el bucket con su regla *lifecycle* (`tasks.md`
+T-013).
 
 ---
 
@@ -268,218 +190,190 @@ datos de este tamaño.
 
 ### 7.1 Restauración de emergencia
 
+Descargar el backup más reciente de R2 (`wrangler r2 object get`, según D-7 —
+comando exacto se fija al implementar T-013), luego restaurar en un proyecto de
+Supabase (staging o uno nuevo) con:
+
 ```bash
-# Descargar el backup más reciente de R2
-aws s3 cp "s3://undreocol-backups/backups/backup-<fecha>.dump.gz" . \
-  --endpoint-url "$R2_ENDPOINT"
-
-gunzip "backup-<fecha>.dump.gz"
-
-# Restaurar en un proyecto de Supabase (staging o uno nuevo)
-pg_restore --no-acl --no-owner -d "$DATABASE_URL_STAGING" "backup-<fecha>.dump"
+pg_restore --no-owner --clean --if-exists -d "$DATABASE_URL" backup-<fecha>.dump
 ```
+
+(flags consistentes con el dump acordado en `plan.md D-7`: `pg_dump --format=custom
+--no-owner`).
 
 ### 7.2 Verificación tras restaurar
 
-1. Contar filas de las tablas principales y comparar contra lo esperado
-2. Confirmar que las políticas RLS siguen activas (`\d+ facturas` en `psql`
-   debe mostrar "Row Security: enabled")
-3. Levantar la aplicación de staging contra la base restaurada y hacer login
+1. Contar filas de las tablas principales y comparar contra lo esperado.
+2. Confirmar que las políticas RLS y `FORCE ROW LEVEL SECURITY` siguen activas en
+   las 6 tablas de la fundación (`tests/aislamiento/001_fundacion_aislamiento.sql`
+   sirve como script de verificación).
+3. Levantar la aplicación de staging contra la base restaurada y hacer login.
 
 ### 7.3 Ritual mensual
 
-El primer lunes de cada mes:
+El primer lunes de cada mes: tomar el backup más reciente, restaurarlo en
+staging, ejecutar la verificación de §7.2, registrar el resultado en
+`CHANGELOG.md`. Si la restauración falla, es prioridad inmediata.
 
-1. Tomar el backup más reciente
-2. Restaurarlo en staging
-3. Ejecutar la verificación de §7.2
-4. Registrar el resultado en `CHANGELOG.md`
-
-Si la restauración falla, es una prioridad inmediata — no una tarea pendiente.
+**Estado:** protocolo documentado; no ejecutable todavía — depende de que exista
+el workflow real de backup (§6, T-013 pendiente).
 
 ---
 
 ## 8. Monitoreo del tamaño de la base de datos
 
 **Problema que resuelve:** saber con anticipación cuándo la base se acerca al
-límite de 500 MB del plan Free, para decidir con tiempo si se sube a Supabase Pro.
+límite de 500 MB del plan Free de Supabase.
 
-### Worker (`backend/src/cron/monitor-db.ts`)
+**Umbrales** (`backend/src/cron/nivel-monitoreo.ts`): `< 300 MB` → `ok`; `≥ 300 MB`
+→ `atencion`; `≥ 400 MB` → `alerta`; `≥ 480 MB` → `critico`. Porcentaje calculado
+siempre sobre 500 MB.
 
-```typescript
-export interface Env {
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
-  RESEND_ALERTA_EMAIL: string; // o el correo de destino de la alerta
-}
-
-const LIMITE_MB = 500;
-const UMBRAL_INFORMATIVO_MB = 300;
-const UMBRAL_ALERTA_MB = 400;
-const UMBRAL_CRITICO_MB = 480;
-
-export default {
-  async scheduled(
-    _event: ScheduledEvent,
-    env: Env,
-    ctx: ExecutionContext
-  ): Promise<void> {
-    const resp = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/tamano_base_mb`, {
-      method: "POST",
-      headers: {
-        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: "{}",
-    });
-
-    if (!resp.ok) {
-      throw new Error(`No se pudo consultar el tamaño de la base: ${resp.status}`);
-    }
-
-    const tamanoMb: number = await resp.json();
-    const porcentaje = ((tamanoMb / LIMITE_MB) * 100).toFixed(1);
-
-    let nivel: "informativo" | "alerta" | "critico" | null = null;
-    if (tamanoMb >= UMBRAL_CRITICO_MB) nivel = "critico";
-    else if (tamanoMb >= UMBRAL_ALERTA_MB) nivel = "alerta";
-    else if (tamanoMb >= UMBRAL_INFORMATIVO_MB) nivel = "informativo";
-
-    if (nivel) {
-      ctx.waitUntil(
-        enviarAlerta(env, nivel, tamanoMb, porcentaje)
-      );
-    }
-  },
-};
-
-async function enviarAlerta(
-  env: Env,
-  nivel: string,
-  tamanoMb: number,
-  porcentaje: string
-): Promise<void> {
-  const asunto =
-    nivel === "critico"
-      ? `🔴 CRÍTICO: base de datos al ${porcentaje}% (${tamanoMb} MB de 500 MB)`
-      : nivel === "alerta"
-      ? `🟠 Alerta: base de datos al ${porcentaje}%`
-      : `ℹ️ Informativo: base de datos al ${porcentaje}%`;
-
-  // Envío vía Cloudflare Email Service — ver docs/DECISIONES.md D-8
-  // Implementación exacta en backend/src/lib/email.ts
-}
-```
-
-### Función SQL de soporte
+### Función SQL (`supabase/migrations/20260831150000_fundacion-tenancy.sql`, §11)
 
 ```sql
 create or replace function tamano_base_mb()
 returns numeric
-language sql
-stable
-security definer
-set search_path = public
-as $$
+language sql stable security definer set search_path = public as $$
   select round(pg_database_size(current_database()) / 1024.0 / 1024.0, 2);
 $$;
+
+revoke execute on function tamano_base_mb from anon, authenticated;
+grant  execute on function tamano_base_mb to service_role;
 ```
 
-### Configuración
+Solo `service_role` puede ejecutarla — ni `anon` ni `authenticated` (verificado en
+`tests/aislamiento/001_fundacion_aislamiento.sql` PASO 13).
 
-```toml
-[triggers]
-crons = ["0 12 * * *"]  # Todos los días a mediodía UTC
+### Worker (`backend/src/cron/monitor-db.ts`, `backend/wrangler.monitor-db.toml`)
+
+Cron diario `30 5 * * *` (05:30 UTC). Usa `crearClienteServicio(env)` y
+`supabase.rpc('tamano_base_mb')`; la lógica de umbrales vive separada en
+`nivel-monitoreo.ts` (función pura `calcularNivel()`, testeada con `vitest` sin
+Workers ni red) porque el punto de entrada de un Worker solo puede tener
+`export default`.
+
+Si `tamano_base_mb()` falla o devuelve un valor inválido, el Worker lanza
+excepción (visible en logs de Cloudflare). Con nivel `alerta` o `critico`,
+dispara `alertaStub()`:
+
+```typescript
+function alertaStub(resultado: ResultadoMonitoreo): void {
+  // TODO(feature 010): enviar el correo de alerta vía Cloudflare Email Service.
+  console.error(`monitor-db: ALERTA ${resultado.nivel} — ${resultado.porcentaje}% del límite de 500 MB`);
+}
 ```
+
+**El envío real de la alerta es un stub** — el cálculo, el log y el disparo de la
+función están verificados (CA-9); el correo se integra en la feature 010.
+
+**Verificación local (evidencia real, T-008):**
+```
+npx vitest run → 6 tests passed (100→ok/20%, 300→atencion, 400→alerta, 480→critico, ...)
+wrangler dev --test-scheduled -c wrangler.monitor-db.toml --port 8789
+curl '.../__scheduled?cron=30+5+*+*+*' → "Ran scheduled event" HTTP=200
+Log: "monitor-db: base de 11.31 MB (2.26% del límite de 500 MB) — nivel ok"
+```
+
+**Despliegue real** requiere las credenciales de Cloudflare de Mateo — **NO
+VERIFICADO** hasta entonces.
 
 ---
 
 ## 9. Limpieza automática de tablas de sistema
 
-Reduce el crecimiento de tablas que no aportan valor histórico indefinido.
+**Estado real: solo la base.** `backend/src/cron/limpieza.ts` (Worker
+`undreocol-limpieza`, cron semanal `0 6 * * 0`, domingos 06:00 UTC) hoy
+únicamente:
 
-| Tabla | Regla de limpieza |
-|---|---|
-| Sesiones expiradas de auth | Purgar al expirar |
-| `auditoria` | Archivar a R2 y purgar registros con más de 90 días |
-| `trabajos` completados | Purgar con más de 30 días |
-| `notificaciones` enviadas | Purgar con más de 60 días |
+1. Verifica la conexión leyendo `_keepalive.ultimo_ping`.
+2. Registra `"limpieza: sin tablas que purgar (la purga llega con la feature 015)"`.
 
-Implementado como Worker semanal (`backend/src/cron/limpieza.ts`), con cron
-`0 5 * * 0` (domingos 5am UTC). El detalle de implementación se especifica en la
-feature correspondiente del roadmap (`.specify/config.md`).
+Si la verificación de conexión falla, lanza excepción.
 
----
-
-## 10. Variables de entorno
-
-```bash
-# Supabase
-SUPABASE_URL=
-SUPABASE_ANON_KEY=              # pública, protegida por RLS
-SUPABASE_SERVICE_ROLE_KEY=      # SOLO en Workers/GitHub Actions, nunca en frontend
-
-# Sesión del portal del suscriptor (D-2, D-4)
-SESSION_SECRET=                 # mínimo 32 caracteres aleatorios
-
-# Cloudflare
-CLOUDFLARE_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_BACKUPS=
-R2_BUCKET_ARCHIVOS=              # fotos, adjuntos de correo
-
-# Alertas
-ALERTA_EMAIL_DESTINO=            # correo de Mateo para monitor-db y uptime
-
-# Backup (solo en GitHub Actions, no en Workers)
-SUPABASE_SESSION_POOLER_URL=
-```
-
-### Reglas de seguridad
-
-- `SUPABASE_SERVICE_ROLE_KEY` y `SESSION_SECRET` nunca llegan al navegador — son
-  secretos de Worker, configurados con `wrangler secret put`.
-- `SUPABASE_SESSION_POOLER_URL` vive únicamente en los secretos de GitHub Actions.
-- Ningún valor real se commitea. `.env.example` documenta las claves sin valores.
+**No existe todavía** ninguna tabla de sesiones, auditoría, trabajos o
+notificaciones que purgar — esas tablas y sus reglas de retención llegan con la
+**feature 015** (`docs/ESTRATEGIA-CALIDAD.md §6`). Este documento no describe
+reglas de purga en funcionamiento porque no las hay; cuando la feature 015 las
+implemente, esta sección se actualiza.
 
 ---
 
-## 11. Despliegue
+## 10. Sesión del portal del suscriptor (D-2, D-4)
 
-```bash
-# Backend (Workers)
-cd backend
-npx wrangler deploy
+**Estado real: contrato reservado, sin implementar.** `backend/src/lib/
+sesion-suscriptor.ts` fija la interfaz y las constantes que usará la **feature
+008**, pero las tres funciones lanzan `ErrorSesionSuscriptorPendiente` sin
+excepción — hoy no hay firma de JWT, ni cookie, ni verificación real.
 
-# Frontend (Pages) — automático al hacer push a main,
-# vía integración GitHub de Cloudflare Pages
+Lo que sí está decidido y fijado en código (no se puede cambiar sin tocar la
+interfaz pública de la feature 008):
+
+```typescript
+export interface SesionSuscriptor {
+  tipo: 'suscriptor';
+  usuarioServicioId: string; // "sub" del JWT
+  clienteId: string;         // "cid" del JWT
+  expiraEn: number;          // "exp" del JWT (epoch s)
+}
+
+export const DURACION_SESION_SUSCRIPTOR_SEG = 30 * 24 * 60 * 60;   // 30 días
+export const UMBRAL_RENOVACION_SUSCRIPTOR_SEG = 7 * 24 * 60 * 60;  // renovar si quedan < 7 días
 ```
 
-### Migraciones de base de datos
+Principios ya decididos (D-2, D-4, CLAUDE.md §10-22b a 22e), pendientes de
+implementación en la feature 008:
 
-```bash
-supabase db push --project-ref <ref-produccion>
-```
+- Es un **JWT propio firmado con `SESSION_SECRET`** en el Worker — **nunca** un
+  token de Supabase Auth.
+- El JWT lleva `tipo: "suscriptor"`; un middleware de Hono debe verificar este
+  campo antes de servir cualquier ruta del portal.
+- Cookie `HttpOnly + Secure + SameSite=Lax`, duración 30 días, renovación si
+  quedan menos de 7.
+- El suscriptor **no** es un usuario del sistema de identidad: no tiene cuenta
+  en `auth.users` ni rol en `membresias` (D-2). El aislamiento del portal se
+  resuelve del lado del Worker, no con `auth.uid()`.
+- `SESSION_SECRET` nunca va al frontend ni al repositorio; rotarla invalida
+  todas las sesiones activas del portal.
 
-**Regla:** ningún cambio de esquema se hace manualmente desde el panel de
-Supabase. Toda migración vive en `supabase/migrations/` y se aplica con el CLI.
+---
+
+## 11. Cierre de facturación en Cloudflare Queues
+
+**No implementado — fuera de alcance de la feature 001-fundación.**
+`plan.md §9` lo lista explícitamente como fuera de alcance junto con la PWA del
+lector (014). Corresponde al bloque de features de facturación del roadmap
+(`plan.md §9`: "Servicios, tarifas, contadores, lecturas, periodos, facturas,
+pagos" — features 002 a 007).
+
+**Intención aprobada** (`ARQUITECTURA.md`, `CLAUDE.md §5.5`), para cuando se
+implemente:
+
+- Nunca se procesa un cierre de facturación masivo en una sola invocación de
+  Worker (límite de CPU/tiempo de un `fetch`).
+- El flujo es: Cron dispara → encola una factura por mensaje en Cloudflare
+  Queues → un consumidor (`backend/src/queues/`, todavía no existe) procesa en
+  batches.
+- `backend/src/queues/` está reservado en la estructura del repositorio
+  (`CLAUDE.md §5.1`) pero no se crea hasta que la feature correspondiente lo
+  necesite.
 
 ---
 
 ## 12. Ruta de salida — portabilidad
 
-Si en el futuro Cloudflare o Supabase cambian condiciones de forma desfavorable:
-
-- **Salir de Supabase:** es PostgreSQL estándar. `pg_dump` / `pg_restore` a
-  cualquier proveedor (Neon, RDS, un VPS propio). El único trabajo adicional es
-  reemplazar Supabase Auth por otra solución para la sesión administrativa — la
-  sesión del suscriptor (D-2) ya es independiente y no requiere cambios.
-- **Salir de Cloudflare Workers:** Hono.js corre en cualquier runtime compatible
-  con Fetch API (Node, Deno, Bun) con cambios mínimos de adaptador.
+- **Salir de Supabase:** es PostgreSQL estándar; `pg_dump`/`pg_restore` a
+  cualquier proveedor. El único trabajo adicional es reemplazar Supabase Auth
+  por otra solución para la **sesión administrativa** — la sesión del
+  suscriptor (D-2) ya está diseñada para ser independiente de Supabase Auth
+  (JWT propio, ver §10), aunque su implementación esté pendiente de la feature
+  008.
+- **Salir de Cloudflare Workers:** Hono.js corre en cualquier runtime
+  compatible con Fetch API (Node, Deno, Bun) con cambios mínimos de adaptador.
 - **Salir de Cloudflare Pages:** Next.js se despliega en cualquier plataforma
-  compatible (Vercel, un VPS con Docker) sin cambios de código.
+  compatible (Vercel, un VPS con Docker) sin cambios de código, siempre que se
+  respete la regla de portabilidad de `CLAUDE.md §5.2` (nada en `frontend/app/`
+  o `frontend/components/` importa `@supabase/*` directamente).
 
-Ningún componente crítico del negocio (esquema SQL, lógica de `core/`, políticas
-RLS) depende de una API propietaria irremplazable.
+Ningún componente crítico del negocio depende de una API propietaria
+irremplazable.
