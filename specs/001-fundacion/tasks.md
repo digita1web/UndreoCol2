@@ -274,12 +274,15 @@ documentados para la feature 015.
 cd backend && npx wrangler dev --test-scheduled -c wrangler.limpieza.toml
 ```
 **Resultado esperado:** ejecución OK con el log de la base; sin errores. Despliegue real → requiere Mateo.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01) — despliegue real NO VERIFICADO (requiere Mateo)
 **Evidencia:**
 ```
-<salida de wrangler dev --test-scheduled>
+npm run lint → 0 | npm run build → 0 | dry-run limpieza → OK
+wrangler dev --test-scheduled -c wrangler.limpieza.toml --port 8790
+curl 'http://localhost:8790/__scheduled?cron=0+6+*+*+0' → "Ran scheduled event" HTTP=200
+Log: "limpieza: sin tablas que purgar (la purga llega con la feature 015)"
 ```
-**Commit:** (tras completar)
+**Commit:** (este commit)
 
 ## T-010 — Frontend base: Next.js 15 + Tailwind + shadcn (CA-6, parte frontend)
 
