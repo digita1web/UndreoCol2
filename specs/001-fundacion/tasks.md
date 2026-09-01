@@ -249,12 +249,19 @@ psql "$DATABASE_URL" -c "select public.tamano_base_mb() as mb;"
 **Resultado esperado:** tests verdes (100→ok, 300→atencion, 400→alerta, 480→critico); salida del Worker
 con MB y % (CA-9). Despliegue real con secreto `SUPABASE_SERVICE_ROLE_KEY` → requiere Mateo
 (**NO VERIFICADO** hasta entonces).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01) — despliegue real NO VERIFICADO (requiere Mateo)
 **Evidencia:**
 ```
-<salida de vitest run + wrangler dev --test-scheduled + psql>
+npx vitest run → 6 tests passed (100→ok/20%, 300→atencion, 400→alerta, 480→critico,
+                 500→critico/100%, 10.91→2.18%)
+npm run lint → 0 | npm run build → 0 | dry-run monitor-db → gzip 137.45 KiB
+wrangler dev --test-scheduled -c wrangler.monitor-db.toml --port 8789
+curl 'http://localhost:8789/__scheduled?cron=30+5+*+*+*' → "Ran scheduled event" HTTP=200
+Log: "monitor-db: base de 11.31 MB (2.26% del límite de 500 MB) — nivel ok"
+Nota: lógica pura separada en src/cron/nivel-monitoreo.ts (la entrada del Worker
+      solo admite export default; desviación menor del plan §4.6).
 ```
-**Commit:** (tras completar)
+**Commit:** (este commit)
 
 ## T-009 — Cron limpieza (base, D-7)
 
