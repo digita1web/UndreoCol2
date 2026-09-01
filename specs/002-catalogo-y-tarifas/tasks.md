@@ -172,10 +172,25 @@ curl -s -X PATCH http://localhost:8787/catalogo/servicios/$ID -H "Content-Type: 
 **Resultado esperado:** `tsc --noEmit` sin errores; POST devuelve 201 con el servicio creado; GET devuelve
 el listado incluyéndolo; PATCH intentando cambiar `codigo` devuelve 400 (campo no editable), nunca lo
 aplica en silencio.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01) — con desviación de entorno, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+$ npx tsc --noEmit    → sin salida, sin errores
+$ npx eslint .        → sin salida, sin errores
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  Total Upload: 793.41 KiB / gzip: 157.45 KiB — empaqueta el Worker completo sin errores.
+
+NO VERIFICADO con curl real contra `wrangler dev`: además de no tener Docker/supabase CLI (ver
+T-001), este contenedor tampoco tiene PostgREST instalado, así que aunque wrangler dev arrancara
+no habría un endpoint REST real detrás de @supabase/supabase-js — cualquier llamada fallaría por
+falta de servidor, no por la lógica de las rutas. La lógica de acceso a datos (lib/catalogo.ts)
+usa el mismo cliente/patrón ya verificado en producción por 001 (crearClienteSuscriptor +
+RLS), así que el riesgo real está en la forma de las respuestas y los códigos de estado, no en
+la autorización.
+
+Pendiente para Mateo: correr los curl exactos del bloque de Verificación de arriba contra
+`wrangler dev` + Supabase local real, con un access_token de un admin_acueducto de prueba
+(mismo mecanismo manual que documentó 001 en tasks.md T-011/T-012).
 ```
 **Commit:** (pendiente)
 
@@ -199,10 +214,21 @@ curl -s http://localhost:8787/catalogo/matriz-tarifas --cookie "uc_sesion_admin=
 **Resultado esperado:** `tsc --noEmit` sin errores; primer POST 201; segundo POST 201 con nueva tarifa
 vigente; GET del historial muestra la primera con `vigencia_hasta` cerrada (`hoy - 1`) y la segunda
 vigente (`vigencia_hasta: null`); matriz muestra la combinación servicio+categoría con la vigente actual.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01) — con desviación de entorno, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+$ npx tsc --noEmit    → sin salida, sin errores (index.ts + lib/catalogo.ts)
+$ npx eslint .        → sin salida, sin errores
+$ npx wrangler deploy --dry-run -c wrangler.toml → empaqueta sin errores
+
+Mismo bloqueador de T-004: sin Docker ni PostgREST en este contenedor no hay endpoint REST real
+detrás de @supabase/supabase-js, así que la corrida de curl del bloque de Verificación queda
+NO VERIFICADO. crearTarifa() delega toda la lógica de cierre/creación en crear_tarifa_version()
+(T-001/T-002), ya verificada directamente contra PostgreSQL real — el riesgo restante es la capa
+HTTP (forma del body, códigos de estado), no la lógica de negocio.
+
+Pendiente para Mateo: correr los curl exactos de arriba contra `wrangler dev` + Supabase local
+real, mismo mecanismo manual de 001 T-011/T-012.
 ```
 **Commit:** (pendiente)
 

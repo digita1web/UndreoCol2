@@ -8,6 +8,15 @@ import {
   verificarSesionAdministrativa,
 } from './lib/auth';
 import { resolverClienteActivo } from './lib/tenant';
+import {
+  actualizarServicio,
+  crearServicio,
+  crearTarifa,
+  listarServicios,
+  listarTarifas,
+  matrizTarifas,
+  validarCamposEditables,
+} from './lib/catalogo';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -182,6 +191,142 @@ app.get('/dashboard', async (c) => {
     perfil: { id: sesion.perfilId, email: sesion.email, nombre: (perfil as { nombre?: string } | null)?.nombre ?? sesion.email },
     conteoUsuariosServicio: count ?? 0,
   });
+});
+
+// --- Catálogo de servicios y tarifas (002-catalogo-y-tarifas) --------------
+
+// Resuelve sesión + cliente activo. `respuesta` viene poblado con el error
+// correspondiente (401/400) cuando `ctx` es null; el caller solo necesita
+// `if (!r.ctx) return r.respuesta;`.
+type ResultadoClienteActivo =
+  | { ctx: { supabase: ReturnType<typeof crearClienteSuscriptor>; clienteId: string }; respuesta?: undefined }
+  | { ctx: null; respuesta: Response };
+
+async function requerirClienteActivo(c: Context<{ Bindings: Env }>): Promise<ResultadoClienteActivo> {
+  const sesion = await verificarSesionAdministrativa(c);
+  if (!sesion) {
+    return { ctx: null, respuesta: c.json({ error: 'No autenticado' }, 401) };
+  }
+  const accessToken = obtenerAccessToken(c);
+  const supabase = crearClienteSuscriptor(c.env, accessToken ?? '');
+  const { activo, lista } = await resolverClienteActivo(supabase, sesion.perfilId);
+  if (!activo) {
+    return { ctx: null, respuesta: c.json({ error: 'Sin acueducto', clientes: lista }, 400) };
+  }
+  return { ctx: { supabase, clienteId: activo.clienteId } };
+}
+
+app.get('/catalogo/servicios', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const servicios = await listarServicios(ctx.supabase, ctx.clienteId);
+    return c.json({ servicios });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al listar servicios' }, 500);
+  }
+});
+
+app.post('/catalogo/servicios', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{ codigo?: string; nombre?: string; tipo_calculo?: string; facturable_en_ciclo?: boolean; orden?: number }>()
+    .catch(() => ({ codigo: undefined, nombre: undefined, tipo_calculo: undefined, facturable_en_ciclo: undefined, orden: undefined }));
+  const codigo = body.codigo?.trim();
+  const nombre = body.nombre?.trim();
+  const tipoCalculo = body.tipo_calculo;
+  if (!codigo || !nombre || (tipoCalculo !== 'por_consumo' && tipoCalculo !== 'fijo')) {
+    return c.json({ error: "codigo, nombre y tipo_calculo ('por_consumo'|'fijo') son requeridos" }, 400);
+  }
+  try {
+    const servicio = await crearServicio(ctx.supabase, ctx.clienteId, {
+      codigo,
+      nombre,
+      tipo_calculo: tipoCalculo,
+      facturable_en_ciclo: body.facturable_en_ciclo,
+      orden: body.orden,
+    });
+    return c.json({ servicio }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al crear el servicio' }, 400);
+  }
+});
+
+app.patch('/catalogo/servicios/:id', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({}));
+  const errorCampos = validarCamposEditables(body);
+  if (errorCampos) return c.json({ error: errorCampos }, 400);
+  const { nombre, facturable_en_ciclo, orden, activo } = body as {
+    nombre?: string; facturable_en_ciclo?: boolean; orden?: number; activo?: boolean;
+  };
+  try {
+    const servicio = await actualizarServicio(ctx.supabase, c.req.param('id'), {
+      nombre, facturable_en_ciclo, orden, activo,
+    });
+    return c.json({ servicio });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al actualizar el servicio' }, 400);
+  }
+});
+
+app.get('/catalogo/tarifas', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const servicioId = c.req.query('servicio_id');
+  const categoria = c.req.query('categoria');
+  if (!servicioId || !categoria) {
+    return c.json({ error: 'servicio_id y categoria son requeridos' }, 400);
+  }
+  try {
+    const tarifas = await listarTarifas(ctx.supabase, servicioId, categoria);
+    return c.json({ tarifas });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al listar tarifas' }, 500);
+  }
+});
+
+app.post('/catalogo/tarifas', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{
+      servicio_id?: string; categoria?: string; cargo_fijo?: number;
+      limite_basico_m3?: number; precio_basico_m3?: number; precio_no_basico_m3?: number;
+    }>()
+    .catch(() => ({
+      servicio_id: undefined, categoria: undefined, cargo_fijo: undefined,
+      limite_basico_m3: undefined, precio_basico_m3: undefined, precio_no_basico_m3: undefined,
+    }));
+  const { servicio_id, categoria, cargo_fijo, limite_basico_m3, precio_basico_m3, precio_no_basico_m3 } = body;
+  if (
+    !servicio_id || !categoria ||
+    cargo_fijo === undefined || limite_basico_m3 === undefined ||
+    precio_basico_m3 === undefined || precio_no_basico_m3 === undefined
+  ) {
+    return c.json({ error: 'servicio_id, categoria, cargo_fijo, limite_basico_m3, precio_basico_m3 y precio_no_basico_m3 son requeridos' }, 400);
+  }
+  try {
+    const tarifaId = await crearTarifa(ctx.supabase, {
+      servicio_id, categoria, cargo_fijo, limite_basico_m3, precio_basico_m3, precio_no_basico_m3,
+    });
+    return c.json({ tarifaId }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al crear la tarifa' }, 400);
+  }
+});
+
+app.get('/catalogo/matriz-tarifas', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const matriz = await matrizTarifas(ctx.supabase, ctx.clienteId);
+    return c.json({ matriz });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al consultar la matriz de tarifas' }, 500);
+  }
 });
 
 export default app;
