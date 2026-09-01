@@ -40,11 +40,43 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
   contenido real tras sincronizar con `origin/main` para empezar T-011; corregido reescribiendo
   ambos archivos con el contenido verificado.
 
-**Pendiente**
-- T-011, T-012 (frontend: login/middleware/api, onboarding/dashboard) — sin empezar.
-- T-013 (workflow de backup diario) — sin empezar; requiere secretos de Mateo para verificarse
-  contra R2 real.
-- T-015 (cierre de la feature, CHANGELOG final, flujo manual CA-11 con Mateo en navegador).
+- **T-011** — Login, middleware y `lib/api.ts` (CA-4, CA-5). `frontend/middleware.ts` protege
+  `/app/*` verificando solo la presencia de la cookie `uc_sesion_admin` (D-2 del plan); la
+  validación real queda para el server component. `grep -rn "@supabase" frontend/app/
+  frontend/components/` y `grep -rn "SERVICE_ROLE" frontend/` → cero resultados en ambos.
+- **T-012** — Onboarding y dashboard protegido. `frontend/app/app/dashboard/page.tsx` es un
+  server component que reenvía la cookie a mano vía `next/headers` (un fetch de servidor no
+  hereda cookies del navegador, a diferencia del wrapper cliente `lib/api.ts`). Redirige a
+  `/onboarding` sin acueducto y a `/login` con sesión inválida.
+- **Corrección — `frontend/app/page.tsx`** seguía con el placeholder de T-010 a pesar de que
+  `plan.md §1.2` ya especificaba que debía redirigir a `/login`. Corregido: redirige a
+  `/app/dashboard` si hay cookie de sesión, o a `/login` si no la hay.
+- **T-013** — Workflow `.github/workflows/backup-diario.yml` (CA-10) según D-7: Session Pooler
+  puerto 6543 (`SUPABASE_DB_URL`), `pg_dump --format=custom --no-owner` vía imagen
+  `postgres:16-alpine`, subida con `wrangler r2 object put` (sin GitHub Action de terceros),
+  retención de 30 días por regla *lifecycle* del bucket (sin purga manual en CI). Solo se
+  verificó la sintaxis YAML — la ejecución real requiere secretos de GitHub que no existen en
+  este entorno.
+- **Segunda corrección de `docs/INFRAESTRUCTURA.md`/`CHANGELOG.md` en `main`:** al aplicar un
+  patch posterior, `origin/main` volvió a mostrar señales de haberse reconciliado manualmente en
+  algún punto de la sesión; se resincronizó la rama local contra `origin/main` en cada entrega de
+  patch para evitar duplicar commits ya aplicados con hashes distintos.
+- **Decisión de alcance (Mateo):** no se construye una página `/registro` en el frontend para
+  esta feature. El registro del primer admin de cada acueducto se hace vía `curl` directo contra
+  `POST /auth/registro` (Mateo da de alta manualmente); el flujo de navegador para CA-11 empieza
+  en `/login` con un usuario ya registrado así. Queda anotada como mejora futura, no como tarea
+  de 001-fundación.
+
+**Pendiente (bloqueadores externos, no de código)**
+- **CA-10** (backup real a R2): requiere que Mateo configure `SUPABASE_DB_URL`,
+  `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` como secretos de GitHub y cree el bucket
+  `undreocol-backups` con su regla *lifecycle*; luego disparar `workflow_dispatch` y verificar con
+  `wrangler r2 object list undreocol-backups`.
+- **CA-11** (flujo manual completo en navegador): requiere a Mateo — este contenedor no tiene el
+  CLI de `supabase` instalado, así que no se puede levantar `wrangler dev` contra una base real.
+  Pasos exactos documentados en `tasks.md` T-012 y T-015.
+- Despliegue real de los 4 Workers de `backend/` (`wrangler deploy`, sin `--dry-run`) — requiere
+  las credenciales de Cloudflare de Mateo.
 
 ### 2026-08-31 — Sesión 007: Arquitectura definitiva sin servidor propio
 **Hecho**

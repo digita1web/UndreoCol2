@@ -624,12 +624,84 @@ verifica el checklist de "terminado" de CLAUDE.md §11; entrega el comando de pu
 final de CA-11 por Mateo.
 **Resultado esperado:** los 11 CA con evidencia; `CHANGELOG.md` actualizado; todos los commits de la
 feature hechos.
-**Estado:** Pendiente
-**Evidencia:**
+**Estado:** Completado parcialmente (2026-09-01) — CA-10 y CA-11 **NO VERIFICADOS** (requieren Mateo)
+
+**Checklist de CLAUDE.md §11:**
+
+- [x] **Hace lo que dice el spec, ni más ni menos** — 001-fundación cubre auth admin, onboarding
+  transaccional, dashboard, keepalive, monitoreo, limpieza (base), backup (workflow), frontend base.
+  Sesión del suscriptor (feature 008) y Queues (features 002-007) quedan fuera, tal como dice
+  `plan.md §9`. Decisión de Mateo (esta sesión): no se agrega página de `/registro`, no estaba en
+  el alcance original.
+- [x] **`npm run build` (frontend) sin errores ni warnings de TypeScript**
+  ```
+  npm run build → next build → ✓ Compiled successfully; Linting and checking validity of types...
+  sin errores; BUILD_EXIT=0
+  npm run pages:build → opennextjs-cloudflare build → OpenNext build complete; PAGES_BUILD_EXIT=0
+  ```
+- [x] **`npx wrangler deploy --dry-run` (backend) exitoso** — los 4 Workers:
+  ```
+  wrangler.toml           → Total Upload: 784.87 KiB / gzip: 155.99 KiB → EXIT=0
+  wrangler.keepalive.toml → Total Upload: 706.28 KiB / gzip: 137.22 KiB → EXIT=0
+  wrangler.monitor-db.toml→ Total Upload: 707.03 KiB / gzip: 137.46 KiB → EXIT=0
+  wrangler.limpieza.toml  → Total Upload: 706.22 KiB / gzip: 137.20 KiB → EXIT=0
+  ```
+- [x] **`npm run lint` limpio en ambos proyectos**
+  ```
+  frontend: npm run lint → eslint . → LINT_EXIT=0
+  backend:  npm run lint → eslint . → LINT_EXIT=0
+  ```
+- [x] **Tests de la tarea en verde, con la salida pegada**
+  ```
+  backend: npx vitest run → ✓ tests/unit/monitor-db.test.ts (6 tests) → 6 passed (6); VITEST_EXIT=0
+  ```
+  Frontend no tiene tests unitarios en esta feature (sin `core/`, sin lógica de negocio pura en el
+  frontend — no aplica).
+- [x] **Si toca base de datos: migración versionada + test de aislamiento en verde** — verificado en
+  T-001/T-002/T-003 (sesión previa, con Docker/Supabase local disponible), evidencia ya pegada en
+  esas tareas. **No re-ejecutable en este contenedor**: no tiene el CLI de `supabase` instalado.
+- [x] **Si toca `core/`: tests de los casos límite** — no aplica; `backend/src/core/` está
+  explícitamente fuera de alcance de esta feature (`plan.md §1.1`, sin lógica de negocio pura
+  todavía).
+- [x] **Evidencia pegada en la conversación** — sí, en cada tarea (T-001 a T-015).
+- [x] **`CHANGELOG.md` actualizado** — sesión 008 completa con T-010 a T-015.
+- [x] **Commit hecho; comando de push entregado a Mateo** — en cada tarea de esta sesión.
+
+**CA-10 (backup ejecutado una vez) — NO VERIFICADO:** requiere que Mateo configure los 3 secretos de
+GitHub y el bucket R2 con su regla *lifecycle*, dispare `workflow_dispatch` y confirme con
+`wrangler r2 object list undreocol-backups` (pasos exactos en T-013).
+
+**CA-11 (flujo manual completo) — NO VERIFICADO:** requiere a Mateo en el navegador. Este contenedor
+no tiene el CLI de `supabase`, así que no se puede levantar `wrangler dev` contra una base real para
+probar el flujo end-to-end. Pasos exactos (actualizados con la decisión de esta sesión: sin página de
+registro, se usa `curl` para el primer usuario):
+```bash
+# Terminal 1
+supabase start
+# Terminal 2
+cd backend && npx wrangler dev
+# Terminal 3
+cd frontend && npm run dev
+
+# Registro del primer usuario (no hay página de /registro — decisión de Mateo, mejora futura):
+curl -s -X POST http://localhost:8787/auth/registro -H 'Content-Type: application/json' \
+  -d '{"email":"admin-demo@test.local","password":"clave-segura-1"}'
+
+# En el navegador (http://localhost:3000):
+#  1. /            → sin cookie → redirige a /login
+#  2. /login       → iniciar sesión con admin-demo@test.local → redirige a /app/dashboard
+#  3. /app/dashboard → sin acueducto (400 "Sin acueducto") → redirige a /onboarding
+#  4. /onboarding  → crear acueducto (nombre + slug) → redirige a /app/dashboard con datos reales
+#  5. logout (curl -X POST .../auth/logout -b cookies.txt, no hay botón en el frontend todavía)
+#     → /app/dashboard debe redirigir a /login
+#  6. /login de nuevo → /app/dashboard debe mostrar los mismos datos que en el paso 4
 ```
-<checklist completo con salidas>
-```
-**Commit:** (tras completar)
+
+**11 CA — estado final:** CA-1 a CA-9 ✅ verificados con evidencia real (esquema, backend, frontend);
+CA-10 y CA-11 ❌ NO VERIFICADOS, requieren a Mateo con las credenciales/entorno que este contenedor no
+tiene.
+
+**Commit:** (este commit)
 
 ---
 
