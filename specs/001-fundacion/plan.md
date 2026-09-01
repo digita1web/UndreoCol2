@@ -1,823 +1,575 @@
-# PLAN — 001 Fundación
+# PLAN — 001: Fundación
 
-**Feature:** 001-fundacion
-**Fecha:** 2026-08-31
-**Estado:** PROPUESTO — pendiente de aprobación por Mateo. No se escribe código
-ni `tasks.md` hasta aprobación explícita.
-
----
-
-## 0. Estado del documento y supuestos de partida
-
-Este plan se redactó con los documentos disponibles en la raíz del proyecto
-(`CLAUDE.md`, `ESPECIFICACION-FUNCIONAL.md`, `esquema-propuesto.sql`,
-`DECISIONES.md`, `INFRAESTRUCTURA.md`, `CHANGELOG.md`).
-
-**Discrepancias señaladas al momento de redactar (regla CLAUDE.md §7):**
-
-1. `docs/ESPECIFICACION-FUNCIONAL.md` y `docs/esquema-propuesto.sql` están en la
-   raíz del proyecto, no en `docs/`.
-2. `.specify/config.md`, `specs/001-fundacion/spec.md` y
-   `specs/plantillas/plan.md` **no existen** en esta carpeta, aunque el
-   `CHANGELOG.md` registra que fueron creados. No se pudo seguir la plantilla de
-   plan ni leer los criterios de aceptación reales (CA-1 y CA-2).
-
-**Consecuencia (NO VERIFICADO):** las definiciones de CA-1 y CA-2 en la sección
-6 de este plan son una **interpretación de trabajo** construida a partir de la
-especificación funcional y el esquema propuesto. Cuando el `spec.md` real de la
-feature 001 esté disponible, los pasos de CA-1/CA-2 deben contrastarse y
-ajustarse. Nada de la sección 6 se marca como aprobado.
-
-**Acción de estructura pendiente (no bloqueante):** mover
-`ESPECIFICACION-FUNCIONAL.md`, `esquema-propuesto.sql`, `DECISIONES.md`,
-`INFRAESTRUCTURA.md` y `CHANGELOG.md` a `docs/` para alinearse con `CLAUDE.md` §1
-y las rutas que el resto de documentos referencian.
+**Spec aprobado:** 2026-08-31 (spec.md reescrito para la arquitectura Cloudflare + Hono, 11 criterios de aceptación)
+**Fecha del plan:** 2026-09-01
+**Estado:** PROPUESTO — pendiente de aprobación explícita de Mateo. No se escribe código ni `tasks.md` hasta esa aprobación.
 
 ---
 
-## 1. Objetivo y alcance
+## 0. Estado del documento y discrepancias detectadas
 
-Sentar la fundación de UndreoCol sobre la que se construirán las features
-restantes:
+### 0.1 De dónde parte este plan
 
-1. Esquema PostgreSQL multi-tenant **mínimo** y versionado en
-   `supabase/migrations/`: solo `planes`, `clientes`, `perfiles`, `membresias`,
-   `configuracion` y una `usuarios_servicio` mínima (exclusivamente para
-   verificar el aislamiento RLS).
-2. RLS con `FORCE` habilitado **desde la primera migración** en todas las
-   tablas, con las políticas de roles y multi-tenant de la fundación.
-3. Contratos de `lib/auth.ts` que contemplan **desde el diseño** los dos tipos
-   de sesión (administrativa con Supabase Auth y de suscriptor con JWT propio,
-   decisión D-4). Esta feature implementa **solo** la primera; la segunda queda
-   declarada en la interfaz y se implementa en la feature 008.
-4. Fundación del proyecto Next.js 15 (App Router, TypeScript estricto, Tailwind)
-   con `output: 'standalone'` en `next.config.js`.
+- `specs/001-fundacion/spec.md` está aprobado para la arquitectura definitiva (D-6):
+  Next.js 15 en Cloudflare Pages + Hono.js en Cloudflare Workers + Supabase PostgreSQL con RLS `FORCE`.
+- El primer intento (commit `f2f912f`, código monolítico en `app/` + `lib/`) fue descartado en
+  `55f9df4`: no corresponde a la arquitectura vigente.
+- **Lo que se conserva y es válido:**
+  - `supabase/migrations/20260831150000_fundacion-tenancy.sql` (secciones 1–9): enums, las 6 tablas de la
+    fundación, funciones de seguridad `SECURITY DEFINER`, triggers `updated_at`, RLS `FORCE` y políticas RLS.
+    Cumple D-1 y D-2.
+  - `tests/aislamiento/001_fundacion_aislamiento.sql` (pasos 2–11) y `tests/fixtures/fundacion.sql`.
+- El resto (frontend, backend, tests unitarios, workflow de backup) se construye desde cero con la estructura
+  nueva de `frontend/` y `backend/` (CLAUDE.md §5.1).
 
-**Reglas obligatorias que el plan respeta (instrucción de Mateo):**
+### 0.2 Discrepancias detectadas (señaladas antes de actuar, CLAUDE.md §8)
 
-- Ningún archivo en `app/` ni `components/` importa `@supabase/*`.
-- El enum `rol_usuario` tiene **exactamente 3 valores**: `administrador`,
-  `admin_acueducto`, `lector`.
-- `usuarios_servicio` **no** tiene columna `perfil_id` (decisión D-2).
-- RLS con `FORCE` en todas las tablas desde la primera migración.
-- `output: 'standalone'` en `next.config.js`.
-- Sin Edge Functions de Supabase y sin APIs propietarias de Vercel.
+1. **`docs/INFRAESTRUCTURA.md` está corrupto en su estado vigente.** Su contenido es una copia de
+   `ARQUITECTURA.md` (difieren solo en el salto de línea final). Las secciones que referencian
+   CLAUDE.md §5.1, `docs/DECISIONES.md` (D-2, D-7) y el propio spec — §5 keepalive, §6 backup a R2 con
+   Session Pooler, §8 monitoreo 300/400/480 MB, §9 limpieza, §10 sesión del portal, §12 portabilidad —
+   **no existen en el archivo actual**. El `INFRAESTRUCTURA.md` original (commit `f2f912f`, 307 líneas)
+   tampoco coincidía con esa numeración. La intención operativa se reconstruyó en este plan desde
+   `docs/DECISIONES.md` D-7, `docs/ESTRATEGIA-CALIDAD.md` §6/§9 y `docs/esquema-propuesto.sql` §18.
+   **Acción propuesta (parte de este plan):** restaurar `docs/INFRAESTRUCTURA.md` con las secciones
+   operativas referenciadas, como commit `docs:` de esta feature (ver §1.6 y decisión D-10).
+2. **La migración existente no tiene `crear_tenant_con_admin()`**, que el spec §4.5 (onboarding
+   transaccional) y CA-7 exigen. El encargo mencionaba solo la sección 18; esta es una segunda adición
+   necesaria (§2.2).
+3. **Adaptador de Next.js para Cloudflare (2026):** la guía oficial de Cloudflare Pages para Next.js ahora
+   recomienda "Vite on Workers" para aplicaciones full-stack; el adaptador OpenNext sigue listado en los
+   framework guides de Workers. Se elige **`@opennextjs/cloudflare`** (decisión D-1) y el cambio de guía
+   queda registrado como riesgo de vigencia (§10).
+4. **CA-8, CA-9 y CA-10 no están cubiertos** por `tests/aislamiento/001_fundacion_aislamiento.sql`
+   actual. La adaptación del test se detalla en §8.2.
 
----
+### 0.3 Entorno verificado (2026-09-01)
 
-## 2. Archivos a crear — lista exacta
-
-Solo estos archivos. Si algo no está aquí, no se crea (CLAUDE.md §6).
-
-### 2.1 Configuración del proyecto
-
-| # | Archivo | Propósito |
-|---|---|---|
-| 1 | `package.json` | Manifiesto npm: dependencias de la fundación y scripts (`dev`, `build`, `start`, `lint`, `test`, `test:aislamiento`, `db:reset`, `db:push`). |
-| 2 | `tsconfig.json` | TypeScript estricto (`strict: true`), `paths` `@/*` → `./*`, target acorde a Next 15. |
-| 3 | `next.config.js` | Único ajuste: `output: 'standalone'`. Sin plugins ni APIs propietarias. |
-| 4 | `next-env.d.ts` | Tipos de Next.js. Generado por `next dev`/`next build`; se commitea. |
-| 5 | `.gitignore` | Excluye `node_modules/`, `.next/`, `.env*`, `coverage/`, `.supabase/`, dumps. |
-| 6 | `.env.example` | Variables documentadas en `INFRAESTRUCTURA.md` §5: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET`, `NEXT_PUBLIC_APP_URL`. Nunca valores reales. |
-| 7 | `eslint.config.mjs` | ESLint flat config basado en `eslint-config-next`. |
-| 8 | `postcss.config.mjs` | Config de PostCSS para Tailwind CSS. |
-| 9 | `tailwind.config.ts` | Tailwind: `content` de `app/`, `components/`, `lib/`. |
-| 10 | `vitest.config.ts` | Config de Vitest (unit tests de `lib/`). |
-
-### 2.2 Aplicación (`app/` — sin `@supabase/*`)
-
-| # | Archivo | Propósito |
-|---|---|---|
-| 11 | `app/globals.css` | Directivas `@tailwind base/components/utilities`. |
-| 12 | `app/layout.tsx` | Layout raíz (`<html lang="es">`, metadata mínima). No importa `@supabase/*`. |
-| 13 | `app/page.tsx` | Página raíz placeholder estático (título y estado del proyecto). No importa `@supabase/*`. Es lo mínimo que exige el build. |
-
-### 2.3 Capa de servicios (`lib/` — única que toca servicios externos)
-
-| # | Archivo | Propósito |
-|---|---|---|
-| 14 | `lib/db.ts` | Único punto de acceso a Supabase. Expone `crearClienteServidor()` (cliente SSR con cookies de Next vía `@supabase/ssr`). `app/` y `components/` nunca importan `@supabase/*`; si necesitan datos, pasan por `lib/`. |
-| 15 | `lib/auth.ts` | Contratos de sesión (dos tipos, ver sección 4) + implementación de la sesión administrativa. |
-
-### 2.4 Base de datos
-
-| # | Archivo | Propósito |
-|---|---|---|
-| 16 | `supabase/migrations/20260831150000_fundacion-tenancy.sql` | Migración única de la fundación (ver sección 3). El timestamp exacto se fija al ejecutar `supabase migration new`. |
-| 17 | `supabase/config.toml` | Configuración del entorno local. **Generado por `supabase init`** (entorno de desarrollo), no redactado a mano. |
-
-### 2.5 Tests
-
-| # | Archivo | Propósito |
-|---|---|---|
-| 18 | `tests/fixtures/fundacion.sql` | Datos multi-tenant de prueba idempotentes: 2 clientes (A y B), perfiles, membresías, configuraciones y usuarios_servicio para ambos clientes. |
-| 19 | `tests/aislamiento/001_fundacion_aislamiento.sql` | Verificación RLS `FORCE` caso por caso (positivos y negativos). Cada fallo lanza `raise exception` con mensaje descriptivo; el script falla si algo se filtra. |
-| 20 | `tests/unit/lib/auth.test.ts` | Unit de `lib/auth.ts`: contratos, `obtenerSesionActiva()` sin cookie, inicio/cierre de sesión con mock de Supabase, y funciones de suscriptor que lanzan `ErrorSesionSuscriptorPendiente`. |
-| 21 | `tests/integracion/001_fundacion_auth.test.ts` | Integración de `iniciarSesion()` contra Supabase local (requiere `supabase start`). Verifica el flujo real email/contraseña → sesión administrativa. |
-
-**Generados por herramientas (no se redactan):** `package-lock.json` (`npm ci`),
-`.next/standalone/` (`next build`), `supabase/config.toml` (`supabase init`).
-
-**Fuera de la lista (no se crean):** `components/` (aún no hay UI), `core/`,
-`worker/`, `lib/storage.ts`, `lib/tenant.ts` (feature posterior a la fundación).
+- node v20.20.2, npm 10.8.2, psql 16.15 y Supabase CLI 2.116.0 disponibles en el equipo.
+- `wrangler` NO está instalado globalmente: se instala como devDependency en `backend/`.
+- `supabase/` solo contiene `migrations/`: falta `supabase init` (genera `supabase/config.toml`).
+- No existe `.github/` todavía.
+- El plan antiguo pre-D-6 queda preservado en el historial git (commit `f2f912f`); copia local de
+  referencia en `/tmp/plan-001-antiguo-pred6.md`.
 
 ---
 
-## 3. Esquema SQL — migración `supabase/migrations/20260831150000_fundacion-tenancy.sql`
+## 1. Archivos
 
-Una sola migración atómica (decisión D-6, ver sección 5). Es una **reducción
-deliberada** de `esquema-propuesto.sql` v2.0: solo las 6 tablas de la fundación.
-Nada de servicios, tarifas, contadores, periodos, lecturas, facturas, pagos,
-órdenes, notificaciones, trabajos, empleados, incapacidades ni auditoría en esta
-migración (se crean en sus features, cada una con su test de aislamiento).
+Solo estos archivos (CLAUDE.md §7: si no está en el plan, no se crea).
 
-### 3.1 Extensiones y enums
+### 1.1 Backend — Hono.js + Cloudflare Workers
 
-```sql
-create extension if not exists "pgcrypto";
+| Archivo | Acción | Propósito |
+|---|---|---|
+| `backend/package.json` | Crear | Manifiesto: `hono`, `@supabase/supabase-js`. Dev: `wrangler`, `@cloudflare/workers-types`, `typescript`, `vitest`, `eslint` + `typescript-eslint`. Scripts: `dev`, `build`, `deploy`, `lint`, `test`, `test:aislamiento`. |
+| `backend/tsconfig.json` | Crear | TypeScript estricto (`strict: true`), módulos ES. |
+| `backend/wrangler.toml` | Crear | Worker API `undreocol-api`: `main=src/index.ts`, `compatibility_date`, vars `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `ALLOWED_ORIGIN`, observabilidad. **Sin cron triggers.** |
+| `backend/wrangler.keepalive.toml` | Crear | Worker `undreocol-keepalive`: `main=src/cron/keepalive.ts`, `[triggers] crons=["0 5 * * *"]`, var `SUPABASE_URL`; secreto `SUPABASE_SERVICE_ROLE_KEY`. |
+| `backend/wrangler.monitor-db.toml` | Crear | Worker `undreocol-monitor-db`: `main=src/cron/monitor-db.ts`, `[triggers] crons=["30 5 * * *"]`, var `SUPABASE_URL`; secreto `SUPABASE_SERVICE_ROLE_KEY`. |
+| `backend/wrangler.limpieza.toml` | Crear | Worker `undreocol-limpieza`: `main=src/cron/limpieza.ts`, `[triggers] crons=["0 6 * * 0"]`, var `SUPABASE_URL`; secreto `SUPABASE_SERVICE_ROLE_KEY`. |
+| `backend/.env.example` | Crear | Documenta `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `ALLOWED_ORIGIN`, `SESSION_SECRET` (reservado, feature 008). Nunca valores reales. |
+| `backend/.gitignore` | Crear | `node_modules/`, `.wrangler/`, `.env*`, `!.env.example`, `.dev.vars`. |
+| `backend/src/index.ts` | Crear | App Hono: middleware CORS (solo `ALLOWED_ORIGIN`, credentials), rutas de §3, errores explícitos. |
+| `backend/src/lib/db.ts` | Crear | `crearClienteSuscriptor(jwt)` y `crearClienteServicio()` (contratos §4.1). |
+| `backend/src/lib/auth.ts` | Crear | Sesión administrativa (Supabase Auth) con cookie HttpOnly (contratos §4.2). |
+| `backend/src/lib/sesion-suscriptor.ts` | Crear | Contrato reservado de la sesión del portal (D-2/D-4): tipos, constantes y funciones que lanzan `ErrorSesionSuscriptorPendiente` (se implementa en la feature 008). |
+| `backend/src/lib/tenant.ts` | Crear | `resolverClienteActivo(perfilId)` (contrato §4.3). |
+| `backend/src/cron/keepalive.ts` | Crear | Worker de keepalive (D-7; contrato §4.4). |
+| `backend/src/cron/monitor-db.ts` | Crear | Worker de monitoreo (D-7; contrato §4.5); exporta `calcularNivel()` puro. |
+| `backend/src/cron/limpieza.ts` | Crear | Base del Worker de limpieza (D-7; contrato §4.6). Lógica de purga completa en la feature 015. |
+| `backend/tests/unit/monitor-db.test.ts` | Crear | Unit de `calcularNivel()` (umbrales 300/400/480 MB). |
 
-create type rol_usuario as enum (
-  'administrador',      -- Dueño del software. Acceso total, todos los clientes
-  'admin_acueducto',    -- El cliente. Gestiona SU acueducto, nunca otros
-  'lector'              -- Fontanero. Lecturas y órdenes asignadas, desde celular
-);
--- NOTA (D-2): NO existe 'suscriptor'. El portal usa sesión propia (feature 008).
+**No se crean en esta feature:** `backend/src/core/` (no hay lógica de negocio pura todavía; llega con las
+features de negocio) ni `backend/src/queues/` (Cloudflare Queues fuera de alcance, spec §5).
 
-create type estado_cuenta as enum ('activa','vencida','suspendida','cancelada');
+### 1.2 Frontend — Next.js 15 + Cloudflare Pages
 
-create type estado_suscriptor as enum ('activo','suspendido','cortado','inactivo');
-```
+| Archivo | Acción | Propósito |
+|---|---|---|
+| `frontend/package.json` | Crear | Next 15, React 19, TS estricto, Tailwind; dev: `@opennextjs/cloudflare`, `eslint` + `eslint-config-next`, `@types/*`. Scripts: `dev`, `build`, `lint`. |
+| `frontend/tsconfig.json` | Crear | TS estricto, `paths` `@/*`. |
+| `frontend/next.config.ts` | Crear | Config del adaptador OpenNext para Cloudflare. |
+| `frontend/postcss.config.mjs` + `frontend/tailwind.config.ts` | Crear | PostCSS + Tailwind (`content`: `app/`, `components/`, `lib/`). |
+| `frontend/eslint.config.mjs` | Crear | ESLint flat config (`eslint-config-next`). |
+| `frontend/.env.example` | Crear | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`. Nunca valores reales. |
+| `frontend/.gitignore` | Crear | `node_modules/`, `.next/`, `.env*`, `!.env.example`, `.wrangler/`. |
+| `frontend/app/globals.css` | Crear | Directivas Tailwind + variables de tema de shadcn/ui. |
+| `frontend/app/layout.tsx` | Crear | Layout raíz `<html lang="es">`. Sin `@supabase/*`. |
+| `frontend/app/page.tsx` | Crear | Redirige a `/login`. |
+| `frontend/app/login/page.tsx` | Crear | Página de login (renderiza el formulario cliente). |
+| `frontend/components/login-form.tsx` | Crear | Formulario cliente → `POST /auth/login` (fetch con credentials). |
+| `frontend/app/onboarding/page.tsx` | Crear | Creación del acueducto (nombre + slug) → `POST /onboarding`. |
+| `frontend/components/onboarding-form.tsx` | Crear | Formulario cliente → `POST /onboarding`. |
+| `frontend/app/app/layout.tsx` | Crear | Layout del área protegida `/app/*`. |
+| `frontend/app/app/dashboard/page.tsx` | Crear | Server component: `GET /dashboard` → nombre del acueducto, nombre y rol del usuario, conteo de `usuarios_servicio` (spec §4.7). |
+| `frontend/middleware.ts` | Crear | Protege `/app/*`: sin cookie `uc_sesion_admin` → `/login` (decisión D-2 del plan, §5). |
+| `frontend/lib/api.ts` | Crear | Wrapper `fetch` hacia la API de Hono (base URL, credentials). **Nunca importa `@supabase/*`.** |
+| `frontend/components/ui/button.tsx`, `input.tsx`, `card.tsx`, `label.tsx` | Crear | Componentes shadcn/ui, **solo los que se usan** (spec §4.2). |
+| `frontend/components.json` | Crear | Config de shadcn CLI. |
+| `frontend/next-env.d.ts` | Generado | Por `next dev`/`next build`; se commitea. |
 
-Solo estos tres enums. `categoria_tarifaria`, `tipo_calculo`, `estado_periodo`,
-etc. se crean en sus features.
+### 1.3 Base de datos
 
-### 3.2 Tablas del panel maestro (nivel plataforma, sin `cliente_id`)
+| Archivo | Acción | Propósito |
+|---|---|---|
+| `supabase/migrations/20260831150000_fundacion-tenancy.sql` | Modificar | Añadir §10 `crear_tenant_con_admin()` y §11 soporte D-7 (`_keepalive`, `tamano_base_mb()`). Las secciones 1–9 **no se tocan** (§2). Actualizar el comentario de cabecera que referencia el plan. |
+| `supabase/config.toml` | Generado | Por `supabase init` (entorno local). No se redacta a mano. |
 
-```sql
-create table planes (
-  id               uuid primary key default gen_random_uuid(),
-  nombre           text not null unique,
-  limite_usuarios  integer,                      -- null = ilimitado
-  valor_suscriptor numeric(12,2) not null,       -- COP por suscriptor/mes
-  valor_minimo_mes numeric(12,2) not null default 0,
-  activo           boolean not null default true,
-  created_at       timestamptz not null default now()
-);
+### 1.4 Tests
 
-create table clientes (
-  id                uuid primary key default gen_random_uuid(),
-  nombre            text not null,
-  slug              text not null unique,
-  nit               text,
-  direccion         text,
-  municipio         text,
-  departamento      text,
-  telefono          text,
-  email_contacto    text,
-  logo_url          text,
-  plan_id           uuid references planes(id),
-  estado_cuenta     estado_cuenta not null default 'activa',
-  fecha_alta        date not null default current_date,
-  fecha_vencimiento date,
-  created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now(),
-  constraint chk_slug check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$')
-);
+| Archivo | Acción | Propósito |
+|---|---|---|
+| `tests/aislamiento/001_fundacion_aislamiento.sql` | Modificar | Añadir pasos 12–14 (keepalive, monitoreo, onboarding) y cerrar brechas de CA-2 (§8.2). |
+| `tests/fixtures/fundacion.sql` | Sin cambios | Se valida que siga idéntico (los datos de A/B/plataforma no cambian). |
 
-comment on table clientes is
-  'Cada acueducto cliente. clientes.id es el tenant_id que aísla todos los datos.';
-```
+### 1.5 Operaciones (D-7)
 
-### 3.3 Identidad y roles
+| Archivo | Acción | Propósito |
+|---|---|---|
+| `.github/workflows/backup-diario.yml` | Crear | Backup diario `pg_dump` → R2 (spec §4.9, CA-10). Detalle en §2.4. |
 
-```sql
-create table perfiles (
-  id         uuid primary key,                   -- = auth.users.id en Supabase
-  nombre     text not null,
-  email      text not null,
-  telefono   text,
-  activo     boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+### 1.6 Documentación
 
--- El rol 'administrador' (dueño del software) se registra con cliente_id NULL.
-create table membresias (
-  id         uuid primary key default gen_random_uuid(),
-  perfil_id  uuid not null references perfiles(id) on delete cascade,
-  cliente_id uuid references clientes(id) on delete cascade,
-  rol        rol_usuario not null,
-  activo     boolean not null default true,
-  created_at timestamptz not null default now(),
-  constraint chk_ambito_rol check (
-    (rol = 'administrador' and cliente_id is null) or
-    (rol <> 'administrador' and cliente_id is not null)
-  )
-);
+| Archivo | Acción | Propósito |
+|---|---|---|
+| `docs/INFRAESTRUCTURA.md` | Restaurar | Reemplazar la copia de `ARQUITECTURA.md` por el documento operativo con §5 keepalive, §6 backup a R2 (Session Pooler, retención 30 días), §7 ritual mensual de restauración, §8 monitoreo 300/400/480 MB, §9 limpieza semanal, §10 sesión del portal, §12 portabilidad (ver §0.2-1 y decisión D-10). Commit `docs:`. |
 
-create unique index uq_membresia on membresias
-  (perfil_id, coalesce(cliente_id, '00000000-0000-0000-0000-000000000000'::uuid));
-create index on membresias (cliente_id, rol) where activo;
-create index on membresias (perfil_id) where activo;
-```
+## 2. Esquema de base de datos
 
-Notas sobre `membresias`:
+### 2.1 Qué ya está completo (no se toca)
 
-- `chk_ambito_rol` garantiza que el rol `administrador` solo existe a nivel de
-  plataforma (sin `cliente_id`) y que los demás roles siempre pertenecen a un
-  cliente. La prohibición de que un `admin_acueducto` otorgue `administrador`
-  (regla 23 de CLAUDE.md) se refuerza además en la política RLS (§3.6).
-- No hay FK de `perfiles.id` hacia `auth.users`: es deliberado para portabilidad
-  self-hosted (CLAUDE.md §5.2 e INFRAESTRUCTURA.md §6). El vínculo es lógico.
+Las secciones 1–9 de `supabase/migrations/20260831150000_fundacion-tenancy.sql` ya implementan y están
+verificadas por `tests/aislamiento/001_fundacion_aislamiento.sql`:
 
-### 3.4 Configuración por cliente
+- §1 Enums: `rol_usuario` (exactamente 3 valores, sin `suscriptor` — D-2), `estado_cuenta`, `estado_suscriptor`.
+- §2 Tablas `planes` y `clientes` (nivel plataforma, `clientes.id` es el tenant_id; `chk_slug`).
+- §3 Tablas `perfiles` y `membresias` con `chk_ambito_rol` (el rol `administrador` solo con `cliente_id`
+  NULL) e índices únicos/parciales.
+- §4 Tabla `configuracion` con los umbrales por defecto de `ESPECIFICACION-FUNCIONAL.md` §2.2.
+- §5 Tabla mínima `usuarios_servicio` (sin `perfil_id` — D-2), solo para verificar aislamiento.
+- §6 Funciones de seguridad `SECURITY DEFINER`: `es_admin_plataforma()`, `mis_clientes()`, `tiene_rol()`,
+  `es_admin_de()`.
+- §7 Trigger `set_updated_at()` y sus tres triggers.
+- §8 RLS `FORCE` en las 6 tablas (bloque `do $$`).
+- §9 Políticas RLS del panel maestro, identidad y tablas tenantizadas (incluida la regla crítica 23 de
+  CLAUDE.md: el `admin_acueducto` nunca otorga `administrador`).
 
-```sql
-create table configuracion (
-  cliente_id           uuid primary key references clientes(id) on delete cascade,
-  porcentaje_mora      numeric(6,3) not null default 2.0,   -- % sobre saldo vencido
-  dias_vencimiento     integer not null default 30,
-  dias_umbral_corte    integer not null default 60,
-  valor_reconexion     numeric(12,2) not null default 0,
-  factor_consumo_alto  numeric(6,2) not null default 150.0,
-  piso_consumo_alto_m3 numeric(10,2) not null default 100.0,
-  factor_consumo_bajo  numeric(6,2) not null default 20.0,
-  umbral_rollover_pct  numeric(6,2) not null default 90.0,
-  prefijo_factura      text not null default 'FAC',
-  prefijo_reconexion   text not null default 'REC',
-  consecutivo_factura  integer not null default 0,
-  anio_consecutivo     smallint not null
-    default extract(year from current_date)::smallint,
-  updated_at           timestamptz not null default now()
-);
-```
+**No se reescribe nada de esto.**
 
-Los valores por defecto salen de `ESPECIFICACION-FUNCIONAL.md` §2.2. Los
-definitivos reales del negocio quedan pendientes de Mateo (INFRAESTRUCTURA.md
-§12) y se ajustarán en la feature de configuración.
+### 2.2 Adiciones a la migración existente
 
-### 3.5 `usuarios_servicio` — versión MÍNIMA (solo para verificar aislamiento RLS)
+Se **edita el mismo archivo** (decisión D-8: una migración atómica de la fundación; no hay base de
+producción, solo `supabase db reset` en local). Se actualiza también el comentario de cabecera que
+referencia al plan.
+
+**§10 — Onboarding transaccional (spec §4.5, CA-7).**
 
 ```sql
-create table usuarios_servicio (
-  id                uuid primary key default gen_random_uuid(),
-  cliente_id        uuid not null references clientes(id) on delete cascade,
-  codigo_suscriptor text not null,
-  nombre            text not null,
-  estado            estado_suscriptor not null default 'activo',
-  created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now(),
-  unique (cliente_id, codigo_suscriptor)
-);
-
-create index on usuarios_servicio (cliente_id, estado);
-```
-
-**Restricciones de la instrucción de Mateo aplicadas aquí:**
-
-- **NO tiene columna `perfil_id`** (decisión D-2: el suscriptor no es un usuario
-  del sistema de identidad).
-- Es **mínima**: las columnas `tipo_documento`, `numero_documento`, `telefono`,
-  `email`, `direccion`, `sector`, `categoria`, `contador_actual_id`, `notas` y
-  `fecha_vinculacion` se añaden en la feature de suscriptores mediante una
-  migración `ALTER TABLE` (con su test de aislamiento, como toda tabla nueva).
-- Existe aquí únicamente para poder verificar que RLS aísla una tabla tenantizada
-  de negocio antes de construir el resto del esquema.
-
-### 3.6 Funciones de seguridad (SECURITY DEFINER)
-
-Iguales a `esquema-propuesto.sql` §4. Evitan recursión infinita en las políticas
-RLS:
-
-```sql
-create or replace function es_admin_plataforma()
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from membresias
-    where perfil_id = auth.uid() and rol = 'administrador' and activo);
-$$;
-
-create or replace function mis_clientes()
-returns setof uuid language sql stable security definer set search_path = public as $$
-  select cliente_id from membresias
-  where perfil_id = auth.uid() and activo and cliente_id is not null;
-$$;
-
-create or replace function tiene_rol(p_cliente_id uuid, p_roles rol_usuario[])
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from membresias
-    where perfil_id = auth.uid() and cliente_id = p_cliente_id
-      and activo and rol = any(p_roles));
-$$;
-
-create or replace function es_admin_de(p_cliente_id uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select es_admin_plataforma()
-      or tiene_rol(p_cliente_id, array['admin_acueducto']::rol_usuario[]);
-$$;
-```
-
-La única dependencia de Supabase es `auth.uid()`. El bloque de compatibilidad
-self-hosted (función `auth.uid()` en un esquema `auth` propio leyendo
-`current_setting('app.perfil_id')`) se documenta **como comentario** al final de
-la migración, tal como indica `esquema-propuesto.sql` §16 final. No se crea
-ningún esquema `auth` en la migración porque en Supabase ya existe.
-
-### 3.7 Trigger `updated_at`
-
-```sql
-create or replace function set_updated_at()
-returns trigger language plpgsql as $$
-begin new.updated_at = now(); return new; end;
-$$;
-
-create trigger trg_clientes_updated before update on clientes
-  for each row execute function set_updated_at();
-create trigger trg_perfiles_updated before update on perfiles
-  for each row execute function set_updated_at();
-create trigger trg_usuarios_servicio_updated before update on usuarios_servicio
-  for each row execute function set_updated_at();
-```
-
-Solo en las tablas que tienen `updated_at` y lo necesitan (`planes` no tiene
-`updated_at`; `membresias` no lo tiene; `configuracion` lo tiene pero no se
-automatiza, igual que en `esquema-propuesto.sql` §15).
-
-### 3.8 RLS con FORCE — desde la primera migración
-
-Se habilita y fuerza en las 6 tablas:
-
-```sql
-do $$
-declare t text;
+-- Crea cliente + perfil + membresia(admin_acueducto) + configuracion en UNA transacción.
+-- SECURITY DEFINER: RLS de clientes solo permite escritura a la plataforma (política
+-- clientes_plataforma), por lo que el insert de onboarding pasa por esta función.
+-- Revoca a anon; otorga a authenticated.
+create or replace function crear_tenant_con_admin(
+  p_nombre_cliente text,
+  p_slug          text,
+  p_email         text
+) returns uuid
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_cliente_id uuid;
 begin
-  foreach t in array array[
-    'planes','clientes','perfiles','membresias','configuracion','usuarios_servicio'
-  ] loop
-    execute format('alter table %I enable row level security', t);
-    execute format('alter table %I force row level security', t);
-  end loop;
+  -- Solo el propio usuario autenticado (auth.uid()) puede crear SU tenant.
+  if auth.uid() is null then
+    raise exception 'No autenticado';
+  end if;
+  -- Un usuario con membresía activa no crea otro acueducto (el multi-tenant por
+  -- usuario lo gestiona el panel maestro de la plataforma, feature posterior).
+  if exists (select 1 from membresias where perfil_id = auth.uid() and activo) then
+    raise exception 'El usuario ya tiene un acueducto';
+  end if;
+  insert into clientes (nombre, slug) values (p_nombre_cliente, p_slug)
+    returning id into v_cliente_id;
+  -- (el duplicado de slug viola el unique y revierte TODO por atomicidad)
+  insert into perfiles (id, nombre, email) values (auth.uid(), p_nombre_cliente, p_email);
+  insert into membresias (perfil_id, cliente_id, rol)
+    values (auth.uid(), v_cliente_id, 'admin_acueducto');
+  insert into configuracion (cliente_id) values (v_cliente_id);
+  return v_cliente_id;
 end $$;
+
+revoke execute on function crear_tenant_con_admin(text, text, text) from anon, public;
+grant  execute on function crear_tenant_con_admin(text, text, text) to authenticated;
 ```
 
-`FORCE` aplica las políticas incluso al dueño de la tabla: nada se salta el
-filtro (CLAUDE.md §5.4). El propio dueño debe insertar a través de una sesión con
-`request.jwt.claim.sub` válido o con la `service_role_key` (solo migraciones y
-worker, con justificación escrita).
-
-### 3.9 Políticas RLS
+**§11 — Soporte D-7 (sección 18 de `docs/esquema-propuesto.sql`, literal): `_keepalive` y
+`tamano_base_mb()`.**
 
 ```sql
--- --- Panel maestro -----------------------------------------------------------
+create table if not exists _keepalive (
+  id           smallint primary key default 1,
+  ultimo_ping  timestamptz not null default now(),
+  constraint chk_singleton check (id = 1)
+);
 
--- planes: lectura pública (cualquier sesión autenticada); escritura solo plataforma.
-create policy planes_lectura on planes for select using (true);
-create policy planes_escritura on planes for all
-  using (es_admin_plataforma()) with check (es_admin_plataforma());
+insert into _keepalive (id, ultimo_ping) values (1, now())
+  on conflict (id) do nothing;
 
--- clientes: lectura para miembros del propio cliente o plataforma;
---           escritura SOLO plataforma en la fundación (ver decisión D-8).
-create policy clientes_lectura on clientes for select
-  using (es_admin_plataforma() or id in (select mis_clientes()));
-create policy clientes_plataforma on clientes for all
-  using (es_admin_plataforma()) with check (es_admin_plataforma());
+alter table _keepalive enable row level security;
+alter table _keepalive force row level security;
+-- Sin políticas: nadie (anon/authenticated) la toca; service_role bypasea RLS por diseño.
 
--- --- Identidad ---------------------------------------------------------------
+create or replace function tamano_base_mb()
+returns numeric
+language sql stable security definer set search_path = public as $$
+  select round(pg_database_size(current_database()) / 1024.0 / 1024.0, 2);
+$$;
 
-create policy perfiles_lectura on perfiles for select
-  using (
-    id = auth.uid()
-    or es_admin_plataforma()
-    or exists (select 1 from membresias m
-         where m.perfil_id = perfiles.id and m.cliente_id in (select mis_clientes()))
-  );
-create policy perfiles_update_propio on perfiles for update
-  using (id = auth.uid()) with check (id = auth.uid());
-
-create policy membresias_lectura on membresias for select
-  using (perfil_id = auth.uid() or es_admin_plataforma()
-         or cliente_id in (select mis_clientes()));
-
--- REGLA CRÍTICA (CLAUDE.md §9-23): el admin del acueducto crea usuarios de SU
--- acueducto, pero NUNCA puede otorgar el rol 'administrador', ni a otros ni a sí
--- mismo. Se bloquea en RLS, no solo en la interfaz.
-create policy membresias_gestion_acueducto on membresias for all
-  using (
-    cliente_id is not null
-    and tiene_rol(cliente_id, array['admin_acueducto']::rol_usuario[])
-    and rol in ('admin_acueducto','lector')
-  )
-  with check (
-    cliente_id is not null
-    and tiene_rol(cliente_id, array['admin_acueducto']::rol_usuario[])
-    and rol in ('admin_acueducto','lector')
-  );
-
-create policy membresias_plataforma on membresias for all
-  using (es_admin_plataforma()) with check (es_admin_plataforma());
-
--- --- Tablas tenantizadas estándar --------------------------------------------
--- configuracion y usuarios_servicio: lectura para miembros del cliente o
--- plataforma; escritura para admin del acueducto o plataforma. En la fundación
--- no existe aún el rol 'lector' para estas tablas (ver feature de lecturas).
-
-create policy configuracion_lectura on configuracion for select
-  using (es_admin_plataforma() or cliente_id in (select mis_clientes()));
-create policy configuracion_escritura on configuracion for all
-  using (es_admin_de(cliente_id)) with check (es_admin_de(cliente_id));
-
-create policy usuarios_servicio_lectura on usuarios_servicio for select
-  using (es_admin_plataforma() or cliente_id in (select mis_clientes()));
-create policy usuarios_servicio_escritura on usuarios_servicio for all
-  using (es_admin_de(cliente_id)) with check (es_admin_de(cliente_id));
+revoke execute on function tamano_base_mb from anon, authenticated;
+grant  execute on function tamano_base_mb to service_role;
 ```
 
-**Notas de comportamiento esperado para los tests de aislamiento:**
+### 2.3 Tablas nuevas y políticas RLS
 
-- Rol `anon` (sin `auth.uid()`): puede leer `planes`; `clientes`, `perfiles`,
-  `membresias`, `configuracion` y `usuarios_servicio` devuelven 0 filas y
-  rechazan toda escritura.
-- Rol `admin_acueducto` del cliente A: lee su cliente, su perfil, sus
-  membresías, su configuración y sus usuarios de servicio; nada del cliente B;
-  no puede crear membresías con rol `administrador` ni para el cliente B.
-- Rol `administrador` (plataforma): acceso total a las 6 tablas.
-- El portal del suscriptor (D-2/D-4) **no usa RLS ni `auth.uid()`**: se implementa
-  en la feature 008 con `service_role_key` en servidor y filtrado por
-  `usuario_servicio_id`, tal como documenta `INFRAESTRUCTURA.md` §4.
+| Elemento | RLS / permisos |
+|---|---|
+| `_keepalive` | `enable` + `force`. **Cero políticas**: anon/authenticated no pueden leer ni escribir. Solo `service_role` (bypasa RLS). Tabla técnica sin `cliente_id`, fuera del aislamiento multi-tenant. |
+| `crear_tenant_con_admin(text,text,text)` | Ejecutable solo por `authenticated`. Valida `auth.uid()` y la unicidad del slug dentro de la transacción. |
+| `tamano_base_mb()` | Ejecutable solo por `service_role` (los Workers cron y GitHub Actions). |
+
+### 2.4 Workflow de backup — `.github/workflows/backup-diario.yml` (spec §4.9, CA-10)
+
+Según la intención de `INFRAESTRUCTURA.md` §6 (reconstruida en §0.2-1), `D-7` y
+`ESTRATEGIA-CALIDAD.md` §6/§9:
+
+- **Programación:** `schedule` diario (p. ej. `06:00 UTC`) + `workflow_dispatch` (para CA-10).
+- **Conexión a Supabase:** variable secreta `SUPABASE_DB_URL` con la cadena del **Session Pooler**
+  (puerto `6543`, modo transaction) — nunca el puerto directo `5432` (riesgo mitigado, spec §8).
+- **Dump:** en un contenedor `postgres:16-alpine`, `pg_dump --format=custom --no-owner` sobre la base,
+  comprimido con `gzip`. Nombre: `undreocol-backup-<fecha-UTC>-<sha>.sql.gz`.
+- **Subida a R2:** con `wrangler r2 object put undreocol-backups/<archivo> --file=<archivo>` usando los
+  secretos `CLOUDFLARE_ACCOUNT_ID` y `CLOUDFLARE_API_TOKEN`.
+- **Retención 30 días:** regla *lifecycle* de R2 (expiración a 30 días) configurada en el bucket
+  `undreocol-backups` (gestión por el proveedor, sin paso frágil de borrado en CI).
+- **Restauración:** documentada como ritual mensual en `docs/INFRAESTRUCTURA.md` §7
+  (backup → staging de Supabase → verificación de conteos y políticas RLS).
+
+Secretos de GitHub necesarios (nunca en el repo): `SUPABASE_DB_URL`, `CLOUDFLARE_ACCOUNT_ID`,
+`CLOUDFLARE_API_TOKEN`. La evidencia de CA-10 es `wrangler r2 object list undreocol-backups` mostrando el
+archivo y su tamaño.
 
 ---
 
-## 4. Contratos de `lib/auth.ts` y `lib/db.ts`
+## 3. Rutas de la API (Hono)
 
-### 4.1 Principio de diseño
+Todas pasan por el middleware CORS (origen = `ALLOWED_ORIGIN`, `credentials: true`). La sesión
+administrativa viaja en la cookie HttpOnly `uc_sesion_admin` (decisión D-3).
 
-`lib/auth.ts` es el **único** lugar donde la aplicación habla de sesión.
-Externamente solo se usan sus tipos y funciones. `app/` y `components/` importan
-desde aquí (y desde `lib/db.ts`) si necesitan la sesión; nunca importan
-`@supabase/*` directamente (CLAUDE.md §5.2).
+| Método | Ruta | Auth | Propósito |
+|---|---|---|---|
+| GET | `/salud` | Pública | Verifica conectividad con Supabase usando el cliente **anon** (`select` sobre `planes`, que es lectura pública): `200 {estado:"ok"}` o `503`. Nunca `service_role` (prohibición CLAUDE.md §12). |
+| POST | `/auth/registro` | Pública | `supabase.auth.signUp({email, password})`. No crea tenant (eso es onboarding). |
+| POST | `/auth/login` | Pública | `signInWithPassword` → escribe cookie `uc_sesion_admin` → devuelve perfil y membresías. |
+| POST | `/auth/logout` | Cookie | `signOut` + borra la cookie. Idempotente. |
+| POST | `/auth/recuperar` | Pública | `resetPasswordForEmail(email)`. |
+| GET | `/auth/sesion` | Cookie | Valida (y refresca si expira) la sesión; devuelve `{perfil, cliente, rol}` o `401`. |
+| POST | `/onboarding` | Cookie (admin) | `rpc('crear_tenant_con_admin', {p_nombre_cliente, p_slug, p_email})` → `201 {clienteId}`. Errores: slug duplicado / ya tiene acueducto / slug inválido (400–409). |
+| GET | `/dashboard` | Cookie (admin + tenant) | Payload de `/app/dashboard` (spec §4.7): nombre del acueducto, nombre y rol del usuario, `count(*)` de `usuarios_servicio` del cliente. |
 
-La interfaz contempla **desde el diseño** los dos tipos de sesión de la decisión
-D-4 (ver DECISIONES.md y CLAUDE.md §9-25):
+Regla de oro del RLS (CLAUDE.md §5.4): el cliente de Supabase de **cada request se instancia con el JWT
+del usuario** (no con `service_role`), para que `auth.uid()` resuelva en las políticas.
 
-- **Administrativa** — Supabase Auth. Implementada en esta feature.
-- **De suscriptor** — JWT propio firmado con `SESSION_SECRET`, cookie HttpOnly +
-  Secure + SameSite=Lax, duración 30 días con renovación < 7 días. **Contrato
-  declarado, implementación en la feature 008.** Las funciones declaradas lanzan
-  `ErrorSesionSuscriptorPendiente` con mensaje explícito; nunca devuelven datos
-  falsos ni sesiones fabricadas.
+## 4. Contratos
 
-### 4.2 Tipos y constantes (contrato compartido)
+No hay `core/` en esta feature (no se calcula dinero). Los contratos que sí se fijan son los de `lib/` y
+`cron/`. Los del suscriptor quedan **declarados pero sin implementar** (feature 008), como exige D-2/D-4.
 
-```typescript
-// lib/auth.ts
+### 4.1 `backend/src/lib/db.ts`
 
+```ts
+// Único punto de acceso a Supabase desde el backend.
+// El cliente de cada request se crea con el JWT del usuario para que auth.uid()
+// resuelva en RLS (CLAUDE.md §5.4).
+export function crearClienteSuscriptor(accessToken: string): SupabaseClient;
+// Solo para cron/ y GitHub Actions. NUNCA en una ruta que atiende peticiones de usuario.
+export function crearClienteServicio(): SupabaseClient;
+```
+
+### 4.2 `backend/src/lib/auth.ts` — sesión administrativa (implementada)
+
+```ts
 export type TipoSesion = 'administrativa' | 'suscriptor';
 
-// Sesión administrativa — Supabase Auth (implementada en esta feature).
-// El cliente activo NO se incluye aquí a propósito: la membresía activa se
-// resuelve por petición vía lib/tenant.ts (feature posterior), porque puede
-// cambiar sin que la sesión expire.
 export interface SesionAdministrativa {
   tipo: 'administrativa';
-  perfilId: string;     // auth.users.id / perfiles.id
+  perfilId: string;   // auth.users.id / perfiles.id
   email: string;
 }
 
-// Sesión de suscriptor — JWT propio (decisión D-4). Contrato reservado.
-// "sub" = usuario_servicio_id, "cid" = cliente_id, "exp" = expiración (epoch s).
-export interface SesionSuscriptor {
-  tipo: 'suscriptor';
-  usuarioServicioId: string;  // "sub" del JWT
-  clienteId: string;          // "cid" del JWT
-  expiraEn: number;           // "exp" del JWT
-}
+export const NOMBRE_COOKIE_SESION = 'uc_sesion_admin';
 
-export type Sesion = SesionAdministrativa | SesionSuscriptor;
+// Middleware de Hono: lee la cookie, valida vía supabase.auth.getUser() (con
+// refresco si el access_token expiró) y deja la sesión en c.get('sesion').
+// Sin sesión → 401 (o next() con null para rutas públicas).
+export async function verificarSesionAdministrativa(c: Context): Promise<SesionAdministrativa | null>;
 
-// Constantes de la sesión del portal (D-4). Se definen aquí para que el contrato
-// no cierre la segunda sesión; la feature 008 las usará.
-export const DURACION_SESION_SUSCRIPTOR_SEG = 30 * 24 * 60 * 60;  // 30 días
-export const UMBRAL_RENOVACION_SUSCRIPTOR_SEG = 7 * 24 * 60 * 60; // < 7 días restantes
+// iniciarSesion: signInWithPassword + escritura de la cookie HttpOnly.
+export async function iniciarSesion(email: string, contrasena: string, c: Context): Promise<SesionAdministrativa>;
 
-export class ErrorSesionSuscriptorPendiente extends Error {
-  constructor() {
-    super('Sesión de suscriptor pendiente de implementar (feature 008, decisión D-4).');
-    this.name = 'ErrorSesionSuscriptorPendiente';
-  }
-}
+// cerrarSesion: signOut + borrado de la cookie; idempotente (sin sesión no lanza).
+export async function cerrarSesion(c: Context): Promise<void>;
 ```
 
-### 4.3 Funciones de sesión administrativa (implementadas)
+**Comportamiento requerido (para tests):** sin cookie → `null` (nunca lanza); cookie inválida/vencida →
+`null`; credenciales inválidas en login → error explícito en español. Cookie: `HttpOnly; Secure;
+SameSite=Lax; Path=/`. Funciona en dev porque frontend (`localhost:3000`) y API (`localhost:8787`) son
+mismo *site*; en producción ambos deben estar bajo el mismo dominio registrable (p. ej. `undreocol.com` y
+`api.undreocol.com`).
 
-```typescript
-// Devuelve la sesión administrativa activa, o null si no hay cookie válida.
-// No lanza: ausencia de sesión es un caso normal (página pública).
-export async function obtenerSesionActiva(): Promise<SesionAdministrativa | null>;
+### 4.3 `backend/src/lib/sesion-suscriptor.ts` — contrato reservado (feature 008)
 
-// Inicia sesión con email/contraseña contra Supabase Auth. La cookie de sesión
-// se escribe vía @supabase/ssr. Lanza si las credenciales son inválidas.
-export async function iniciarSesion(email: string, contrasena: string): Promise<SesionAdministrativa>;
-
-// Cierra la sesión administrativa (signOut de Supabase y cookie limpia).
-export async function cerrarSesion(): Promise<void>;
+```ts
+// Todas lanzan ErrorSesionSuscriptorPendiente. Firmas fijas para que la feature 008
+// las implemente sin cambiar la interfaz pública (D-2, D-4).
+export interface SesionSuscriptor { tipo: 'suscriptor'; usuarioServicioId: string; clienteId: string; expiraEn: number; }
+export const DURACION_SESION_SUSCRIPTOR_SEG = 30 * 24 * 60 * 60;  // 30 días (D-4)
+export const UMBRAL_RENOVACION_SUSCRIPTOR_SEG = 7 * 24 * 60 * 60; // renovar si quedan < 7 días (D-4)
+export class ErrorSesionSuscriptorPendiente extends Error { ... }
+export async function iniciarSesionSuscriptor(...): Promise<SesionSuscriptor>;   // lanza
+export async function renovarSesionSuscriptor(...): Promise<SesionSuscriptor>;   // lanza
+export async function verificarSesionSuscriptor(...): Promise<SesionSuscriptor>; // lanza
 ```
 
-**Comportamiento requerido (para los tests):**
+### 4.4 `backend/src/lib/tenant.ts`
 
-- `obtenerSesionActiva()` sin cookie → `null`. Con cookie válida → sesión con
-  `perfilId` y `email`. Con cookie inválida/vencida → `null` (nunca lanza).
-- `iniciarSesion(email, contrasena)` delega en `crearClienteServidor()` de
-  `lib/db.ts` → `auth.signInWithPassword`. Error de autenticación → lanza error
-  explícito con mensaje en español.
-- `cerrarSesion()` delega en `auth.signOut()`; es idempotente (cerrar sin sesión
-  no lanza).
-- La distinción `tipo: 'administrativa'` queda explícita en el tipo devuelto: un
-  futuro middleware podrá distinguirla de la `suscriptor` (CLAUDE.md §9-22c).
-
-### 4.4 Funciones de sesión de suscriptor (contrato reservado, feature 008)
-
-```typescript
-// Todas lanzan ErrorSesionSuscriptorPendiente. Firmas fijadas para que la
-// feature 008 las implemente sin cambiar la interfaz pública.
-
-// Valida numero_documento + codigo_suscriptor contra usuarios_servicio,
-// emite el JWT con SESSION_SECRET y lo guarda en la cookie del portal.
-export async function iniciarSesionSuscriptor(
-  numeroDocumento: string,
-  codigoSuscriptor: string
-): Promise<SesionSuscriptor>;
-
-// Renovación automática de la sesión del portal (D-4): si quedan < 7 días,
-// emite un JWT nuevo. Si el estado del suscriptor cambió, rechaza.
-export async function renovarSesionSuscriptor(token: string): Promise<SesionSuscriptor>;
-
-// Verifica firma, expiración y campo tipo: 'suscriptor' (CLAUDE.md §9-22c).
-export function verificarSesionSuscriptor(token: string): SesionSuscriptor;
+```ts
+// Resuelve el acueducto activo del usuario (spec §4.6).
+// 1 cliente → {clienteId, rol}; 0 → null (el frontend redirige a /onboarding);
+// varios → null con la lista en el payload (caso previsto: soporte de UndreoCol).
+export async function resolverClienteActivo(perfilId: string): Promise<
+  { clienteId: string; rol: RolUsuario } | null
+>;
 ```
 
-Estas firmas **no** se implementan en esta feature; su cuerpo lanza
-`ErrorSesionSuscriptorPendiente`. Así la interfaz queda abierta a la segunda
-sesión sin código muerto.
+### 4.5 `backend/src/cron/keepalive.ts`
 
-### 4.5 `lib/db.ts`
-
-```typescript
-// Único punto de acceso a Supabase desde el servidor Next.js.
-// Crea un cliente de servidor con manejo de cookies vía @supabase/ssr.
-export function crearClienteServidor(): SupabaseClient;
+```ts
+// Worker `undreocol-keepalive`. Cron diario "0 5 * * *".
+// Actualiza _keepalive.ultimo_ping = now() con cliente de servicio.
+// Si el update afecta 0 filas o falla: LANZA excepción (falla visible en los logs
+// de Cloudflare — mitigación del riesgo de pausa del plan Free, spec §8).
+export default { async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> };
 ```
 
-- Usa `@supabase/ssr` (`createServerClient`) con `next/headers` (cookies). Es la
-  capa que `lib/auth.ts` usa internamente.
-- No expone claves: las variables se leen del entorno. `SUPABASE_SERVICE_ROLE_KEY`
-  se usa solo en migraciones y worker (CLAUDE.md §5.4); la función
-  `crearClienteServicio()` que la usaría **no se crea en esta feature**.
-- No se crea cliente "anon" de navegador: esta feature no tiene UI que toque la
-  base directamente.
+### 4.6 `backend/src/cron/monitor-db.ts`
 
-### 4.6 Cómo se garantiza la restricción "app/ y components/ no importan @supabase/*"
+```ts
+// Función PURA, testeable con vitest (sin Hono ni Supabase).
+// Umbrales de D-7/INFRAESTRUCTURA.md §8: 300 atencion, 400 alerta, 480 critico.
+export function calcularNivel(tamanoMb: number): {
+  porcentaje: number;            // % respecto a 500 MB
+  nivel: 'ok' | 'atencion' | 'alerta' | 'critico';
+};
 
-- La verificación es estática y entra en CA-2: un `grep -rn "@supabase/" app/ components/`
-  debe devolver vacío (o el comando de verificación falla).
-- Es una regla de código revisable en cada PR; no hay nada en la feature que la
-  viole porque `app/` solo contiene el placeholder estático.
+// Worker `undreocol-monitor-db`. Cron diario "30 5 * * *".
+// rpc('tamano_base_mb') → calcularNivel() → log del resultado.
+// nivel >= 'alerta' → alertaStub() (console.error + TODO: Email Service, feature 010).
+// El cálculo y el log deben funcionar y estar verificados (CA-9); el envío es stub
+// (spec §4.8).
+export default { async scheduled(...): Promise<void> };
+```
 
----
+### 4.7 `backend/src/cron/limpieza.ts`
 
-## 5. Decisiones técnicas y alternativas descartadas
+```ts
+// Worker `undreocol-limpieza`. Cron semanal "0 6 * * 0".
+// BASE en esta feature: log de "sin tablas que purgar" + verificación de conexión.
+// Objetivos de purga documentados (ESTRATEGIA-CALIDAD.md §6, feature 015):
+// sesiones, auditoría, trabajos, notificaciones. Lógica completa NO se implementa
+// aquí (spec §5: fuera de alcance).
+export default { async scheduled(...): Promise<void> };
+```
 
-Cada decisión con contexto, alternativas y razón. Estilo del registro
-`DECISIONES.md`; las que se confirman aquí quedan numeradas para referencia.
+## 5. Decisiones técnicas
 
-### D-6 — Una sola migración fundacional atómica
+Cada decisión con su alternativa descartada y la razón. Se numeran D-1…D-10 para referencia en `tasks.md`.
 
-- **Decisión:** todo el esquema de la fundación vive en una única migración
-  `20260831150000_fundacion-tenancy.sql`. `supabase db reset` la aplica de cero y
-  el resultado es reproducible.
-- **Alternativa descartada A:** dividir en tres migraciones (enums, tablas,
-  RLS). Más difícil de auditar y de razonar como unidad atómica; `db reset` las
-  aplica en orden de todas formas.
-- **Alternativa descartada B:** migraciones por tabla. Fuerza dependencias
-  frágiles de FK/RLS entre archivos y no aporta nada a esta escala.
+| Decisión | Alternativa descartada | Razón |
+|---|---|---|
+| **D-1 (plan) — Adaptador `@opennextjs/cloudflare`** para Next.js en Cloudflare. | `@cloudflare/vite-plugin` (recomendación oficial de la guía de Pages en 2026); `output: 'export'` estático. | OpenNext conserva Next.js 15 estándar (`next build`, App Router, `middleware.ts`, SSR) y es la ruta documentada "Next.js on Cloudflare" en los framework guides de Workers. El plugin de Vite es un cambio de toolchain completo (decisión de Mateo, no de la fundación). El estático no soporta el middleware que exige el spec §4.7. Riesgo de vigencia en §10. |
+| **D-2 (plan) — `middleware.ts` verifica solo presencia de cookie**; la validación real ocurre en el server component de `/app/dashboard` vía `GET /auth/sesion`. | Validar el JWT dentro del middleware con una llamada de red por request. | Evita una llamada externa en cada navegación (latencia y acoplamiento); el middleware sigue protegiendo `/app/*` como pide el spec, y la autenticación real se hace donde hay contexto de servidor. |
+| **D-3 (plan) — Sesión administrativa en cookie HttpOnly puesta por la API de Hono** (`uc_sesion_admin`). | `Authorization: Bearer` con el token en memoria del frontend; cookie puesta por el frontend. | Coherente con D-4 (la sesión del portal también será cookie HttpOnly desde el Worker); el token nunca vive en JS; same-site funciona en dev (`localhost`) y en producción con dominio + subdominio. |
+| **D-4 (plan) — Onboarding transaccional en SQL** (`crear_tenant_con_admin`, SECURITY DEFINER). | Varios inserts/secuenciales desde la ruta de Hono. | CA-7 exige atomicidad real (sin huérfanos); las políticas de la fundación bloquean por diseño el `insert` de `clientes` por parte de `admin_acueducto` (decisión heredada del plan anterior), así que la creación debe pasar por una función con privilegios del definidor. |
+| **D-5 (plan) — Tres Workers de mantenimiento separados, uno por tarea.** | Un solo Worker con 3 crons; crons dentro del Worker de la API. | El límite del plan Free es **5 Cron Triggers por cuenta** (no por Worker); 1 Worker = 1 cron consume 3 y deja 2 libres. Aislamiento de fallos (un bug de monitor no tumba la API). La feature 015 (limpieza completa) evoluciona su Worker sin tocar la API. |
+| **D-6 (plan) — `/salud` con clave `anon`, nunca `service_role`.** | `service_role` en `/salud`. | Prohibición absoluta de CLAUDE.md §12: `service_role` nunca en una ruta que atiende peticiones de usuario. `planes` es lectura pública, suficiente como prueba de conectividad. |
+| **D-7 (plan) — Backup: `pg_dump` (custom) + `wrangler r2 object put`; retención 30 días con lifecycle de R2.** | `aws cli` con credenciales R2; `supabase db dump`; borrado manual en CI. | `wrangler` es la herramienta del proyecto (sin dependencia AWS). `supabase db dump` requiere entorno local. La retención la gestiona R2 (sin paso frágil en CI). Conexión por **Session Pooler** (spec §8). |
+| **D-8 (plan) — Editar la migración existente** añadiendo §10 y §11. | Nueva migración aparte. | Sin base de producción (solo `supabase db reset` en local); el plan anterior fijó "una migración atómica de la fundación". Editar el archivo commiteado es seguro pre-producción. |
+| **D-9 (plan) — Confirmación de email de Supabase DESACTIVADA en el proyecto para el flujo de onboarding de desarrollo.** | Confirmación requerida (flujo por defecto). | Sin confirmación, `signUp` devuelve sesión y el onboarding fluye de corrido en dev/demo. Es configuración del proyecto (no código), documentada en `INFRAESTRUCTURA.md`; **se reactiva antes de producción** (pendiente de Mateo, §10). |
+| **D-10 (plan) — Restaurar `docs/INFRAESTRUCTURA.md` dentro de esta feature.** | Dejarlo como pendiente externo. | CLAUDE.md, DECISIONES.md y el spec referencian sus §5/§6/§8/§9/§10/§12; la documentación operativa es parte de la fundación y hoy el archivo es una copia corrupta de `ARQUITECTURA.md`. Commit `docs:` independiente. |
 
-### D-7 — Vitest como runner de tests unitarios
+## 6. Dependencias nuevas
 
-- **Decisión:** Vitest (MIT) para `tests/unit` e `tests/integracion`.
-- **Alternativa descartada A:** `node:test` nativo. Cero dependencias, pero sin
-  mocks de módulos cómodos (necesitamos `vi.mock('next/headers')`) ni cobertura
-  integrada.
-- **Alternativa descartada B:** Jest. Más pesado y con configuración adicional
-  para ESM/Next.
-- Los tests de aislamiento RLS **no** son de Vitest: son scripts SQL ejecutados
-  con `psql` (evidencia más directa sobre la base real).
+Solo licencias MIT, Apache-2.0, BSD o ISC (CLAUDE.md §2). Versiones exactas se fijan con `npm` en
+`/implement` (se registra la elegida en `tasks.md`).
 
-### D-8 — `clientes`: escritura SOLO plataforma en la fundación
+### Backend (`backend/package.json`)
 
-- **Decisión:** en la migración fundacional, `clientes` solo tiene política de
-  escritura para `es_admin_plataforma()`. El `admin_acueducto` puede **leer** su
-  cliente, no editarlo todavía.
-- **Contexto:** `esquema-propuesto.sql` §16 crea `clientes_update_propio`
-  (admin_acueducto edita su fila) y dice textualmente "pero NO su plan ni su
-  estado de cuenta: eso se protege con un trigger de columnas". Ese trigger **no
-  existe** en el esquema propuesto.
-- **Razón:** crear `clientes_update_propio` sin el trigger dejaría al
-  `admin_acueducto` con capacidad de cambiar su propio `plan_id` y
-  `estado_cuenta` — un agujero de seguridad en la capa más sensible (el cobro de
-  UndreoCol). La política y el trigger de protección de columnas se crean juntos
-  en la feature de gestión de clientes/planes.
-- **Alternativa descartada:** copiar la política tal cual del esquema propuesto
-  (riesgo aceptado: no). Ampliar la fundación para incluir el trigger (sale del
-  alcance mínimo pedido).
+| Paquete | Tipo | Licencia | Por qué | Alternativa descartada |
+|---|---|---|---|---|
+| `hono` (^4) | runtime | MIT | Framework HTTP mínimo para Workers (D-6). | Express/Fastify (no corren en Workers). |
+| `@supabase/supabase-js` (^2) | runtime | MIT | Cliente Supabase con el JWT del usuario y con `service_role` en cron/. | Postgres directo en Workers (imposible sin Hyperdrive; no hay). |
+| `wrangler` (^4) | dev | Apache-2.0 | CLI de Workers: `dev`, `deploy --dry-run`, `r2 object`. | — |
+| `@cloudflare/workers-types` (^4) | dev | Apache-2.0 | Tipos de `ScheduledController`, `ExecutionContext`, `Env`. | — |
+| `typescript` (^5) | dev | Apache-2.0 | TS estricto. | — |
+| `vitest` | dev | MIT | Unit de `calcularNivel()` (pura, sin Workers ni red). | Jest (más pesado en ESM). |
+| `eslint` + `typescript-eslint` | dev | MIT | Lint. | — |
 
-### D-9 — `usuarios_servicio` mínima
+### Frontend (`frontend/package.json`)
 
-- **Decisión:** solo `id`, `cliente_id`, `codigo_suscriptor`, `nombre`, `estado`
-  y timestamps, con `unique (cliente_id, codigo_suscriptor)`. Sin `perfil_id`
-  (obligatorio por D-2) y sin las columnas del suscriptor completo.
-- **Razón:** su único propósito en esta feature es verificar el aislamiento RLS
-  de una tabla tenantizada de negocio. Añadir `categoria` arrastraría el enum
-  `categoria_tarifaria`, que pertenece a la feature de tarifas.
-- **Alternativa descartada:** crear la tabla completa desde el inicio (contradice
-  la instrucción de "mínima" y adelanta tipos/dependencias de features futuras).
+| Paquete | Tipo | Licencia | Por qué | Alternativa descartada |
+|---|---|---|---|---|
+| `next` (^15) + `react`/`react-dom` (^19) | runtime | MIT | Stack decidido (D-6, CLAUDE.md §2). | — |
+| `@opennextjs/cloudflare` | dev | MIT (verificar) | Adaptador Next.js → Cloudflare (decisión D-1). | `@cloudflare/vite-plugin` (cambio de toolchain); estático. |
+| `tailwindcss` (^3) + `postcss` + `autoprefixer` | dev | MIT | Estilos (CLAUDE.md §2). | — |
+| `eslint` + `eslint-config-next` + `@types/*` | dev | MIT | Lint y tipos. | — |
+| shadcn/ui (componentes copiados: `button`, `input`, `card`, `label`) | — | MIT | UI base, solo los usados (spec §4.2). | ui completa (deuda de mantenimiento). |
 
-### D-10 — `@supabase/ssr` para el cliente de servidor
+### CI (`.github/workflows/backup-diario.yml`)
 
-- **Decisión:** `lib/db.ts` usa `@supabase/ssr` (`createServerClient`) con las
-  cookies de `next/headers`.
-- **Alternativa descartada A:** `@supabase/supabase-js` con `createClient` y
-  gestión manual de cookies. Reimplementa lo que `@supabase/ssr` ya resuelve
-  (refresco de tokens y escritura de cookies).
-- **Alternativa descartada B:** middleware para refrescar sesión. No es necesario
-  en la fundación; se evaluará cuando existan rutas protegidas.
-
-### D-11 — Enums mínimos (solo 3)
-
-- **Decisión:** solo `rol_usuario`, `estado_cuenta` y `estado_suscriptor`.
-- **Alternativa descartada:** importar todos los enums del esquema propuesto
-  (11 en total). Contradice la fundación mínima: `categoria_tarifaria`,
-  `tipo_calculo`, `estado_periodo`, etc. se crean con sus features.
-- `rol_usuario` cumple la restricción de exactamente 3 valores (sin `suscriptor`,
-  D-2).
-
-### D-12 — Sesión de suscriptor declarada como contrato que lanza
-
-- **Decisión:** las firmas de sesión de suscriptor existen en `lib/auth.ts`
-  desde la fundación y lanzan `ErrorSesionSuscriptorPendiente`.
-- **Razón:** la decisión D-4 exige que la interfaz de `lib/auth.ts` contemple los
-  dos tipos desde el diseño; declarar las firmas evita que la feature 008 cambie
-  la API pública. Lanzar con un error tipado evita "código muerto silencioso" y
-  cumple la regla de errores explícitos (CLAUDE.md §6).
-- **Alternativa descartada A:** no declarar nada de suscriptor hasta la 008
-  (cierra la interfaz, contradice D-4 y la instrucción de Mateo).
-- **Alternativa descartada B:** implementar ya la sesión de suscriptor (fuera del
-  alcance: la feature 001 implementa solo la administrativa).
-
-### D-13 — RLS `FORCE` desde la primera migración (restricción obligatoria)
-
-- **Decisión:** `enable row level security` + `force row level security` en las 6
-  tablas dentro de la migración fundacional.
-- **Alternativa descartada:** activar FORCE al final de la fundación o "cuando
-  haya datos". Sería inconsistente con CLAUDE.md §5.4 y permitiría que código o
-  pruebas en desarrollo se salten el aislamiento.
-
-### D-14 — Nada de `components/`, `core/`, `worker/` en esta feature
-
-- **Razón:** no hay UI, ni cálculo de dinero, ni procesos pesados en la
-  fundación. CLAUDE.md §6: no se crean archivos que no estén en `plan.md`.
-- **Alternativa descartada:** crear la estructura de carpetas vacía "para dejarla
-  lista" (carpetas vacías no aportan nada y no son verificables).
-
----
-
-## 6. Estrategia de pruebas — CA-1 (11 pasos) y CA-2 (5 pasos)
-
-> ⚠️ **SUPUESTO NO VERIFICADO:** el `spec.md` real de la feature 001 no está
-> disponible en esta carpeta (ver sección 0). Los criterios de aceptación CA-1 y
-> CA-2 que se detallan abajo son una **interpretación de trabajo** alineada con
-> `ESPECIFICACION-FUNCIONAL.md`, `CLAUDE.md` (regla de verificación, §10) y la
-> instrucción de Mateo. Cuando el spec real esté disponible, hay que contrastar
-> cada paso y ajustar este plan antes de aprobarlo.
-
-**Convención de evidencia (CLAUDE.md §4):** cada paso termina con un comando
-ejecutado y su salida real pegada en la conversación. Nada de "debería
-funcionar".
-
-### 6.1 Supuestos sobre CA-1 — fundación de la base de datos (11 pasos)
-
-Se asume que CA-1 verifica el esquema y el aislamiento multi-tenant. Los pasos
-1–5 son estructurales (information_schema/catálogo); los pasos 6–11 son de
-comportamiento RLS.
-
-| Paso | Qué se verifica | Comando de verificación | Evidencia esperada |
+| Paquete | Tipo | Licencia | Por qué |
 |---|---|---|---|
-| 1 | `supabase db reset` aplica la migración sin errores | `supabase db reset` | Salida sin errores, migración listada en `supabase migration list` |
-| 2 | Existen las 6 tablas con sus columnas | `psql "$DATABASE_URL" -f tests/aislamiento/...` (consulta a `information_schema.tables/columns`) | 6 tablas y las columnas esperadas por tabla |
-| 3 | `rol_usuario` tiene exactamente 3 valores | consulta `enum_range(NULL::rol_usuario)` | `{administrador,admin_acueducto,lector}` |
-| 4 | `usuarios_servicio` NO tiene `perfil_id` | consulta `information_schema.columns` filtrando tabla y columna | 0 filas |
-| 5 | RLS habilitado + `FORCE` en las 6 tablas | consulta `pg_class` (`relrowsecurity`, `relforcerowsecurity`) | 6 tablas con ambos flags = true |
-| 6 | Rol anon no lee datos de negocio | `set local role anon; select count(*) from clientes;` (y configuracion, usuarios_servicio, membresias, perfiles) | 0 filas |
-| 7 | `admin_acueducto` A ve solo datos de A | `set local request.jwt.claim.sub = '<perfil A>'; set local role authenticated;` + selects | Ve A; no ve B en `clientes`, `membresias`, `configuracion`, `usuarios_servicio` |
-| 8 | `admin_acueducto` A no puede insertar/editar datos de B | insert/update sobre filas de B | Error de política (`new row violates row-level security policy`) |
-| 9 | `admin_acueducto` A no puede otorgar rol `administrador` | insert membresia rol='administrador' | Error de política |
-| 10 | `administrador` de plataforma ve y gestiona todo | claim del perfil plataforma + insert/update/delete en las 6 tablas | Operaciones exitosas |
-| 11 | `planes` es lectura pública, escritura solo plataforma | rol anon lee planes; rol admin_acueducto intenta escribir en planes | Lectura OK; escritura rechazada |
+| `postgres:16-alpine` (imagen contenedor) | CI | PostgreSQL License | Proporciona `pg_dump`/`pg_restore` sin instalar nada en el runner. |
+| `wrangler` (vía `npx`) | CI | Apache-2.0 | Subida a R2 y listado del bucket. |
 
-**Implementación:** los pasos 2–11 se automatizan en un único script
-`tests/aislamiento/001_fundacion_aislamiento.sql` ejecutado con:
+---
 
-```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/fundacion.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/001_fundacion_aislamiento.sql
-```
+## 7. Límites de Cloudflare Workers a considerar
 
-- El fixture inserta 2 clientes (A y B), 4 perfiles (plataforma, admin A, lector
-  A, admin B), sus membresías y configuraciones, y usuarios_servicio para A y B.
-  Es idempotente (limpia al inicio). Se ejecuta con `service_role_key` (o como
-  `postgres`) porque es un test, con justificación escrita en el propio script.
-- El script de aislamiento usa `set local role` + `set local request.jwt.claim.sub`
-  (mecanismo nativo de Supabase para simular la sesión del JWT) y `assert`
-  dentro de bloques `do $$`. Cualquier verificación que falle **lanza excepción y
-  corta el script con `ON_ERROR_STOP=1`**; la salida se pega como evidencia.
-- **NO VERIFICADO:** ejecutar estos comandos requiere Docker + Supabase CLI +
-  psql instalados. La verificación se hace en `/implement`, no en este plan.
+Verificados contra la documentación vigente de Cloudflare (límites de plataforma, jul-2026). Nuestros
+tres Workers cron caben en el plan Free con holgura.
 
-### 6.2 Supuestos sobre CA-2 — fundación de la aplicación (5 pasos)
+| Límite (plan Free) | Valor | Implicación para esta feature |
+|---|---|---|
+| Cron Triggers **por cuenta** | **5** | Se usan 3 (keepalive, monitor-db, limpieza). Quedan 2 libres para features futuras. Por eso 1 Worker = 1 cron (D-5). |
+| Requests | 100.000/día | El ping diario + monitoreo + API: despreciable. |
+| CPU time por invocación | 10 ms | El ping (1 UPDATE) y el monitoreo (1 SELECT) son triviales; el tiempo de red no cuenta como CPU. |
+| Wall time (Cron Triggers) | 15 min | Sobra de sobra para 1 consulta. |
+| Memoria por isolate | 128 MB | Hono + supabase-js: decenas de MB. |
+| Bundle tras compresión | 3 MB (Free) | Cada Worker cron solo importa `@supabase/supabase-js` + su lógica; el Worker de la API agrega Hono. Vigilar el bundle en `wrangler deploy --dry-run` (CA-6). |
+| Subrequests | 50/request | 1 llamada a Supabase por invocación. |
+| Número de Workers | 100 | 4 Workers (API + 3 cron). |
 
-Se asume que CA-2 verifica que el proyecto Next.js compila, es ejecutable de
-forma standalone y respeta las restricciones de arquitectura.
+**Regla de cierre masivo (CLAUDE.md §5.5):** no aplica en esta feature (Queues fuera de alcance), pero el
+diseño de `backend/` ya reserva la carpeta `queues/` para cuando llegue.
 
-| Paso | Qué se verifica | Comando de verificación | Evidencia esperada |
+## 8. Estrategia de pruebas
+
+### 8.1 Mapa de los 11 criterios de aceptación → evidencia
+
+Cada CA se cierra con evidencia ejecutada y pegada (CLAUDE.md §4). Cómo se cubre cada uno:
+
+| CA | Qué verifica | Dónde se evidencia | Estado de cobertura actual |
 |---|---|---|---|
-| 1 | Dependencias instaladas | `npm ci` | Exit 0, `package-lock.json` generado |
-| 2 | Compilación sin errores ni warnings TS | `npm run build` | Exit 0; sin errores ni warnings de TypeScript |
-| 3 | Lint limpio | `npm run lint` | Exit 0 |
-| 4 | La app responde en desarrollo y en producción | `npm run dev` + `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000` y luego `npm run start` (servidor standalone) + curl | `200` en ambos |
-| 5 | Restricciones de arquitectura | `grep -rn "@supabase/" app/ components/ || echo OK` y verificar existencia de `.next/standalone/` | Grep vacío (o "OK"); `.next/standalone/server.js` presente |
+| **CA-1** Aislamiento entre acueductos (bloqueante) | SQL directo: A ve solo sus datos; no lee/inserta/actualiza/borra de B | `tests/aislamiento/001_fundacion_aislamiento.sql` pasos 6–8 y 10–11 (SQL directo, nunca vía Hono) | ✅ Cubierto |
+| **CA-2** Imposibilidad de escalar privilegios (bloqueante) | `admin_acueducto` no otorga `administrador` ni toca `clientes.plan_id/estado_cuenta` | Paso 9 (a sí mismo y en cliente B) + **2 brechas nuevas** (§8.2): (a) `administrador` para OTRO perfil de A; (b) `update` de `clientes` de A sin efecto | ⚠️ Parcial |
+| **CA-3** Migraciones reproducibles | `supabase db reset` desde vacío | Comando de tarea (salida pegada) | ✅ Comando |
+| **CA-4** Sin `@supabase` en frontend | `grep -rn "@supabase" frontend/app/ frontend/components/` → 0 | Comando de tarea | ✅ Comando |
+| **CA-5** Sin `service_role_key` en frontend | `grep -rn "SERVICE_ROLE" frontend/` → 0 | Comando de tarea | ✅ Comando |
+| **CA-6** Build y despliegue en seco | `npm run build` (frontend) + `npx wrangler deploy --dry-run` (backend) | Comando de tarea | ✅ Comando |
+| **CA-7** Onboarding transaccional | Slug duplicado → falla y NO quedan huérfanos | **PASO 14 nuevo** en el test de aislamiento (§8.2) | ❌ No cubierto |
+| **CA-8** Keepalive funcional | `wrangler dev --test-scheduled` actualiza `_keepalive.ultimo_ping` | PASO 12 nuevo (soporte de esquema + RLS + singleton) + ejecución manual del Worker + `psql select ultimo_ping` | ❌ No cubierto |
+| **CA-9** Monitoreo funcional | `tamano_base_mb()` + porcentaje vs 500 MB | PASO 13 nuevo (función + permisos + % calculado) + ejecución manual del Worker + unit de `calcularNivel()` | ❌ No cubierto |
+| **CA-10** Backup ejecutado una vez | `workflow_dispatch` sube el dump a R2 | NO es cubrible por SQL: evidencia = listado `wrangler r2 object list undreocol-backups` con archivo y tamaño | ❌ Manual (workflow) |
+| **CA-11** Flujo manual completo | Registro → onboarding → dashboard → logout → login → dashboard | Documentado paso a paso para Mateo, verificado por él en navegador | ❌ Manual (Mateo) |
 
-**Detalles del paso 4 (standalone):** con `output: 'standalone'`, `next build`
-genera `.next/standalone/` con `server.js` ejecutable sin `node_modules` completo.
-Se verifica con:
+**Respuesta a la pregunta de la tarea:** CA-1 ✅, CA-2 ⚠️ (faltan 2 verificaciones), CA-8/CA-9 ❌
+(añadir pasos 12 y 13), CA-10 ❌ (no es SQL; se evidencia con el workflow + R2), CA-7 ❌ (PASO 14). El
+detalle de la adaptación del test de aislamiento está en §8.2.
 
-```bash
-next build
-node .next/standalone/server.js &   # sirve en el puerto configurado
-curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
-```
+### 8.2 Adaptación de `tests/aislamiento/001_fundacion_aislamiento.sql`
 
-### 6.3 Tests unitarios e integración de `lib/`
+El script actual conserva sus pasos 2–11 tal cual (mecánica: transacción + `set local role` +
+`set local request.jwt.claim.sub` + aserciones que lanzan `raise exception`, `ON_ERROR_STOP=1`). Se
+**añaden** los siguientes pasos y se actualiza la cabecera del script (referencia al plan/tasks nuevos):
 
-- `tests/unit/lib/auth.test.ts` (Vitest): mocks de `next/headers` y de
-  `@supabase/ssr` (`vi.mock`).
-  - `obtenerSesionActiva()` sin cookie → `null`.
-  - `obtenerSesionActiva()` con sesión válida → `SesionAdministrativa` con
-    `tipo: 'administrativa'`.
-  - `iniciarSesion()` con credenciales inválidas → error explícito.
-  - `cerrarSesion()` sin sesión → no lanza.
-  - `iniciarSesionSuscriptor` / `renovarSesionSuscriptor` /
-    `verificarSesionSuscriptor` → lanzan `ErrorSesionSuscriptorPendiente`.
-  - Verificación: `npx vitest run` → todos verdes, salida pegada.
-- `tests/integracion/001_fundacion_auth.test.ts` (Vitest, requiere Supabase
-  local): `supabase start` + fixture + `iniciarSesion('admin-a@test.local', ...)`
-  → sesión real. Si `supabase` no está arriba, el test se reporta como
-  **NO VERIFICADO — requiere validación manual**, nunca como aprobado.
+**PASO 12 — Soporte del keepalive (CA-8, parte de esquema):**
+1. `_keepalive` existe con RLS `enable` + `force` y con **cero políticas** (`pg_policies` → 0 filas).
+2. `anon` y `authenticated` no pueden leerla (`set local role` + `select` → error de RLS o 0 filas).
+3. Singleton: `insert into _keepalive (id) values (2)` → falla (`chk_singleton`).
+4. Simulación del Worker: `set local role service_role; update _keepalive set ultimo_ping = now()
+   returning ultimo_ping;` → 1 fila con timestamp reciente (el mecanismo exacto que usa
+   `cron/keepalive.ts`).
 
-### 6.4 Orden de ejecución y definición de terminado
+**PASO 13 — Soporte del monitoreo (CA-9, parte de esquema):**
+1. `tamano_base_mb()` existe y devuelve `numeric > 0` (ejecutada como `service_role`).
+2. Permisos: ejecutarla como `anon` y como `authenticated` → error (`permission denied for function`);
+   como `service_role` → OK.
+3. Cálculo: `pct = tamano_base_mb() / 500.0 * 100` y `assert pct < 80` (muy por debajo del umbral de
+   alerta en esta etapa; responde a CA-9 "debe estar muy por debajo del umbral").
 
-1. `supabase start` + `supabase db reset` → CA-1 pasos 1–5.
-2. `tests/fixtures/fundacion.sql` + `tests/aislamiento/001_fundacion_aislamiento.sql`
-   → CA-1 pasos 6–11.
-3. `npm ci` → CA-2 paso 1.
-4. `npm run lint` + `npm run build` → CA-2 pasos 2–3.
-5. `npm run dev`/standalone + curl + grep de `@supabase/` → CA-2 pasos 4–5.
-6. `npx vitest run` → tests unitarios e integración de `lib/`.
+**PASO 14 — Onboarding transaccional (CA-7):**
+1. Como un usuario nuevo `z1` (`set local role authenticated` + claim `z...`): `select
+   crear_tenant_con_admin('Acueducto Z', 'acueducto-z', 'z@test.local')` → devuelve `uuid` no nulo.
+2. Verificar que quedaron exactamente: 1 fila en `clientes`, 1 en `membresias` (rol `admin_acueducto`,
+   `activo`), 1 en `configuracion` para ese `cliente_id`.
+3. **Atomicidad:** repetir la llamada con el mismo slug → falla (unique violation convertida en
+   `raise 'El slug ya está en uso'` o error de constraint); contar filas de `clientes` antes y después →
+   **idénticas** (sin huérfanos). Igual comprobación con el usuario `admin_a` que ya tiene acueducto →
+   `raise 'El usuario ya tiene un acueducto'` y conteo estable.
+4. `anon` no puede ejecutar la función (`permission denied`).
 
-Cumple la definición de "terminado" de CLAUDE.md §10: build sin warnings, lint
-limpio, tests verdes con salida pegada, migración versionada con test de
-aislamiento en verde, y actualización de `CHANGELOG.md` al final.
+**Ampliación del PASO 9 — brechas de CA-2:**
+- (a) `admin_acueducto` de A inserta membresía con `rol = 'administrador'` para **otro perfil** de A
+  (el lector A): debe fallar.
+- (b) `admin_acueducto` de A hace `update clientes set plan_id = ... / estado_cuenta = ...` sobre SU
+  cliente: **0 filas afectadas** (o error de política) — la escritura de `clientes` es solo plataforma
+  (decisión heredada del plan anterior, reflejada en la política `clientes_plataforma`).
 
----
+### 8.3 Pruebas unitarias, de integración y orden de ejecución
 
-## 7. Fuera de alcance
+- **Unit (`backend/tests/unit/monitor-db.test.ts`, vitest):** `calcularNivel()` — casos: 100 MB → `ok`;
+  300 MB → `atencion`; 400 MB → `alerta`; 480 MB → `critico`; y el porcentaje exacto frente a 500 MB.
+- **Aislamiento:** `supabase db reset` (aplica la migración con §10-§11) → fixture → script de
+  aislamiento. Comando: `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/001_fundacion_aislamiento.sql`.
+- **Manual con evidencia (CA-8/CA-9):** `wrangler dev --test-scheduled -c wrangler.keepalive.toml`
+  (y `monitor-db`) → salida pegada + consulta a `_keepalive`/`tamano_base_mb()`.
+- **CA-10:** `workflow_dispatch` del backup → listado del bucket.
+- **CA-11:** pasos manuales documentados para Mateo (registro → onboarding → dashboard → logout →
+  login → dashboard).
 
-- Las demás tablas del esquema propuesto (servicios, tarifas, contadores,
-  periodos, lecturas, facturas, pagos, órdenes, notificaciones, trabajos,
-  empleados, incapacidades, auditoría) y sus features.
-- Sesión de suscriptor del portal (feature 008) y su middleware.
-- UI de login, páginas del panel y rutas protegidas.
-- `lib/tenant.ts` (resolución del cliente activo) y `lib/storage.ts`.
-- `core/` (lógica de negocio) y `worker/`.
-- Trigger de protección de columnas de `clientes` (se crea en la feature de
-  gestión de clientes, junto con la política de edición — ver D-8).
-- Configuración de despliegue a Vercel/Supabase Cloud (solo entorno local).
+**Orden propuesto de verificación por tarea (se detalla en `tasks.md` tras la aprobación):** migración y
+test de aislamiento primero (CA-1/2/7/8/9 de esquema), luego backend (rutas + crons + unit), luego
+frontend (build + greps CA-4/5/6), luego workflow (CA-10), y por último el flujo manual (CA-11).
 
----
+## 9. Fuera de alcance
 
-## 8. Riesgos y pendientes de Mateo
+Explícitamente **no** se construye aquí (spec §5, sin cambios de alcance):
+
+- Servicios, tarifas, contadores, lecturas, periodos, facturas, pagos (features 002–007).
+- Órdenes de corte y reconexión (009), notificaciones (010), dashboard de indicadores (011), RRHH (012).
+- Portal del suscriptor y su sesión propia (008) — solo se declaran los contratos de `sesion-suscriptor.ts`.
+- PWA del lector (014) y Cloudflare Queues / cierre de facturación.
+- Invitación de lectores y admins adicionales (003) y panel maestro de clientes de la plataforma.
+- **Worker de limpieza completo** (feature 015): aquí solo la base (`cron/limpieza.ts`).
+- Envío real de alertas del monitoreo (Email Service; se integra en una feature posterior).
+- `backend/src/core/` (lógica de negocio pura), `backend/src/queues/`.
+- Diseño visual elaborado — limpio y funcional es suficiente.
+
+## 10. Riesgos y pendientes de Mateo
 
 | Riesgo / pendiente | Impacto | Mitigación |
 |---|---|---|
-| `spec.md` de la feature 001 no está disponible; CA-1/CA-2 son interpretación | El plan puede no coincidir con los criterios reales | Sección 0 y 6: todo marcado como supuesto; se revisa al llegar el spec |
-| No existe `specs/plantillas/plan.md` | Estructura de este plan definida por mí | Se migra a la plantilla oficial cuando exista |
-| Los docs están en la raíz, no en `docs/` | Inconsistencia con rutas referenciadas en CLAUDE.md | Mover a `docs/` (acción no bloqueante, al aprobar el plan) |
-| Docker, Supabase CLI, Node 20+ y psql no verificados en este equipo | CA-1/CA-2 no se pueden ejecutar aquí hoy | Verificación en `/implement`; si falta el entorno, se reporta NO VERIFICADO |
-| Umbrales por defecto del negocio y tarifas reales pendientes de Mateo | Valores por defecto de `configuracion` | No bloquean la fundación; se ajustan en la feature de configuración |
+| `docs/INFRAESTRUCTURA.md` corrupto (copia de ARQUITECTURA.md) | La documentación operativa referenciada no existe | Se restaura dentro de esta feature (D-10). Se marca como **pendiente de aprobación de Mateo** porque toca un documento de referencia. |
+| La guía oficial de Cloudflare en 2026 recomienda Vite para Next.js full-stack; OpenNext podría descontinuarse | El adaptador elegido (D-1) quedaría obsoleto | En `/implement`, verificar estado vigente de `@opennextjs/cloudflare` al instalar; si no es viable, **se detiene y se reporta** (cambio de stack = decisión de Mateo, fuera del alcance aprobado). |
+| Despliegue real a Cloudflare requiere cuenta y credenciales de Mateo | `wrangler deploy` y Cron Triggers no se pueden probar de verdad | CA-6 usa `--dry-run`; CA-8/CA-9 se verifican con `wrangler dev --test-scheduled` (local). El despliegue real y los secretos (`CLOUDFLARE_API_TOKEN`, etc.) quedan como paso final que requiere a Mateo. |
+| Backup real a R2 requiere bucket + credenciales de R2/Cloudflare | CA-10 no puede ejecutarse hasta tenerlas | El workflow se escribe y se valida la sintaxis; la ejecución (`workflow_dispatch`) requiere los secretos de GitHub, que pone Mateo. |
+| Confirmación de email de Supabase desactivada (D-9) | Riesgo de seguridad en producción | Es solo para dev/demo; **se reactiva antes de producción** (pendiente de Mateo, queda registrado en `INFRAESTRUCTURA.md`). |
+| Limpieza sin tablas que purgar (015) | El Worker de limpieza no hace nada real todavía | Base intencional: la estructura se crea (D-7); el alcance de purga llega con 015. |
+| `@opennextjs/cloudflare` exige una versión concreta de Next.js | Conflicto de versiones al instalar | Fijar la versión de Next 15 compatible según la doc del adaptador al momento de `npm install`. |
+| CPU de 10 ms (Free) en invocaciones cron | Un query lento podría agotar el CPU | El ping y el monitoreo son 1 consulta trivial; si en la práctica excede, se evalúa Workers Paid (disparador de `ARQUITECTURA.md` §6). |
+
+---
+
+**Definición de terminado del plan:** con este documento aprobado por Mateo, el siguiente paso es
+producir `specs/001-fundacion/tasks.md` (tareas atómicas con su verificación). No se escribe código antes.
 
