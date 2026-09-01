@@ -159,12 +159,18 @@ curl -s -i -b /tmp/cookies.txt -c /tmp/cookies.txt -X POST http://localhost:8787
 ```
 **Resultado esperado:** cookie `uc_sesion_admin` en `/tmp/cookies.txt`; `/auth/sesion` devuelve el perfil
 autenticado; logout limpia la cookie. Credenciales inválidas → error explícito en español.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-01)
 **Evidencia:**
 ```
-<salidas de curl>
+npm run lint → 0 | npm run build (tsc) → 0 | wrangler deploy --dry-run → gzip 155.39 KiB
+POST /auth/registro admin-d@test.local → 201 {"ok":true,"usuarioId":"e3da5e3b-..."}
+POST /auth/login → 200 {sesion:{tipo:administrativa,...}, perfil:null, membresias:[]}
+  Set-Cookie: uc_sesion_admin=...; HttpOnly; Secure; SameSite=Lax; Max-Age=604800
+GET  /auth/sesion → 200 (misma sesión)
+POST /auth/login con password incorrecta → 401 {"error":"Credenciales inválidas"}
+POST /auth/logout → 200 {"ok":true}; GET /auth/sesion tras logout → 401 "No autenticado"
 ```
-**Commit:** (tras completar)
+**Commit:** (este commit)
 
 ## T-006 — Backend onboarding + dashboard
 
