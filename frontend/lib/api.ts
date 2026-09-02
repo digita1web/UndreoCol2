@@ -312,3 +312,89 @@ export function reemplazarContador(
     body: JSON.stringify(datos),
   });
 }
+
+// --- Periodos y lecturas (004-lecturas-y-consumo) ---------------------------
+
+export interface Periodo {
+  id: string;
+  cliente_id: string;
+  nombre: string;
+  anio: number;
+  mes: number;
+  fecha_inicio: string;
+  fecha_fin: string;
+  fecha_vencimiento: string;
+  estado: 'abierto' | 'cerrado';
+  fecha_cierre: string | null;
+  cerrado_por: string | null;
+}
+
+export type RevisionLectura = 'normal' | 'consumo_alto' | 'consumo_bajo' | 'consumo_cero';
+
+export interface Lectura {
+  id: string;
+  cliente_id: string;
+  contador_id: string;
+  periodo_id: string;
+  fecha_lectura: string;
+  lectura_anterior: number;
+  lectura_actual: number;
+  consumo_m3: number;
+  hubo_rollover: boolean;
+  revision: RevisionLectura;
+  promedio_historico: number | null;
+  revisada: boolean;
+  revisada_por: string | null;
+  id_cliente_offline: string | null;
+}
+
+export interface DatosCrearPeriodo {
+  nombre: string;
+  anio: number;
+  mes: number;
+  fecha_inicio: string;
+  fecha_fin: string;
+  fecha_vencimiento: string;
+}
+
+export function listarPeriodos(): Promise<{ periodos: Periodo[] }> {
+  return peticion<{ periodos: Periodo[] }>('/periodos');
+}
+
+export function crearPeriodo(datos: DatosCrearPeriodo): Promise<{ periodo: Periodo }> {
+  return peticion<{ periodo: Periodo }>('/periodos', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
+
+export function cerrarPeriodo(id: string): Promise<{ periodo: Periodo }> {
+  return peticion<{ periodo: Periodo }>(`/periodos/${id}/cerrar`, { method: 'PATCH' });
+}
+
+export function listarLecturas(opciones: { periodoId?: string; soloAnomalias?: boolean } = {}): Promise<{ lecturas: Lectura[] }> {
+  const params = new URLSearchParams();
+  if (opciones.periodoId) params.set('periodo_id', opciones.periodoId);
+  if (opciones.soloAnomalias) params.set('solo_revision', 'true');
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return peticion<{ lecturas: Lectura[] }>(`/lecturas${query}`);
+}
+
+export interface DatosCrearLectura {
+  contador_id: string;
+  periodo_id: string;
+  fecha_lectura: string;
+  lectura_actual: number;
+  id_cliente_offline?: string;
+}
+
+export function crearLectura(datos: DatosCrearLectura): Promise<{ lectura: Lectura; nuevo: boolean }> {
+  return peticion<{ lectura: Lectura; nuevo: boolean }>('/lecturas', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
+
+export function revisarLectura(id: string): Promise<{ lectura: Lectura }> {
+  return peticion<{ lectura: Lectura }>(`/lecturas/${id}/revisar`, { method: 'PATCH' });
+}

@@ -249,10 +249,24 @@ cd frontend && npm run build && npm run lint
 navegador real (login admin → crear periodo → registrar lectura → revisar anomalía) queda
 "NO VERIFICADO — requiere validación manual de Mateo" si el entorno no permite `wrangler dev` +
 `next dev` contra una base real; en ese caso, con los pasos exactos (patrón 003 T-008).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
+$ npm run build  (frontend)
+  ✓ Compiled successfully
+  ✓ Generating static pages (11/11)
+  incluye /app/lecturas (2.74 kB) y /app/lecturas/periodo (2.61 kB)
+$ npm run lint → sin salida (limpio)
 
+api.ts: funciones Periodo/Lectura (listar/crear/cerrar periodo; listar/crear/
+revisar lectura). Paneles /app/lecturas (consulta por periodo + cola de
+anomalías + alta manual con la validación del Motor) y /app/lecturas/periodo
+(crear/cerrar el periodo del mes). Protegidos por middleware.ts (/app/:path*).
+
+Flujo completo en navegador (login admin → crear periodo → registrar lectura →
+revisar anomalía) NO VERIFICADO — requiere validación manual de Mateo con
+wrangler dev + next dev contra la base real (patrón 003 T-008); el build/lint
+por sí solos no ejercitan los datos reales.
 ```
 **Commit:** (tras completar)
 
