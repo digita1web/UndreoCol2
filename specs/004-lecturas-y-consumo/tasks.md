@@ -87,6 +87,7 @@ Fixtures 001/002/003 cargados tras el reset (base lista para T-002):
 ```
 
 **Commit:** (tras completar)
+
 ## T-002 — Fixtures + test de aislamiento (CA-2, CA-5)
 
 **Archivos:** `tests/fixtures/lecturas.sql`, `tests/aislamiento/004_lecturas_consumo_aislamiento.sql`
@@ -111,10 +112,37 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/004_lecturas_consum
 ```
 **Resultado esperado:** ambos scripts en verde, terminan con `LECTURAS-CONSUMO-AISLAMIENTO OK`; las
 aserciones de cada paso del enunciado quedan cubiertas y documentadas en el script.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
+Base: tras T-001 (reset + fixtures 001/002/003). Se aplicó el fixture de 004 y el test:
+$ psql ... -f tests/fixtures/lecturas.sql
+  BEGIN / DELETE 0 / DELETE 0 / INSERT 0 2 / INSERT 0 1 / COMMIT
+$ psql ... -f tests/aislamiento/004_lecturas_consumo_aislamiento.sql
+  ... (PASOS 1-9, cada uno con transacción+rollback)
+  LECTURAS-CONSUMO-AISLAMIENTO OK        <-- (segunda corrida tras 2 correcciones)
 
+La primera corrida FALLÓ en PASO 6 y PASO 9 (hallazgos reales documentados abajo);
+la segunda pasó.
+
+HALLAZGO REAL 1 (PASO 6): RLS es SILENCIOSO para UPDATE/DELETE. El test asumió que
+"el lector NO puede marcar revisada" lanzaría un error de row-level security, pero la
+política lecturas_admin usa `using (es_admin_de(cliente_id))`; al ser false para el
+lector, PostgreSQL simplemente FILTRA la fila y el UPDATE afecta 0 filas SIN excepción.
+Corregido: se verifica `get diagnostics n = row_count` → n = 0. (El admin SÍ marca → 1.)
+
+HALLAZGO REAL 2 (PASO 9): un `insert ... on conflict (id_cliente_offline) do nothing`
+sobre el contador/periodo A1 que YA tenía lectura de la fixture fallaba con
+"duplicate key ... lecturas_contador_id_periodo_id_key": el conflicto de ese insert
+violaba el unique (contador_id, periodo_id), no solo id_cliente_offline. Reescribí el
+PASO 9 para probar la idempotencia de reenvío sobre el cliente B (periodo B1 abierto y
+sin lecturas en el fixture): insertar el reenvío idéntico dos veces deja exactamente 1
+fila (do nothing), y se verifica estructuralmente que existe el unique de id_cliente_offline.
+
+Regresión sobre el mismo estado final (re-corrida en verde):
+  001_fundacion_aislamiento.sql → FUNDACION-AISLAMIENTO OK
+  002_catalogo_aislamiento.sql  → CATALOGO-AISLAMIENTO OK
+  003_suscriptores_aislamiento.sql → SUSCRIPTORES-AISLAMIENTO OK
 ```
 **Commit:** (tras completar)
 
