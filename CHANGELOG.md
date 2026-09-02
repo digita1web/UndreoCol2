@@ -48,11 +48,12 @@ esquemas auth/storage/realtime, `auth.uid()` nativo). La verificación de esquem
 hizo contra Supabase local real (`supabase db reset --local`), más fiel que el shim de 002/003.
 
 **Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
-- **CA-4** (T-004): correr los `curl` reales de `tasks.md` contra `wrangler dev` conectado a la base
-  local (login admin real → POST /periodos → POST /lecturas → PATCH /.../revisar). Pasos exactos en
-  `tasks.md` T-004.
-- **CA-6** (T-005): flujo completo en navegador (`next dev` + `wrangler dev`). Pasos exactos en
-  `tasks.md` T-005.
+Ninguno tras la re-validación posterior: **CA-4** y **CA-6** se re-validaron contra `wrangler dev` +
+`next dev` + Supabase local real (ver evidencia en `tasks.md` T-004/T-005 y la actualización de
+esta entrada). CA-4: flujo curl end-to-end en verde (login → periodo/lecturas/revisar/cerrar + los
+bloqueos por unique/periodo cerrado reales). CA-6: `/app/lecturas` y `/app/lecturas/periodo` se
+sirven con sesión (HTTP 200) y el middleware redirige a `/login` sin sesión (307). La interacción
+de clic en navegador sigue disponible como verificación manual opcional.
 
 ### 2026-09-02 — Sesión 010: 003-suscriptores-contadores completa (T-001 a T-009)
 

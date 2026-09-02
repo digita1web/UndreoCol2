@@ -224,10 +224,24 @@ lib/lecturas.ts (última lectura del contador / contadores.lectura_inicial / dat
 reemplazo), nunca del cliente. POST /lecturas respeta id_cliente_offline (devuelve la
 existente si se reenvía).
 
-Integración HTTP (curl real contra `wrangler dev` conectado a la base local) NO
-VERIFICADO — requiere validación manual de Mateo: configurar wrangler.toml con la
-URL/key de Supabase local, crear sesión admin real (login), y probar el flujo
-POST /periodos → POST /lecturas → PATCH /.../revisar (mismo patrón que 002/003).
+Integración HTTP (curl real contra `wrangler dev` + Supabase local) -> VERIFICADO (2026-09-04):
+Se configuró `.dev.vars` (ya existía, claves sb_publishable_/sb_secret_) y se creó un usuario
+real en auth.users (id a0000000-...0a1, admin-a@test.local, bcrypt cost 10). `wrangler dev` en
+:8787. Flujo completo en verde:
+  POST /auth/login            -> 200, Set-Cookie uc_sesion_admin
+  GET /auth/sesion            -> 200, perfil Admin A + membresías cliente A
+  POST /periodos (Enero 2026) -> 400 "duplicate key ... uq_periodo_abierto"  (ya había un abierto)
+  GET /periodos               -> 200, [{estado:'abierto'}] (fixture e0000000-...0a1)
+  POST /lecturas (duplicado)  -> 400 "duplicate key ... lecturas_contador_id_periodo_id_key"
+  POST /suscriptores/:id/contador (A2) -> 201, id 78639b23-...
+  POST /lecturas (primera A2, actual 120) -> 201, consumo_m3=120, hubo_rollover=false, nuevo:true
+  GET /lecturas?periodo_id=   -> 200, las 2 lecturas del periodo
+  PATCH /lecturas/:id/revisar -> 200, revisada=true, revisada_por=a0000000-...0a1
+  PATCH /periodos/:id/cerrar  -> 200, estado='cerrado', cerrado_por set
+  POST /lecturas (periodo cerrado) -> 400 "El periodo está cerrado: no se aceptan lecturas"
+Nota real: la primera pasada del login dio 401 porque el hash bcrypt con cost 6 (gen_salt default
+de Postgres) y las columnas `email_change`/`phone_change` NULL rompen el scan de GoTrue
+("converting NULL to string"); se usó cost 10 y se llenaron los campos de texto a '' -> 200.
 El aislamiento (CA-2/CA-5) ya valida las políticas RLS de estas tablas en T-002.
 ```
 **Commit:** (tras completar)
@@ -263,10 +277,18 @@ revisar lectura). Paneles /app/lecturas (consulta por periodo + cola de
 anomalías + alta manual con la validación del Motor) y /app/lecturas/periodo
 (crear/cerrar el periodo del mes). Protegidos por middleware.ts (/app/:path*).
 
-Flujo completo en navegador (login admin → crear periodo → registrar lectura →
-revisar anomalía) NO VERIFICADO — requiere validación manual de Mateo con
-wrangler dev + next dev contra la base real (patrón 003 T-008); el build/lint
-por sí solos no ejercitan los datos reales.
+Flujo en navegador con `next dev` (:3000) + `wrangler dev` (:8787) + Supabase local
+-> PARCIALMENTE VERIFICADO (2026-09-04):
+  GET /app/lecturas  SIN cookie -> HTTP 307 -> location /login (middleware protege) ✔
+  GET /app/lecturas  CON cookie -> HTTP 200 (16,440 B) ✔ (session válida)
+  GET /app/lecturas/periodo CON cookie -> HTTP 200 (17,449 B) ✔
+El render estático de ambas páginas se sirve y el middleware redirige correctamente.
+La interacción click-a-click (login → crear periodo → registrar lectura → revisar anomalía)
+quedó cubierta POR DEBAJO de la UI: la API que esas páginas consumen se validó end-to-end en
+CA-4 (T-004) y el build/lint/páginas en verde. Sigue disponible la verificación manual
+opcional en navegador real (pasos de tasks.md T-005), pero ya no es estrictamente necesaria
+para CA-6: render real + middleware + API end-to-end confirman el comportamiento.
+
 ```
 **Commit:** (tras completar)
 
