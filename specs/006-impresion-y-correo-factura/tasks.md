@@ -48,10 +48,18 @@ for f in 001_fundacion 002_catalogo 003_suscriptores 004_lecturas_consumo 005_fa
 done
 ```
 **Resultado esperado:** `CORREO-FACTURA-AISLAMIENTO OK` y los 5 previos en verde.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-06)
 **Evidencia:**
 ```
+$ supabase db reset --local → Finished (001→006 migraciones aplicadas desde cero)
+  tablas: notificaciones existe · enum: estado_notificacion (pendiente,enviada,fallida,cancelada)
+$ fixtures 001-006 (fundacion..correo-factura) → COMMIT cada uno
+$ tests/aislamiento/006_correo_factura_aislamiento.sql → CORREO-FACTURA-AISLAMIENTO OK (5 pasos)
 
+Regresión sobre el mismo estado final (los 6 en verde):
+  001_fundacion → FUNDACION-AISLAMIENTO OK · 002 → CATALOGO-AISLAMIENTO OK
+  003 → SUSCRIPTORES-AISLAMIENTO OK · 004 → LECTURAS-CONSUMO-AISLAMIENTO OK
+  005 → FACTURACION-AISLAMIENTO OK · 006 → CORREO-FACTURA-AISLAMIENTO OK
 ```
 **Commit:** (tras completar)
 
