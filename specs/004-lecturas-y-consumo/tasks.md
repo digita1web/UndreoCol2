@@ -289,10 +289,26 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/004_lecturas_consum
 **Resultado esperado:** los 4 comandos del backend y los 2 del frontend en verde (incluido
 `vitest` de `core/consumo.ts`), los 4 tests de aislamiento SQL en verde sobre el mismo estado final,
 evidencia pegada en el CHANGELOG y en esta tarea.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
+backend: $ npx tsc --noEmit → sin salida
+         $ npm test → 3 files: tarifas(8) / monitor-db(6) / consumo(22) = 36 tests OK
+         $ npx eslint . → sin salida
+         $ npx wrangler deploy --dry-run -c wrangler.toml
+            Total Upload: 814.66 KiB / gzip: 160.91 KiB · --dry-run: exiting now.
+frontend: $ npm run build → ✓ Compiled successfully · ✓ Generating static pages (11/11)
+                              incluye /app/lecturas y /app/lecturas/periodo
+          $ npm run lint → sin salida
 
+Aislamiento (estado final, Supabase local 17.6):
+  001_fundacion_aislamiento.sql       → FUNDACION-AISLAMIENTO OK
+  002_catalogo_aislamiento.sql        → CATALOGO-AISLAMIENTO OK
+  003_suscriptores_aislamiento.sql    → SUSCRIPTORES-AISLAMIENTO OK
+  004_lecturas_consumo_aislamiento.sql → LECTURAS-CONSUMO-AISLAMIENTO OK
+
+CHANGELOG.md actualizado (Sesión 011) y checkbox de spec.md §8 marcada con evidencia real,
+incluidos los ítems NO VERIFICADOS (CA-4 curl, CA-6 navegador) con sus pasos exactos.
 ```
 **Commit:** (tras completar)
 

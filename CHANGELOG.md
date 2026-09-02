@@ -4,6 +4,56 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-04 — Sesión 011: 004-lecturas-y-consumo completa (T-001 a T-006)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/004-lecturas-y-consumo/`): commit `b5236ec`, `61d94fe`,
+  `30123e1`.
+- **T-001** — Migración `20260904090000_lecturas-consumo.sql`: enums `estado_periodo` y
+  `revision_lectura`; tabla `periodos` (unique `(cliente_id, anio, mes)` + índice parcial
+  `uq_periodo_abierto`: un solo periodo abierto por cliente); tabla `lecturas` con FKs `ON DELETE
+  RESTRICT`, unique `(contador_id, periodo_id)`, unique `id_cliente_offline`, `chk_consumo >= 0` y
+  el índice parcial de la cola de anomalías. Función+trigger `bloquear_lectura_periodo_cerrado()`
+  (`SECURITY DEFINER`, solo lee `estado`). RLS `FORCE` en ambas tablas: el lector lee periodos y
+  puede insertar/leer lecturas de su cliente, pero gestionar periodos y marcar revisiones es solo
+  `admin_acueducto`. Verificado contra **Supabase local real** (`supabase db reset --local`,
+  PostgreSQL 17.6) — entorno con Docker disponible por primera vez en 004 (vs shim de 002/003).
+- **T-002** — Fixtures `tests/fixtures/lecturas.sql` (periodo abierto por cliente; A con lectura,
+  B sin lecturas) y `tests/aislamiento/004_lecturas_consumo_aislamiento.sql` (9 pasos). **Dos
+  hallazgos reales**: (1) RLS es **silencioso** para UPDATE/DELETE — el lector que intenta marcar
+  `revisada` no lanza excepción, simplemente afecta 0 filas; el test verifica `row_count = 0`.
+  (2) `ON CONFLICT (id_cliente_offline)` no bastaba porque la misma fila también violaba
+  `(contador_id, periodo_id)`; el PASO 9 ahora prueba la idempotencia de reenvío sobre el cliente
+  B (verifica 1 sola fila). Regresión 001/002/003 en verde.
+- **T-003** — `core/consumo.ts` (lógica pura, CLAUDE.md §5.3): `calcularConsumoPeriodo` (rollover y
+  rechazo puntos 1-2), `calcularConsumoConReemplazo` (punto 7) y `clasificarAnomalia` (puntos
+  5-6), con m³ a 2 decimales. 22 unit tests `vitest` (umbral exacto/por encima/por debajo, dígitos
+  5 y 6, tramos de reemplazo, anomalías alto/bajo/cero, y propiedad no negativo/<= capacidad +
+  determinismo). `npm test` → 36 tests en verde.
+- **T-004** — `lib/lecturas.ts` (capa fina; `lectura_anterior` SIEMPRE resuelta por el backend, nunca
+  del cliente; idempotencia por `id_cliente_offline`) y las rutas `POST/GET /periodos`,
+  `PATCH /periodos/:id/cerrar`, `GET/POST /lecturas`, `PATCH /lecturas/:id/revisar`. Se amplió
+  `requerirClienteActivo` para exponer `perfilId` (autor de cierre/lectura/revisión). `tsc`, `eslint`
+  y `wrangler deploy --dry-run` en verde (814.66 KiB / gzip 160.91 KiB).
+- **T-005** — Frontend: `lib/api.ts` ampliado con funciones de periodos/lecturas y los paneles
+  `/app/lecturas` (consulta por periodo, cola de anomalías, alta manual) y `/app/lecturas/periodo`
+  (crear/cerrar el periodo del mes), protegidos por el middleware existente. `npm run build` (11/11)
+  y `npm run lint` en verde.
+- **T-006** — Cierre: checklist de `spec.md §8`, CHANGELOG y re-corrida de los 4 tests de
+  aislamiento sobre el estado final.
+
+**Entorno (cambio respecto a 002/003)**
+Este contenedor ahora DISPONE de Docker con Supabase local completo (CLI 2.116.0, PostgreSQL 17.6,
+esquemas auth/storage/realtime, `auth.uid()` nativo). La verificación de esquema/RLS/funciones se
+hizo contra Supabase local real (`supabase db reset --local`), más fiel que el shim de 002/003.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- **CA-4** (T-004): correr los `curl` reales de `tasks.md` contra `wrangler dev` conectado a la base
+  local (login admin real → POST /periodos → POST /lecturas → PATCH /.../revisar). Pasos exactos en
+  `tasks.md` T-004.
+- **CA-6** (T-005): flujo completo en navegador (`next dev` + `wrangler dev`). Pasos exactos en
+  `tasks.md` T-005.
+
 ### 2026-09-02 — Sesión 010: 003-suscriptores-contadores completa (T-001 a T-009)
 
 **Hecho**

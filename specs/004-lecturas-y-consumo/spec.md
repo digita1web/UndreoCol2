@@ -201,12 +201,17 @@ middleware existente. `npm run build`/`npm run lint` limpios; flujo en navegador
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1–6) con evidencia — CA-1, CA-2 y CA-5 verificados contra PostgreSQL 16 nativo
-  + shim (sin Docker/PostgREST en este contenedor, patrón 002/003)
-- [ ] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios
-- [ ] Tests en verde: `vitest` de `core/consumo.ts` (CA-3) + test de aislamiento SQL (CA-2)
-- [ ] Test de aislamiento de las tablas nuevas (`periodos`, `lecturas`)
-- [ ] `CHANGELOG.md` actualizado en el cierre de la feature
-- [ ] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase
-- [ ] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica)
+- [x] Todos los CA (1–6) con evidencia — CA-1, CA-2 y CA-5 verificados contra **Supabase local real**
+  PostgreSQL 17.6 (`supabase db reset --local`), entorno con Docker disponible en esta sesión.
+  CA-1/CA-2/CA-5 en el test de aislamiento SQL (T-002), CA-3 con `vitest` (T-003); CA-4 y CA-6 quedan
+  **NO VERIFICADO** (validación manual de Mateo, pasos en tasks.md T-004/T-005).
+- [x] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios — `npm run build` 11/11,
+  incluidas `/app/lecturas` y `/app/lecturas/periodo`; `wrangler deploy --dry-run` 814.66 KiB sin errores
+- [x] Tests en verde: `vitest` de `core/consumo.ts` (22 tests, CA-3) — `npm test` 36 tests en verde +
+  test de aislamiento SQL (`004_lecturas_consumo_aislamiento.sql` → `LECTURAS-CONSUMO-AISLAMIENTO OK`)
+- [x] Test de aislamiento de las tablas nuevas (`periodos`, `lecturas`) — T-002, con regresión de
+  001/002/003 en verde sobre el mismo estado final
+- [x] `CHANGELOG.md` actualizado en el cierre de la feature — Sesión 011
+- [x] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase
+- [x] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica)
 
