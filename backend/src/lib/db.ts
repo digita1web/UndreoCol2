@@ -6,6 +6,16 @@ export interface Env {
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   ALLOWED_ORIGIN: string;
+  // Binding de Cloudflare Queues del cierre de facturación (producer/consumer).
+  FACTURACION_COLA?: Queue<MensajeFacturaCierre>;
+}
+
+// Mensaje de la cola de facturación: UNA factura por mensaje (CLAUDE.md §5.5).
+// El consumidor (src/queues/cierre-facturacion.ts) la emite en su invocación.
+export interface MensajeFacturaCierre {
+  clienteId: string;
+  periodoId: string;
+  usuarioServicioId: string;
 }
 
 // Cliente anónimo: solo para rutas públicas (p. ej. GET /salud). Sin JWT de

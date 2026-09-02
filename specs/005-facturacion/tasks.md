@@ -219,16 +219,20 @@ curl con --noproxy '*' y wrangler dev lanzado con env -u http_proxy etc.
 
 ## T-005 — Consumidor de Cloudflare Queues + modo emisión (CA-4 emisión)
 
-**Archivos:** `backend/src/queues/cierre-facturacion.ts`, `backend/wrangler.facturacion.toml`,
-`backend/src/index.ts` (ruta `POST /facturacion/periodos/:id/emitir`), `backend/wrangler.toml`
-**Hace:** `POST /facturacion/periodos/:id/emitir` valida el gate (hay simulación de ese periodo y no
-facturas emitidas de él) y encola UNA factura por suscriptor en `FACTURACION_COLA` (devuelve 202).
-El consumidor `cierre-facturacion.ts` (función `queue(batch, env)`) recibe cada mensaje y emite esa
-factura: resuelve tarifa/lecturas/snapshot, arma los renglones vía `core/`, asigna el número con
-`SELECT FOR UPDATE` sobre `configuracion` (punto 9b, formato D-3) en una transacción, e inserta
-`facturas` + `factura_detalles` + `factura_lecturas`. Si `tarifa_vigente()` es NULL registra la
-anomalía (punto 9d) y NO emite. `wrangler.toml` declara el producer y el consumer de `FACTURACION_COLA`
-(round-trip local verificado).
+**Archivos:** `backend/src/queues/cierre-facturacion.ts`, `backend/src/index.ts` (ruta
+`POST /facturacion/periodos/:id/emitir` + export `{fetch, queue}`), `backend/src/lib/db.ts` (binding
+`FACTURACION_COLA` + tipo `MensajeFacturaCierre`), `backend/wrangler.toml` (producer+consumer de
+`undreocol-facturacion`), `supabase/migrations/20260905090000_facturacion.sql` (función
+`siguiente_numero_factura` añadida)
+**Hace:** `POST /facturacion/periodos/:id/emitir` rechaza si el periodo ya tiene facturas (defensa de
+no duplicar; el gate de "se simuló" es de UI) y encola UNA factura por suscriptor en `FACTURACION_COLA`
+(202). El consumidor `cierre-facturacion.ts` (handler `queue(batch, env)`) emite cada factura:
+resuelve tarifa/lecturas/snapshot, arma renglones vía `core/`, asigna el número con la RPC
+`siguiente_numero_factura()` (`SELECT FOR UPDATE` sobre `configuracion`, puntos 9b/9c, formato D-3),
+e inserta `facturas` + `factura_detalles` + `factura_lecturas`. Sin tarifa (9d) aborta el mensaje.
+**Corrección de arquitectura:** no se usó `wrangler.facturacion.toml` separado del plan — un Worker de
+Cloudflare puede ser a la vez HTTP y consumidor de cola; el mismo `wrangler.toml` declara producer+
+consumer (round-trip local verificado en plan.md §0 con UN worker).
 **Verificación:**
 ```bash
 cd backend && npx tsc --noEmit && npx eslint .
@@ -244,10 +248,27 @@ psql "$DATABASE_URL" -c "select count(*) from facturas where periodo_id='<id>';"
 "CONSUMIDOR EJECUTADO" y el SELECT confirma los inserts); los `numero` son únicos y consecutivos; un
 segundo `ciclo` del mismo suscriptor/periodo falla por `uq_factura_ciclo`. Si algún detalle del
 binding impide el round-trip local en este contenedor, se declara "NO VERIFICADO" con pasos exactos.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
+$ npx tsc --noEmit → sin salida · $ npx eslint → sin salida
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  env.FACTURACION_COLA (undreocol-facturacion) Queue · Total Upload: 834.27 KiB · sin errores
 
+Round-trip local REAL de Cloudflare Queues (wrangler dev :8787, producer+consumer del mismo worker):
+  base con fixtures 001-004 SIN el fixture facturacion (periodo A sin facturas)
+  POST /facturacion/periodos/e0000000-...0a1/emitir → 202 {"encoladas":1,"omitidas":1}
+    (encola A1 que tiene lectura+tarifa; omite A2 por 9d/sin lectura)
+  Log del consumidor local:  "cierre-facturacion: factura FAC-2026-00001 emitida"
+  SELECT facturas → FAC-2026-00001 | total=38600.00 | estado=pendiente
+  SELECT factura_detalles → 1 (renglón de acueducto)
+  SELECT configuracion.consecutivo_factura → 1 (número atómico, punto 9b)
+  Re-emitir el mismo periodo → 409 "El periodo ya tiene facturas emitidas (no se duplica)"
+
+Corrección de arquitectura: se usó el MISMO worker (wrangler.toml con producer+consumer) en vez del
+wrangler.facturacion.toml separado — un Worker puede ser HTTP + consumidor de cola, y es lo que se
+verificó en /plan. La migración facturacion ganó la función siguiente_numero_factura() (RPC con
+SELECT FOR UPDATE, grant a service_role/authenticated).
 ```
 **Commit:** (tras completar)
 

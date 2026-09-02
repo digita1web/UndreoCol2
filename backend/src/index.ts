@@ -42,6 +42,7 @@ import {
   obtenerFactura,
   simularPeriodo,
 } from './lib/facturacion';
+import cierreFacturacion from './queues/cierre-facturacion';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -677,4 +678,47 @@ app.post('/facturas/:id/anular', async (c) => {
   }
 });
 
-export default app;
+// POST /facturacion/periodos/:id/emitir — modo emisión. Encola UNA factura por
+// mensaje en FACTURACION_COLA (devuelve 202). Defensa: rechaza si el periodo ya
+// tiene facturas emitidas (no duplicar). El gate de "se simuló" es de UI.
+app.post('/facturacion/periodos/:id/emitir', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const cola = c.env.FACTURACION_COLA;
+  if (!cola) return c.json({ error: 'La cola de facturación no está configurada' }, 500);
+  const periodoId = c.req.param('id');
+
+  try {
+    // defensa: no re-emitir un periodo que ya tiene facturas
+    const existentes = await listarFacturasDePeriodo(ctx.supabase, ctx.clienteId, periodoId);
+    if (existentes.length > 0) {
+      return c.json({ error: 'El periodo ya tiene facturas emitidas (no se duplica la emisión)' }, 409);
+    }
+    // resuelve quién se factura (los que tienen lectura + tarifa) y encola 1 c/u
+    const resumen = await simularPeriodo(ctx.supabase, ctx.clienteId, periodoId);
+    const aEmitir = resumen.detalle.filter((d) => d.consumoM3 !== null && d.tieneTarifa && d.total > 0);
+    for (const d of aEmitir) {
+      await cola.send({
+        clienteId: ctx.clienteId,
+        periodoId,
+        usuarioServicioId: d.usuarioServicioId,
+      });
+    }
+    return c.json({
+      encoladas: aEmitir.length,
+      omitidas: resumen.detalle.length - aEmitir.length,
+      mensaje: 'Emisión encolada: una factura por mensaje en Cloudflare Queues',
+    }, 202);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo encolar la emisión' }, 400);
+  }
+});
+
+// El Worker principal es a la vez HTTP (Hono) y consumidor de la cola de
+// facturación (mismo worker producer+consumer: round-trip local verificado en
+// plan.md §0). En producción Cloudflare enruta igual: un Worker puede tener
+// fetch + queue.
+export default {
+  fetch: app.fetch,
+  queue: cierreFacturacion.queue,
+};

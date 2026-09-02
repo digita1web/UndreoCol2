@@ -262,3 +262,56 @@ create policy factura_detalles_admin on factura_detalles for all
 create policy factura_lecturas_admin on factura_lecturas for all
   using (es_admin_de(cliente_id)) with check (es_admin_de(cliente_id));
 
+
+-- -----------------------------------------------------------------------------
+-- 6. Número de factura atómico (CLAUDE.md §10 puntos 9b/9c, D-3)
+--    Genera el número {prefijo}-{YYYY}-{NNNNN} con SELECT FOR UPDATE sobre la
+--    fila de configuracion del cliente (serializa emisiones concurrentes) y el
+--    consecutivo que reinicia el 1 de enero. La usa el consumidor del cierre de
+--    facturación (backend/src/queues/cierre-facturacion.ts) con service_role.
+-- -----------------------------------------------------------------------------
+
+create or replace function siguiente_numero_factura(
+  p_cliente_id uuid,
+  p_prefijo text
+) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_consecutivo integer;
+  v_anio        integer;
+  v_anio_actual integer := extract(year from current_date)::integer;
+begin
+  select consecutivo_factura, anio_consecutivo
+    into v_consecutivo, v_anio
+    from configuracion
+   where cliente_id = p_cliente_id
+   for update;
+  if v_consecutivo is null then
+    raise exception 'No existe configuración para el cliente %', p_cliente_id;
+  end if;
+
+  -- punto 9c: el consecutivo reinicia el 1 de enero
+  if v_anio is distinct from v_anio_actual then
+    v_consecutivo := 0;
+    v_anio := v_anio_actual;
+  end if;
+
+  v_consecutivo := v_consecutivo + 1;
+  update configuracion
+     set consecutivo_factura = v_consecutivo,
+         anio_consecutivo    = v_anio
+   where cliente_id = p_cliente_id;
+
+  return format('%s-%s-%s', p_prefijo, v_anio, lpad(v_consecutivo::text, 5, '0'));
+end $$;
+
+comment on function siguiente_numero_factura is
+  'Genera el número de factura en transacción atómica (SELECT FOR UPDATE sobre '
+  'configuracion, punto 9b). Formato D-3 {prefijo}-{YYYY}-{NNNNN}; consecutivo de '
+  '5 dígitos que reinicia el 1 de enero (punto 9c). Solo service_role (el '
+  'consumidor del cierre de facturación) y admin (vía RPC controlada) la ejecutan.';
+
+revoke execute on function siguiente_numero_factura(uuid, text) from anon, public;
+grant  execute on function siguiente_numero_factura(uuid, text) to service_role;
+grant  execute on function siguiente_numero_factura(uuid, text) to authenticated;
+
