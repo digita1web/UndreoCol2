@@ -28,6 +28,14 @@ import {
   reemplazarContador,
   validarCamposEditables as validarCamposEditablesSuscriptor,
 } from './lib/suscriptores';
+import {
+  cerrarPeriodo,
+  crearLectura,
+  crearPeriodo,
+  listarLecturas,
+  listarPeriodos,
+  revisarLectura,
+} from './lib/lecturas';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -210,7 +218,7 @@ app.get('/dashboard', async (c) => {
 // correspondiente (401/400) cuando `ctx` es null; el caller solo necesita
 // `if (!r.ctx) return r.respuesta;`.
 type ResultadoClienteActivo =
-  | { ctx: { supabase: ReturnType<typeof crearClienteSuscriptor>; clienteId: string }; respuesta?: undefined }
+  | { ctx: { supabase: ReturnType<typeof crearClienteSuscriptor>; clienteId: string; perfilId: string }; respuesta?: undefined }
   | { ctx: null; respuesta: Response };
 
 async function requerirClienteActivo(c: Context<{ Bindings: Env }>): Promise<ResultadoClienteActivo> {
@@ -224,7 +232,7 @@ async function requerirClienteActivo(c: Context<{ Bindings: Env }>): Promise<Res
   if (!activo) {
     return { ctx: null, respuesta: c.json({ error: 'Sin acueducto', clientes: lista }, 400) };
   }
-  return { ctx: { supabase, clienteId: activo.clienteId } };
+  return { ctx: { supabase, clienteId: activo.clienteId, perfilId: sesion.perfilId } };
 }
 
 app.get('/catalogo/servicios', async (c) => {
@@ -490,6 +498,122 @@ app.post('/suscriptores/:id/reemplazar-contador', async (c) => {
     return c.json({ reemplazoId }, 201);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'Error al reemplazar el contador' }, 400);
+  }
+});
+
+// --- Periodos y lecturas (004-lecturas-y-consumo) ---------------------------
+
+// POST /periodos — crea el periodo abierto del mes (único abierto por cliente).
+app.post('/periodos', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{ nombre?: string; anio?: number; mes?: number; fecha_inicio?: string; fecha_fin?: string; fecha_vencimiento?: string }>()
+    .catch(() => ({
+      nombre: undefined, anio: undefined, mes: undefined,
+      fecha_inicio: undefined, fecha_fin: undefined, fecha_vencimiento: undefined,
+    }));
+  if (!body.nombre || !body.anio || !body.mes || !body.fecha_inicio || !body.fecha_fin || !body.fecha_vencimiento) {
+    return c.json({ error: 'nombre, anio, mes, fecha_inicio, fecha_fin y fecha_vencimiento son requeridos' }, 400);
+  }
+  try {
+    const periodo = await crearPeriodo(ctx.supabase, ctx.clienteId, {
+      nombre: body.nombre.trim(),
+      anio: body.anio,
+      mes: body.mes,
+      fecha_inicio: body.fecha_inicio,
+      fecha_fin: body.fecha_fin,
+      fecha_vencimiento: body.fecha_vencimiento,
+    });
+    return c.json({ periodo }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al crear el periodo' }, 400);
+  }
+});
+
+// GET /periodos — lista periodos del cliente (admin o lector).
+app.get('/periodos', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const periodos = await listarPeriodos(ctx.supabase, ctx.clienteId);
+    return c.json({ periodos });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al listar los periodos' }, 400);
+  }
+});
+
+// PATCH /periodos/:id/cerrar — cierra el periodo (solo admin_acueducto, vía RLS).
+app.patch('/periodos/:id/cerrar', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const periodo = await cerrarPeriodo(ctx.supabase, ctx.clienteId, c.req.param('id'), ctx.perfilId);
+    return c.json({ periodo });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al cerrar el periodo' }, 400);
+  }
+});
+
+// GET /lecturas?periodo_id=&solo_revision=true — lista lecturas por periodo,
+// con opción de filtrar la cola de anomalías pendientes.
+app.get('/lecturas', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const periodoId = c.req.query('periodo_id') || undefined;
+  const soloAnomalias = c.req.query('solo_revision') === 'true';
+  try {
+    const lecturas = await listarLecturas(ctx.supabase, ctx.clienteId, { periodoId, soloAnomalias });
+    return c.json({ lecturas });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al listar las lecturas' }, 400);
+  }
+});
+
+// POST /lecturas — crea una lectura; calcula consumo y anomalía en core/consumo.ts;
+// respeta id_cliente_offline para no duplicar reenvíos offline.
+app.post('/lecturas', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{
+      contador_id?: string;
+      periodo_id?: string;
+      fecha_lectura?: string;
+      lectura_actual?: number;
+      id_cliente_offline?: string;
+    }>()
+    .catch(() => ({
+      contador_id: undefined, periodo_id: undefined, fecha_lectura: undefined,
+      lectura_actual: undefined, id_cliente_offline: undefined,
+    }));
+  if (!body.contador_id || !body.periodo_id || !body.fecha_lectura || typeof body.lectura_actual !== 'number') {
+    return c.json({ error: 'contador_id, periodo_id, fecha_lectura y lectura_actual son requeridos' }, 400);
+  }
+  try {
+    const { lectura, nuevo } = await crearLectura(ctx.supabase, ctx.clienteId, {
+      contador_id: body.contador_id,
+      periodo_id: body.periodo_id,
+      fecha_lectura: body.fecha_lectura,
+      lectura_actual: body.lectura_actual,
+      id_cliente_offline: body.id_cliente_offline,
+      tomada_por: ctx.perfilId,
+    });
+    return c.json({ lectura, nuevo }, nuevo ? 201 : 200);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al crear la lectura' }, 400);
+  }
+});
+
+// PATCH /lecturas/:id/revisar — marca una lectura como revisada (solo admin).
+app.patch('/lecturas/:id/revisar', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const lectura = await revisarLectura(ctx.supabase, ctx.clienteId, c.req.param('id'), ctx.perfilId);
+    return c.json({ lectura });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Error al marcar la lectura como revisada' }, 400);
   }
 });
 

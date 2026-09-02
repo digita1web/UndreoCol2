@@ -204,10 +204,31 @@ npx wrangler deploy --dry-run -c wrangler.toml
 **Resultado esperado:** `tsc`/`eslint` sin errores; el Worker sigue empaquetando sin superar el
 límite de bundle. Cuando el entorno permita `wrangler dev` contra una base real, verificar con curl
 las 6 rutas; si no, dejar "NO VERIFICADO" con los pasos exactos (patrón 002/003).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04) — se amplió `requerirClienteActivo` para incluir `perfilId`
 **Evidencia:**
 ```
+$ npx tsc --noEmit  → sin salida, sin errores
+$ npx eslint .     → sin salida, sin errores
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  Total Upload: 814.66 KiB / gzip: 160.91 KiB
+  --dry-run: exiting now.          (sin errores; bundle dentro del límite)
 
+Se amplió `ResultadoClienteActivo`/`requerirClienteActivo` para que `ctx` incluya
+`perfilId` (antes solo supabase/clienteId): las rutas nuevas necesitan el autor
+(cerrado_por, tomada_por, revisada_por). No rompe las rutas existentes (campo añadido).
+
+Rutas nuevas: POST /periodos · GET /periodos · PATCH /periodos/:id/cerrar ·
+GET /lecturas?periodo_id=&solo_revision= · POST /lecturas · PATCH /lecturas/:id/revisar.
+Toda escritura de consumo pasa por core/consumo.ts; la lectura_anterior la resuelve
+lib/lecturas.ts (última lectura del contador / contadores.lectura_inicial / datos del
+reemplazo), nunca del cliente. POST /lecturas respeta id_cliente_offline (devuelve la
+existente si se reenvía).
+
+Integración HTTP (curl real contra `wrangler dev` conectado a la base local) NO
+VERIFICADO — requiere validación manual de Mateo: configurar wrangler.toml con la
+URL/key de Supabase local, crear sesión admin real (login), y probar el flujo
+POST /periodos → POST /lecturas → PATCH /.../revisar (mismo patrón que 002/003).
+El aislamiento (CA-2/CA-5) ya valida las políticas RLS de estas tablas en T-002.
 ```
 **Commit:** (tras completar)
 
