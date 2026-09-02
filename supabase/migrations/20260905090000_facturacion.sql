@@ -142,6 +142,12 @@ comment on table factura_lecturas is
 create function bloquear_factura_inmutable() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
+  -- Recálculo interno (total = suma de detalles) disparado por el trigger AFTER
+  -- sobre factura_detalles: se permite (no es una edición ad-hoc de la API).
+  if current_setting('app.recalculo_interno', true) = 'on' then
+    return new;
+  end if;
+
   if tg_op = 'DELETE' then
     raise exception 'Una factura no se borra: se anula (estado = anulada) con motivo y responsable';
   end if;
@@ -199,10 +205,15 @@ begin
     from factura_detalles d
     where d.factura_id = p_factura_id;
 
+  -- Marca local a la transacción para que trg_factura_inmutable reconozca este
+  -- UPDATE como el recálculo interno (la invariante "total = suma de detalles")
+  -- y no como una edición ad-hoc de la API.
+  perform set_config('app.recalculo_interno', 'on', true);
   update facturas
      set subtotal_servicios = v_subtotal,
          total              = v_subtotal + recargo_mora + saldo_anterior
    where id = p_factura_id;
+  perform set_config('app.recalculo_interno', 'off', true);
 end $$;
 
 create function trg_factura_detalles_recalcula() returns trigger
