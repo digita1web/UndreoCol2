@@ -149,10 +149,25 @@ cd backend && npx tsc --noEmit
 ```
 **Resultado esperado:** los unit de `facturacion` en verde (sumados a los existentes); `tsc` sin
 errores.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
+$ npm test  (backend)
+  ✓ tests/unit/tarifas.test.ts (8 tests)
+  ✓ tests/unit/consumo.test.ts (22 tests)
+  ✓ tests/unit/facturacion.test.ts (19 tests)   <-- nuevo, CA-3
+  ✓ tests/unit/monitor-db.test.ts (6 tests)
+  Test Files  4 passed (4) · Tests 55 passed (55)
 
+$ npx tsc --noEmit → sin salida (sin errores)
+$ npx eslint src/core/facturacion.ts tests/unit/facturacion.test.ts → sin salida
+
+facturacion.test.ts (19 tests) cubre: armarRenglones (mismo consumo para todos
+los servicios activos, servicios sin tarifa ignorados, límite D-1 exacto/±1, fijo);
+calcularRecargoMora (0/porcentaje 0/2%→2000/2%→200); componerTotal (con y sin
+saldo); componerNumeroFactura (formato 5 dígitos, prefijo FAC/REC, reinicio anual);
+clasificarAnomaliasFacturacion (sano/sin lectura/atípica/sin tarifa/total<=0/
+variación>20% y <=20%).
 ```
 **Commit:** (tras completar)
 
