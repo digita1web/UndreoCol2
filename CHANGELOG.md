@@ -4,6 +4,58 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-05 — Sesión 012: 005-facturacion completa (T-001 a T-007)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/005-facturacion/`): commit `b5d3e50`, `f08ae42`, `58a1a91`.
+- **T-001** — Migración `20260905090000_facturacion.sql`: enums `tipo_factura`/`estado_factura`,
+  tablas `facturas` (unique `(cliente_id, numero)`, `uq_factura_ciclo`, `chk_total_pagado <= total`),
+  `factura_detalles` (referencia permanente `tarifa_id`/`servicio_id`) y `factura_lecturas`; RLS
+  `FORCE`. **Dos hallazgos reales corregidos**: (1) el trigger inicial bloqueaba el INSERT de un
+  periodo cerrado, lo que habría impedido la emisión del cierre (004 cierra el periodo y 005 factura
+  sobre él) → se reemplazó por `trg_factura_inmutable` (INSERT permitido; UPDATE solo anulación con
+  motivo o `total_pagado` de 007; DELETE bloqueado; recálculo interno de `total` = suma de detalles
+  permitido vía GUC `app.recalculo_interno`). (2) el recálculo de `factura_detalles` chocaba con el
+  trigger de inmutabilidad → se marcó la transacción con GUC.
+- **T-002** — Fixtures `facturacion.sql` + `005_facturacion_aislamiento.sql` (8 pasos). **Hallazgo de
+  regresión**: el fixture cerraba el periodo A y rompía el test de 004 (que asume el periodo A
+  abierto); corregido: los fixtures de features posteriores no mutan el estado que los tests previos
+  asumen. 5 tests de aislamiento (001-005) en verde sobre el mismo estado final.
+- **T-003** — `core/facturacion.ts` (lógica pura, reusa `core/tarifas.ts` D-1): `armarRenglones`,
+  `calcularRecargoMora`, `componerTotal`, `componerNumeroFactura` (D-3), `clasificarAnomaliasFacturacion`.
+  19 unit tests → `npm test` 55 en verde.
+- **T-004** — `lib/facturacion.ts` (capa fina) + rutas `POST /facturacion/periodos/:id/simular`,
+  `GET /facturacion/periodos/:id/facturas`, `GET /facturas/:id`, `POST /facturas/:id/anular`.
+  **Simulación real verificada con curl** (wrangler dev + Supabase local): resumen con
+  facturación total 38.600 (D-1 básico/no básico) y anomalías de A2 (sin tarifa 9d, sin lectura);
+  no insertó nada. Anulación real verificada (sin motivo → 400, con motivo → 200).
+  Corrección de alcance: no se implementó `GET /facturacion/simulaciones/:periodoId` — la simulación
+  no persiste (spec §3.3); el gate de la emisión es de UI + defensa en backend.
+- **T-005** — Consumidor `src/queues/cierre-facturacion.ts` + ruta `POST .../emitir` + binding
+  `FACTURACION_COLA` (producer+consumer en el mismo worker). **Round-trip local REAL de Cloudflare
+  Queues verificado**: `POST /emitir` → 202 (1 encolada), log del consumidor "factura FAC-2026-00001
+  emitida", factura con total 38.600 + 1 detalle, consecutivo atómico en 1, re-emisión → 409.
+  Corrección de arquitectura: se usó un solo worker (fetch+queue) en vez del
+  `wrangler.facturacion.toml` separado. Se añadió la RPC `siguiente_numero_factura()` (SELECT FOR
+  UPDATE, puntos 9b/9c).
+- **T-006** — Frontend: `api.ts` ampliado + paneles `/app/facturacion` (simular → resumen/anomalías →
+  confirmar emisión → listado) y `/app/facturacion/[facturaId]` (datos + desglose + anular).
+  `npm run build` 12/12 y lint en verde.
+- **T-007** — Cierre: checklist de `spec.md §8`, CHANGELOG y los 5 tests de aislamiento re-corridos.
+
+**Hallazgo de entorno (importante para toda esta sesión)**
+`http_proxy`/`https_proxy` están seteados sin `NO_PROXY`, así que las llamadas a `127.0.0.1` pasaban
+por el proxy y devolvían **502** (a Supabase local y a Kong). Solución: `curl --noproxy '*'` y
+`wrangler dev` lanzado con `env -u http_proxy ...`. También se detectó que tras `supabase db reset`
+Kong podía quedar sin inicializar: `supabase stop && supabase start` lo resolvió.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- Despliegue real a Cloudflare: crear la cola `undreocol-facturacion` en la cuenta, conectar
+  producer/consumer y correr el cierre con cron real en la nube (el round-trip local ya está
+  verificado).
+- CA-6: flujo click-a-click en navegador (`next dev` + `wrangler dev`) — la API de simulación/emisión/
+  anulación ya fue verificada por curl y el build/lint confirman el render.
+
 ### 2026-09-04 — Sesión 011: 004-lecturas-y-consumo completa (T-001 a T-006)
 
 **Hecho**

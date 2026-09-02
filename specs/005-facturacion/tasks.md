@@ -325,10 +325,26 @@ done
 ```
 **Resultado esperado:** builds/tests en verde y los 5 tests de aislamiento en verde sobre el mismo
 estado final; evidencia pegada en el CHANGELOG y en esta tarea.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
+backend: $ npx tsc --noEmit → sin salida · $ npx eslint . → sin salida
+         $ npm test → 4 files / 55 tests OK (incluye 19 de facturacion.ts)
+         $ npx wrangler deploy --dry-run -c wrangler.toml
+            Total Upload: 834.27 KiB / gzip: 164.69 KiB · --dry-run: exiting now.
+frontend: $ npm run build → ✓ Compiled successfully · ✓ Generating static pages (12/12)
+                              incluye /app/facturacion y /app/facturacion/[facturaId]
+          $ npm run lint → LINT=0
 
+Aislamiento (estado final, Supabase local 17.6):
+  001_fundacion_aislamiento.sql       → FUNDACION-AISLAMIENTO OK
+  002_catalogo_aislamiento.sql        → CATALOGO-AISLAMIENTO OK
+  003_suscriptores_aislamiento.sql    → SUSCRIPTORES-AISLAMIENTO OK
+  004_lecturas_consumo_aislamiento.sql → LECTURAS-CONSUMO-AISLAMIENTO OK
+  005_facturacion_aislamiento.sql     → FACTURACION-AISLAMIENTO OK
+
+CHANGELOG.md actualizado (Sesión 012) y checklist de spec.md §8 marcada con evidencia real,
+incluidos los pendientes de Mateo (despliegue a Cloudflare de la cola, flujo click-a-click).
 ```
 **Commit:** (tras completar)
 

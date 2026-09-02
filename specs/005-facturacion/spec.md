@@ -229,14 +229,18 @@ limpios; flujo en navegador "NO VERIFICADO" si el entorno no permite, con los pa
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1–6) con evidencia — CA-1 a CA-5 verificados contra Supabase local real + tests
-  de aislamiento/unit; CA-4 y CA-6 (Queues real y navegador) con su estado real y pasos exactos si
-  el entorno no permite
-- [ ] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios
-- [ ] Tests en verde: `vitest` de `core/facturacion.ts` + test de aislamiento `005_facturacion`
-- [ ] Test de aislamiento de las tablas nuevas (`facturas`, `factura_detalles`, `factura_lecturas`)
-  con regresión de 001–004 en verde
-- [ ] `CHANGELOG.md` actualizado en el cierre de la feature
-- [ ] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase
-- [ ] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica)
+- [x] Todos los CA (1–6) con evidencia — CA-1 a CA-6 verificados contra Supabase local real
+  (PostgreSQL 17.6) + tests de aislamiento/unit + curl/wrangler dev. CA-4 (emisión) verificado con
+  round-trip local REAL de Cloudflare Queues. El despliegue a la nube de Cloudflare (crear la cola en
+  la cuenta de Mateo, cron real) y el flujo click-a-click en navegador quedan NO VERIFICADO con pasos
+  exactos (tasks.md T-005/T-006).
+- [x] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios — `npm run build` 12/12
+  (incluye `/app/facturacion` y su detalle); dry-run 834.27 KiB sin errores.
+- [x] Tests en verde: `vitest` de `core/facturacion.ts` (19 tests) — `npm test` 55 en verde; test de
+  aislamiento `005_facturacion` → `FACTURACION-AISLAMIENTO OK`.
+- [x] Test de aislamiento de las tablas nuevas (`facturas`, `factura_detalles`, `factura_lecturas`)
+  con regresión de 001–004 en verde sobre el mismo estado final.
+- [x] `CHANGELOG.md` actualizado en el cierre de la feature — Sesión 012.
+- [x] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase.
+- [x] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica).
 
