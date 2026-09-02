@@ -92,11 +92,13 @@ Fixtures previos (001→004) cargados tras el reset para dejar base lista a T-00
 **Archivos:** `tests/fixtures/facturacion.sql`, `tests/aislamiento/005_facturacion_aislamiento.sql`
 **Hace:** Fixture con suscriptores que tienen lecturas en un periodo y sus tarifas de 002 para que la
 simulación tenga datos; deja también un suscriptor SIN tarifa y uno SIN lectura (casos de la regla 9d
-y del "usuario sin lectura" como anomalía). Test de aislamiento cubriendo: A no lee/escribe facturas
-de B; solo `admin_acueducto` escribe/anula; el `lector` lee pero no escribe; un `numero` duplicado
-del cliente y un segundo `ciclo` del mismo `(usuario_servicio, periodo)` violan sus unique; el
-trigger rechaza emitir de un periodo cerrado (pero permite anular); `total_pagado > total` es
-rechazado. Regresión de 001–004 sobre el mismo estado final en verde.
+y del "usuario sin lectura" como anomalía). **NO cierra el periodo A** (el test de aislamiento 004
+asume que está abierto; cerrarlo rompería la regresión). Test de aislamiento cubriendo: A no
+lee/escribe facturas de B; solo `admin_acueducto` escribe/anula; el `lector` lee pero no escribe; un
+`numero` duplicado del cliente y un segundo `ciclo` del mismo `(usuario_servicio, periodo)` violan
+sus unique; el trigger de inmutabilidad (trg_factura_inmutable) bloquea editar/borrar y exige motivo
+para anular (el INSERT de emisión está permitido); `total_pagado > total` es rechazado. Regresión de
+001–004 sobre el mismo estado final en verde.
 **Verificación:**
 ```bash
 # previo: 001→004 migraciones + fixtures (igual que T-001)
@@ -109,10 +111,25 @@ done
 ```
 **Resultado esperado:** `005_facturacion_aislamiento.sql` termina en verde
 (`FACTURACION-AISLAMIENTO OK`) y los 4 previos siguen en verde.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
+$ psql ... -f tests/fixtures/facturacion.sql  → COMMIT (factura FAC-2026-00001 + 1 detalle)
+$ psql ... -f tests/aislamiento/005_facturacion_aislamiento.sql
+  → FACTURACION-AISLAMIENTO OK  (8 pasos)
 
+Regresión sobre el mismo estado final:
+  001_fundacion_aislamiento.sql       → FUNDACION-AISLAMIENTO OK
+  002_catalogo_aislamiento.sql        → CATALOGO-AISLAMIENTO OK
+  003_suscriptores_aislamiento.sql    → SUSCRIPTORES-AISLAMIENTO OK
+  004_lecturas_consumo_aislamiento.sql → LECTURAS-CONSUMO-AISLAMIENTO OK
+  005_facturacion_aislamiento.sql     → FACTURACION-AISLAMIENTO OK
+
+El fixture deja la factura de A1 en el periodo A (que permanece ABIERTO). HALLAZGO REAL:
+en la primera versión el fixture cerraba el periodo A, y eso ROMPIÓ la regresión de 004
+(004 PASO 4 asume el periodo A abierto: un segundo periodo abierto debe violar
+uq_periodo_abierto). Corregido: el fixture ya no cierra el periodo A — los fixtures de
+features posteriores no mutan el estado que los tests de features previas asumen.
 ```
 **Commit:** (tras completar)
 
