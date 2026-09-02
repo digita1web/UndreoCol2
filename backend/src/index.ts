@@ -36,6 +36,12 @@ import {
   listarPeriodos,
   revisarLectura,
 } from './lib/lecturas';
+import {
+  anularFactura,
+  listarFacturasDePeriodo,
+  obtenerFactura,
+  simularPeriodo,
+} from './lib/facturacion';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -614,6 +620,60 @@ app.patch('/lecturas/:id/revisar', async (c) => {
     return c.json({ lectura });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'Error al marcar la lectura como revisada' }, 400);
+  }
+});
+
+// --- Facturación (005-facturacion) -------------------------------------------
+
+// POST /facturacion/periodos/:id/simular — modo simulación (dry-run): calcula
+// el cierre SIN insertar nada (spec §3.3). Solo lectura.
+app.post('/facturacion/periodos/:id/simular', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const resumen = await simularPeriodo(ctx.supabase, ctx.clienteId, c.req.param('id'));
+    return c.json({ resumen });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo simular el periodo' }, 400);
+  }
+});
+
+// GET /facturacion/periodos/:id/facturas — lista facturas emitidas del periodo.
+app.get('/facturacion/periodos/:id/facturas', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const facturas = await listarFacturasDePeriodo(ctx.supabase, ctx.clienteId, c.req.param('id'));
+    return c.json({ facturas });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron listar las facturas' }, 400);
+  }
+});
+
+// GET /facturas/:id — detalle de una factura con sus renglones.
+app.get('/facturas/:id', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const { factura, detalles } = await obtenerFactura(ctx.supabase, ctx.clienteId, c.req.param('id'));
+    return c.json({ factura, detalles });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo obtener la factura' }, 400);
+  }
+});
+
+// POST /facturas/:id/anular — anula una factura emitida (motivo obligatorio).
+app.post('/facturas/:id/anular', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req.json<{ motivo?: string }>().catch(() => ({ motivo: undefined }));
+  const motivo = body.motivo?.trim();
+  if (!motivo) return c.json({ error: 'El motivo de anulación es obligatorio' }, 400);
+  try {
+    const factura = await anularFactura(ctx.supabase, ctx.clienteId, c.req.param('id'), motivo, ctx.perfilId);
+    return c.json({ factura });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo anular la factura' }, 400);
   }
 });
 

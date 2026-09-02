@@ -178,9 +178,11 @@ variación>20% y <=20%).
 datos de entrada de `core/`; construir el `snapshot_suscriptor`; calcular la simulación (resumen
 agregado + anomalías) SIN insertar; listar facturas de un periodo; detalle de una factura; anular una
 factura con motivo. Rutas de plan.md §3: `POST /facturacion/periodos/:id/simular`,
-`GET /facturacion/periodos/:id/facturas`, `GET /facturacion/simulaciones/:periodoId`,
-`GET /facturas/:id`, `POST /facturas/:id/anular`. El cálculo económico SIEMPRE pasa por `core/`; si
-la capa detecta `tarifa_vigente()` NULL devuelve la anomalía 9d sin emitir.
+`GET /facturacion/periodos/:id/facturas`, `GET /facturas/:id`, `POST /facturas/:id/anular`. El
+cálculo económico SIEMPRE pasa por `core/`; si la capa detecta `tarifa_vigente()` NULL devuelve la
+anomalía 9d sin emitir. **Corrección de alcance:** NO se implementó `GET /facturacion/simulaciones/:periodoId`
+del plan — la simulación no persiste (spec §3.3 "nada se inserta"); el gate de la emisión es de UI +
+defensa en backend (rechazar si el periodo ya tiene facturas).
 **Verificación:**
 ```bash
 cd backend && npx tsc --noEmit && npx eslint .
@@ -189,10 +191,28 @@ npx wrangler deploy --dry-run -c wrangler.toml
 **Resultado esperado:** `tsc`/`eslint` sin errores; Worker empaqueta. Cuando el entorno permita
 `wrangler dev` + curl contra Supabase local, validar la simulación real (resumen + anomalías,
 sin insertar); si no, "NO VERIFICADO" con pasos exactos.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
+$ npx tsc --noEmit  → sin salida
+$ npx eslint .     → sin salida
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  Total Upload: 826.48 KiB / gzip: 163.19 KiB · --dry-run: exiting now.
 
+Integración HTTP real (wrangler dev :8787 + Supabase local, curl con --noproxy '*'):
+  POST /facturacion/periodos/e0000000-...0a1/simular  → 200
+    resumen: totalSuscriptores=2, suscriptoresConFactura=1, consumoTotalM3=25,
+             facturacionTotal=38600 (A1: cargo 5000 + 22*1200 básico + 3*2400 no básico)
+    anomalías de A2 (estrato_2, sin tarifa ni lectura): usuario_sin_lectura,
+             sin_tarifa (regla 9d) y total_cero_o_negativo
+  count(facturas) antes/después → 1 (la del fixture) → la simulación NO insertó ✔
+  GET /facturacion/periodos/:id/facturas → 200 (lista la factura FAC-2026-00001)
+  POST /facturas/:id/anular sin motivo → 400 "El motivo de anulación es obligatorio"
+  POST /facturas/:id/anular con motivo → 200 (factura anulada)
+
+HALLAZGO de entorno: http_proxy/https_proxy sin NO_PROXY hacen que curl y el fetch del
+Worker pasen por el proxy y den 502 a 127.0.0.1. Solución usada en TODA esta sesión:
+curl con --noproxy '*' y wrangler dev lanzado con env -u http_proxy etc.
 ```
 **Commit:** (tras completar)
 
