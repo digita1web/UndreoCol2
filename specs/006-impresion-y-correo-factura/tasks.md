@@ -80,10 +80,19 @@ npx tsc --noEmit && npx eslint src/lib/factura-pdf.ts tests/unit/factura-pdf.tes
 ```
 **Resultado esperado:** tests de `factura-pdf` en verde; tsc/eslint limpios. Confirmar que NO hay
 pdfme/Chromium en package.json.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-06)
 **Evidencia:**
 ```
-
+$ npm install pdf-lib → "pdf-lib": "^1.17.1" (MIT) en backend/package.json
+$ npx vitest run tests/unit/factura-pdf.test.ts → 4 tests passed
+  ✓ PDF válido (%PDF + reabre con pdf-lib, 1 página)
+  ✓ el contenido (streams hex decodificados) incluye numero FAC-2026-00001,
+    Suscriptor A1, desglose 'Acueducto' y total '$38.600'
+  ✓ incluye los datos del acueducto (Acueducto Ejemplo / NIT) — personalización
+  ✓ sin logo (logoUrl null) genera sin romper
+$ npm test → 5 files / 59 tests OK (incluye factura-pdf 4 tests)
+$ npx tsc --noEmit → sin salida · $ npx eslint → sin salida
+$ grep -iE 'pdfme|puppeteer|chromium' package.json package-lock.json → (nada) ✔
 ```
 **Commit:** (tras completar)
 
