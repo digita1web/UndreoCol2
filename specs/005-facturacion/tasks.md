@@ -51,12 +51,41 @@ psql "$DATABASE_URL" -c "select tgname from pg_trigger where tgrelid='public.fac
 **Resultado esperado:** la 005 aplica sobre las 4 anteriores sin romperlas; las 3 tablas tienen la
 forma del plan.md §2; RLS `FORCE` en las 3; existen `uq_factura_ciclo` y el trigger de periodo
 cerrado.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
+$ supabase db reset --local → Finished supabase db reset (001→005 migraciones aplicadas desde cero)
 
+Verificación estructural (psql -tAc contra postgres@localhost:54322):
+  tablas: facturas, factura_detalles, factura_lecturas existen.
+  enums:  estado_factura = pendiente,pagada,vencida,anulada
+          tipo_factura = ciclo,reconexion,ajuste
+  RLS:    facturas force=true ; factura_detalles force=true ; factura_lecturas force=true
+  triggers: trg_factura_periodo_cerrado on facturas
+            trg_facturas_updated on facturas
+            trg_factura_detalles_recalcula on factura_detalles
+  índices: uq_factura_ciclo (usuario_servicio_id, periodo_id) WHERE tipo='ciclo'
+           facturas_cliente_id_numero_key UNIQUE (cliente_id, numero)
+  check:  chk_total_pagado (CHECK ((total_pagado <= total)))
+
+Smoke test real del trigger de recálculo (transacción con rollback):
+  factura insertada con total=0 (mal a propósito) + detalle subtotal=10000, recargo_mora=300
+  → tras el insert del detalle: subtotal_servicios=10000.00, total=10300.00  ✔ (recalculado)
+
+HALLAZGO REAL (corregido en el mismo T-001, commit --amend): el trigger inicial
+trg_factura_periodo_cerrado BLOQUEABA el INSERT de facturas de un periodo cerrado, pero el flujo
+de 004→005 emite facturas SOBRE periodos que 004 ya cerró (spec 004 §3.1). Eso habría impedido la
+propia emisión del cierre. Se reemplazó por trg_factura_inmutable que implementa la invariante
+correcta (ESTRATEGIA-CALIDAD §2): INSERT (emisión) permitido — la doble emisión la previene
+uq_factura_ciclo; UPDATE solo anulación (con motivo obligatorio) o avance de total_pagado/estado
+(007); DELETE siempre bloqueado. Smoke test del trigger corregido en base real (5/5):
+  1) EMISIÓN en periodo cerrado: OK   2) Edición bloqueada: OK   3) DELETE bloqueado: OK
+  4) Anulación sin motivo bloqueada: OK   5) Anulación con motivo: OK
+
+Fixtures previos (001→004) cargados tras el reset para dejar base lista a T-002:
+  fundacion.sql / catalogo.sql / suscriptores.sql / lecturas.sql → COMMIT cada uno.
 ```
-**Commit:** (tras completar)
+**Commit:** `c8385bf` (amended en c8385bf con el trigger corregido)
 
 ## T-002 — Fixtures + test de aislamiento (CA-2)
 
