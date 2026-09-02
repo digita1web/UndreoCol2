@@ -163,10 +163,24 @@ cd backend && npx tsc --noEmit
 ```
 **Resultado esperado:** `npm test` (vitest) en verde con la salida de todos los casos pegada;
 `tsc --noEmit` sin errores.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
+$ npm test  (backend)
+  ✓ tests/unit/monitor-db.test.ts (6 tests)
+  ✓ tests/unit/tarifas.test.ts (8 tests)
+  ✓ tests/unit/consumo.test.ts (22 tests)      <-- nuevo, CA-3
+  Test Files  3 passed (3)
+       Tests  36 passed (36)
 
+$ npx tsc --noEmit  → sin salida (sin errores)
+
+Consumo.test.ts cubre: consumo simple y primera lectura; rollover por
+debajo/en el umbral/por encima, dígitos 5 (99999) y 6 (999999); lectura menor
+sin rollover → rechazo; lectura > capacidad → rechazo; datos invalid (capacidad/
+umbral no positivos); reemplazo (tramos y rechazo por tramo negativo); anomalías
+alto (con/sin piso), bajo, cero, sin histórico; y la propiedad de no negativo/
+<= capacidad + determinismo (ESTRATEGIA-CALIDAD §5.4).
 ```
 **Commit:** (tras completar)
 
