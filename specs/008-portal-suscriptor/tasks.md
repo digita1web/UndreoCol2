@@ -115,17 +115,21 @@ Smoke funcional (rol anon, transacción con ROLLBACK — nada persiste):
 ## T-002 — Fixture `portal.sql` + aislamiento `008_` (CA-2, CA-9)
 
 **Archivos:** `tests/fixtures/portal.sql`, `tests/aislamiento/008_portal_aislamiento.sql`
-**Hace:** Fixture sobre el estado de 001-007 (no muta facturas/pagos ya asumidos por aislamientos
-previos): agrega un **segundo contador histórico** a A1 (reemplazo simulado: contador viejo
-`estado='reemplazado'` + lecturas antiguas, contador nuevo = el ya activo) para poder probar CA-7
-(consumo sin cortes); dos filas de `portal_intentos_login` ya bloqueadas (una vencida, una vigente)
-para probar el borde del bloqueo sin repetir 8 intentos en cada corrida del test. Test de aislamiento
-(CA-2, CA-9; sin `set local role`/`request.jwt.claim.sub` — el portal no tiene `auth.uid()`, se llama
-a las funciones directamente como `anon` con distintas combinaciones): credenciales correctas de A1
-devuelven solo datos de A1; A1 pidiendo `portal_factura_completa` con el id de una factura de A2 o de
-B1 → `null`; credenciales de A1 con `cliente_id` de B → nada; la fila de `portal_intentos_login` ya
-bloqueada rechaza incluso con credenciales correctas; la fila vencida (bloqueo ya expiró) permite
-intentar de nuevo. Regresión 001-007 en verde sobre el mismo estado final.
+**Hace:** Fixture sobre el estado de 001-007 (no muta lo que los aislamientos previos asumen — regla
+de 005/007): solo deja dos filas de `portal_intentos_login` (tabla nueva de 008, sin política de
+lectura para anon): A1 `'1000000001'` con **bloqueo vigente** (rechaza aunque la credencial sea
+correcta) y A2 `'1000000002'` con **bloqueo vencido** (permite reintentar) — para probar los bordes
+de CA-9 sin repetir 8 intentos en cada corrida. El **historial de dos contadores** que usa CA-7
+(consumo sin cortes) NO se agrega al fixture (un contador o lectura extra de A1 rompería los conteos
+del aislamiento 003 «1 contador» y del 004 «1 lectura»): lo crea el aislamiento 008 dentro de una
+transacción con ROLLBACK (periodo histórico de 2025-12 cerrado temporalmente el periodo actual para
+respetar `uq_periodo_abierto`) y la verificación de T-004 lo creará antes del curl. Test de
+aislamiento (CA-2/CA-9; se llama a las funciones `SECURITY DEFINER` como `anon` con distintas
+combinaciones, sin `auth.uid()`): credenciales de A1 → solo datos de A1 (factura/saldo/consumo);
+`portal_factura_completa` de A1 con el id de una factura de A2 o de B1 → `null` (IDOR); credenciales
+de A1 con `cliente_id` de B → nada; bloqueo vigente de A1 rechaza con credencial correcta; bloqueo
+vencido de A2 permite; consumo con dos contadores devuelve 2 lecturas ordenadas. Regresión 001-007 en
+verde sobre el mismo estado final.
 **Verificación:**
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/lecturas.sql
@@ -139,10 +143,34 @@ for f in 001_fundacion 002_catalogo 003_suscriptores 004_lecturas_consumo 005_fa
 done
 ```
 **Resultado esperado:** `PORTAL-AISLAMIENTO OK` y los 7 previos en verde sobre el mismo estado final.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-08)
 **Evidencia:**
 ```
+Fixtures 001-008 (fundacion..portal) cargados sobre la base recién reseteada (001→008):
+  cada fixture termina con COMMIT (0 errores).
 
+$ tests/aislamiento/008_portal_aislamiento.sql → PORTAL-AISLAMIENTO OK (línea final)
+  PASO 1 5 funciones SECURITY DEFINER con EXECUTE para anon + columnas de configuracion
+         + 2 filas de portal_intentos_login del fixture
+  PASO 2 anon: login de A2 (bloqueo vencido) → ok; facturas de A1 → solo FAC-2026-00001;
+         saldo a favor de A1 → 2000 (fixture 007); consumo de A1 → 1 lectura
+  PASO 3 anon: login de A1 (bloqueo VIGENTE) → bloqueado con reintentar_en, aunque la
+         credencial ('A-001') sea correcta
+  PASO 4 anon: credenciales A1 + cliente_id de B → facturas [] y consumo []
+  PASO 5 anon: portal_factura_completa de A1 con factura de A2 y de B1 (creadas en la
+         transacción) → null (IDOR); su propia factura → FAC-2026-00001
+  PASO 6 anon: con un contador histórico reemplazado + lectura de 2025-12 (creados en la
+         transacción) portal_consumo devuelve las 2 lecturas de ambos contadores en orden
+
+Regresión sobre el mismo estado final (fixtures 001-008):
+  001_fundacion=1 · 002_catalogo=1 · 003_suscriptores=1 · 004_lecturas_consumo=1
+  005_facturacion=1 · 006_correo_factura=1 · 007_pagos=1 — todos OK
+
+NOTA DE DISEÑO (regla aprendida en 005/007): el fixture de portal NO agrega contadores/
+lecturas de A1 (el aislamiento 003 espera 1 contador del cliente A y el 004 espera 1
+lectura). El histórico de dos contadores de CA-7 se crea en el aislamiento 008 con
+ROLLBACK (cerrando temporalmente el periodo actual para respetar uq_periodo_abierto) y la
+verificación de T-004 lo creará antes del curl de consumo.
 ```
 **Commit:** (tras completar)
 
