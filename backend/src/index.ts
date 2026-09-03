@@ -42,6 +42,7 @@ import {
   obtenerFactura,
   simularPeriodo,
 } from './lib/facturacion';
+import { generarPdfFactura, type DatosAcueductoPdf } from './lib/factura-pdf';
 import cierreFacturacion from './queues/cierre-facturacion';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -825,6 +826,56 @@ app.post('/facturacion/periodos/:id/enviar-correo', async (c) => {
     }, 202);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo encolar el lote' }, 400);
+  }
+});
+
+// GET /facturas/:id/pdf — sirve el PDF de la factura (application/pdf). Si no
+// está en R2 lo genera con pdf-lib y lo sube (pdf_url queda en la factura).
+app.get('/facturas/:id/pdf', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const facturaId = c.req.param('id');
+  try {
+    const { factura, detalles } = await obtenerFactura(ctx.supabase, ctx.clienteId, facturaId);
+    const bucket = c.env.FACTURAS_R2;
+    const key = `facturas/${ctx.clienteId}/${facturaId}.pdf`;
+
+    let pdfBytes: Uint8Array | null = null;
+    if (bucket) {
+      const objeto = await bucket.get(key);
+      if (objeto) {
+        pdfBytes = new Uint8Array(await objeto.arrayBuffer());
+      }
+    }
+    if (!pdfBytes) {
+      const { data: acueductoRow } = await ctx.supabase
+        .from('clientes')
+        .select('nombre, nit, direccion, telefono, municipio, logo_url')
+        .eq('id', ctx.clienteId)
+        .single();
+      const acueducto: DatosAcueductoPdf = {
+        nombre: acueductoRow?.nombre ?? '',
+        nit: acueductoRow?.nit ?? null,
+        direccion: acueductoRow?.direccion ?? null,
+        telefono: acueductoRow?.telefono ?? null,
+        municipio: acueductoRow?.municipio ?? null,
+        logoUrl: acueductoRow?.logo_url ?? null,
+      };
+      pdfBytes = await generarPdfFactura({ factura, detalles, acueducto });
+      if (bucket) {
+        await bucket.put(key, pdfBytes, { httpMetadata: { contentType: 'application/pdf' } });
+        await ctx.supabase.from('facturas').update({ pdf_url: `/facturas/${facturaId}/pdf` }).eq('id', facturaId);
+      }
+    }
+    return new Response(pdfBytes as BodyInit, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${factura.numero}.pdf"`,
+      },
+    });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo generar el PDF' }, 400);
   }
 });
 

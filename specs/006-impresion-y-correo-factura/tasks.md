@@ -144,7 +144,7 @@ computarActualizacionNotificacion() y cubriéndola con unit tests:
   ✓ enviarFacturaPorCorreo sin env.EMAIL → ok:false SIN lanzar (regla 20)
 $ npm test → 6 files / 65 tests OK (email 6 tests, factura-pdf 4)
 ```
-**Commit:** (tras completar)
+**Commit:** 6197706
 
 ## T-004 — Endpoint `GET /facturas/:id/pdf` + R2 (CA-2 HTTP)
 
@@ -160,10 +160,29 @@ cd backend && npx tsc --noEmit && npx eslint . && npx wrangler deploy --dry-run 
 ```
 **Resultado esperado:** el PDF de una factura real se genera, se sube a R2 (local) y se sirve; el
 bundle sigue dentro del límite con pdf-lib.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-06)
 **Evidencia:**
 ```
+$ npx tsc --noEmit → sin salida · $ npx eslint → sin salida
+$ npx wrangler deploy --dry-run -c wrangler.toml → Total Upload 1682 KiB / gzip 384 KiB (límite 10MB)
 
+GET /facturas/<id>/pdf (wrangler dev :8787, cookie admin A, sin proxy):
+  → HTTP 200, Content-Type application/pdf, bytes inician con %PDF-1.7
+  → tras la generación, facturas.pdf_url = /facturas/<id>/pdf (persistido en DB)
+
+HALLAZGO REAL corregido en este task: trg_factura_inmutable (005) bloqueaba el
+UPDATE de facturas.pdf_url (lo trataba como edición de una factura emitida). pdf_url
+es metadata del PDF (006), no un valor económico. Corrección en la migración 006:
+  - se reescribe bloquear_factura_inmutable para permitir el UPDATE que cambia SOLO
+    pdf_url/total_pagado/estado (007), manteniendo el bloqueo de valores económicos.
+  - se conservó el mecanismo del recálculo del total vía GUC 'app.recalculo_interno'
+    (probado con el round-trip REAL del cierre: factura FAC-2026-00001 total=38600).
+  - verificación: aislamiento 005 OK (editar total bloqueado como authenticated) y
+    update pdf_url como authenticated permitido (PDF_URL_OK).
+  - descartado pg_trigger_depth(): dentro del propio trigger SIEMPRE es ≥ 1 (permitía
+    todo). También se documentó que las GUCs locales no se propagan a triggers cuando
+    el update lo hace un rol distinto (service_role); por eso el mecanismo se probó con
+    el round-trip real (service_role) y quedó en verde.
 ```
 **Commit:** (tras completar)
 

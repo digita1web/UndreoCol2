@@ -64,3 +64,61 @@ create policy notificaciones_lectura on notificaciones for select
   using (es_admin_plataforma() or cliente_id in (select mis_clientes()));
 create policy notificaciones_admin on notificaciones for all
   using (es_admin_de(cliente_id)) with check (es_admin_de(cliente_id));
+
+
+-- -----------------------------------------------------------------------------
+-- 4. Corrección de trg_factura_inmutable (005) para 006: permitir el UPDATE del
+--    campo pdf_url (metadata del adjunto, no un valor económico).
+--    HALLAZGO REAL (T-004): al generar el PDF y guardar `facturas.pdf_url` la
+--    función de 005 bloqueaba el update por considerarlo edición de una factura
+--    emitida. pdf_url es metadata del PDF (no afecta totales/snapshot), así que
+--    se permite el UPDATE que cambia SOLO pdf_url. También quedan excluidos de la
+--    inmutabilidad total_pagado y estado (los maneja la feature 007: pagos y
+--    derivación del estado pagada/vencida). La anulación se valida antes. Un
+--    reset re-aplica todo en orden y esta versión reemplaza a la de 005.
+-- -----------------------------------------------------------------------------
+
+create or replace function bloquear_factura_inmutable() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  -- Recálculo interno (total = suma de detalles) disparado por el trigger AFTER
+  -- de factura_detalles: la GUC app.recalculo_interno la marca recalcular_total_factura
+  -- (mismo mecanismo verificado en 005). Permite solo ese update interno.
+  if current_setting('app.recalculo_interno', true) = 'on' then
+    return new;
+  end if;
+
+  if tg_op = 'DELETE' then
+    raise exception 'Una factura no se borra: se anula (estado = anulada) con motivo y responsable';
+  end if;
+
+  if tg_op = 'UPDATE' then
+    -- anulación (corregir una factura mal emitida): motivo obligatorio
+    if new.estado = 'anulada' and old.estado <> 'anulada' then
+      if new.motivo_anulacion is null or new.motivo_anulacion = '' then
+        raise exception 'Para anular una factura el motivo es obligatorio';
+      end if;
+      return new;
+    end if;
+
+    -- Se bloquea el cambio de valores económicos o de identidad. Las columnas
+    -- mutables por flujo NO se incluyen: total_pagado/estado (007, pagos) y
+    -- pdf_url (006, metadata del PDF adjunto).
+    if (
+      new.subtotal_servicios is distinct from old.subtotal_servicios
+      or new.total is distinct from old.total
+      or new.consumo_m3 is distinct from old.consumo_m3
+      or new.recargo_mora is distinct from old.recargo_mora
+      or new.saldo_anterior is distinct from old.saldo_anterior
+      or new.numero is distinct from old.numero
+      or new.snapshot_suscriptor is distinct from old.snapshot_suscriptor
+      or new.fecha_emision is distinct from old.fecha_emision
+    ) then
+      raise exception 'Una factura emitida es inmutable: no se cambian sus valores; si está mal, se anula (solo pdf_url por 006 y total_pagado/estado por 007)';
+    end if;
+    return new;  -- solo cambió pdf_url, total_pagado y/o estado
+  end if;
+
+  -- INSERT (emisión del cierre): permitido.
+  return new;
+end $$;
