@@ -7,6 +7,7 @@ import { ReemplazoContadorForm } from '@/components/reemplazo-contador-form';
 import {
   matrizTarifas,
   obtenerSuscriptor,
+  regenerarCodigoSuscriptor,
   type Contador,
   type ReemplazoContador,
   type Suscriptor,
@@ -23,6 +24,7 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
   const [reemplazos, setReemplazos] = useState<ReemplazoContador[]>([]);
   const [sinTarifaConfigurada, setSinTarifaConfigurada] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   function recargar() {
     setError(null);
@@ -33,6 +35,24 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
         setReemplazos(r.reemplazos);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'No se pudo cargar el suscriptor'));
+  }
+
+  // CA-8: el admin asigna un código de portal nuevo. El código anterior deja de
+  // servir (con D-10 la sesión previa pierde el acceso a los datos de inmediato).
+  async function alRegenerarCodigo() {
+    if (!suscriptor) return;
+    const codigoNuevo = window.prompt('Nuevo código de suscriptor para el portal:');
+    if (!codigoNuevo?.trim()) return;
+    if (!window.confirm(`¿Cambiar el código de ${suscriptor.nombre} a "${codigoNuevo.trim()}"? El código anterior dejará de servir.`)) return;
+    setError(null);
+    setAviso(null);
+    try {
+      await regenerarCodigoSuscriptor(suscriptor.id, codigoNuevo.trim());
+      setAviso(`Código actualizado a "${codigoNuevo.trim()}". El anterior ya no sirve para ingresar al portal.`);
+      recargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo regenerar el código');
+    }
   }
 
   useEffect(recargar, [id]);
@@ -54,6 +74,7 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
       <h1 className="text-2xl font-semibold">{suscriptor?.nombre ?? 'Suscriptor'}</h1>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {aviso && <p className="text-sm text-green-700">{aviso}</p>}
       {sinTarifaConfigurada && (
         <p className="rounded-md border border-yellow-500 bg-yellow-50 p-3 text-sm text-yellow-800">
           La categoría &quot;{suscriptor?.categoria}&quot; no tiene ninguna tarifa vigente configurada
@@ -72,6 +93,12 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
           <p>Dirección: {suscriptor?.direccion}</p>
           <p>Categoría: {suscriptor?.categoria}</p>
           <p>Estado: {suscriptor?.estado}</p>
+          <button
+            className="mt-3 h-9 w-fit rounded-md border border-blue-300 px-4 text-sm font-medium text-blue-700 hover:bg-blue-50"
+            onClick={alRegenerarCodigo}
+          >
+            Regenerar código del portal
+          </button>
         </CardContent>
       </Card>
 

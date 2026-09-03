@@ -651,3 +651,81 @@ export function obtenerPagosDeSuscriptor(
 ): Promise<{ pagos: PagoHistorial[]; saldoFavor: number }> {
   return peticion(`/suscriptores/${suscriptorId}/pagos`);
 }
+
+// --- 008: Portal del suscriptor (D-2/D-4/D-10) y regenerar código (CA-8) ------
+
+// La cookie del portal es uc_sesion_suscriptor (distinta de la administrativa
+// uc_sesion_admin): las funciones del portal envían credentials por defecto y
+// el backend resuelve la sesión por su propia cookie — nunca se mezclan.
+
+export interface SesionPortal {
+  tipo: 'suscriptor';
+  usuarioServicioId: string;
+  clienteId: string;
+  numeroDocumento: string;
+  codigoSuscriptor: string;
+  expiraEn: number;
+}
+
+export interface FacturaResumenPortal {
+  id: string;
+  numero: string;
+  tipo: string;
+  total: number;
+  totalPagado: number;
+  saldo: number;
+  fechaEmision: string;
+  fechaVencimiento: string;
+  estado: 'pendiente' | 'pagada' | 'vencida' | 'anulada';
+}
+
+export interface LecturaConsumoPortal {
+  fecha_lectura: string;
+  lectura_anterior: number;
+  lectura_actual: number;
+  consumo_m3: number;
+}
+
+export function loginPortal(
+  slug: string,
+  numeroDocumento: string,
+  codigoSuscriptor: string,
+): Promise<{ sesion: SesionPortal }> {
+  return peticion(`/portal/${slug}/login`, {
+    method: 'POST',
+    body: JSON.stringify({ numero_documento: numeroDocumento, codigo_suscriptor: codigoSuscriptor }),
+  });
+}
+
+export function logoutPortal(): Promise<{ ok: true }> {
+  return peticion<{ ok: true }>('/portal/logout', { method: 'POST' });
+}
+
+export function obtenerFacturasPortal(): Promise<{
+  facturaActual: FacturaResumenPortal | null;
+  historial: FacturaResumenPortal[];
+}> {
+  return peticion('/portal/facturas');
+}
+
+export function obtenerSaldoFavorPortal(): Promise<{ saldoFavor: number }> {
+  return peticion('/portal/saldo-favor');
+}
+
+export function obtenerConsumoPortal(): Promise<{ lecturas: LecturaConsumoPortal[] }> {
+  return peticion('/portal/consumo');
+}
+
+export function urlPdfFacturaPortal(facturaId: string): string {
+  return `${URL_BASE_API}/portal/facturas/${facturaId}/pdf`;
+}
+
+export function regenerarCodigoSuscriptor(
+  suscriptorId: string,
+  codigoNuevo: string,
+): Promise<{ suscriptor: Suscriptor }> {
+  return peticion(`/suscriptores/${suscriptorId}/regenerar-codigo`, {
+    method: 'POST',
+    body: JSON.stringify({ codigo_nuevo: codigoNuevo }),
+  });
+}

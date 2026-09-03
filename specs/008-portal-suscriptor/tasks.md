@@ -353,13 +353,42 @@ npx wrangler deploy --dry-run -c wrangler.toml
 cd frontend && npm run build && npm run lint && npx tsc --noEmit
 ```
 **Resultado esperado:** `build`/`lint`/`tsc` limpios (páginas nuevas del portal y el botón de
-suscriptores compilan); `wrangler deploy --dry-run` sin errores. El flujo click-a-click queda "NO
-VERIFICADO — requiere validación manual de Mateo: [pasos exactos]" si el entorno no permite
-`next dev` + `wrangler dev` (la API ya quedó verificada en T-004/T-005 vía curl).
-**Estado:** Pendiente
+suscriptores compilan); `wrangler deploy --dry-run` sin errores. Verificado con evidencia real que la
+sesión de suscriptor y la de administrador NUNCA se mezclan en el navegador (cookies con nombres
+distintos + middleware por área). El flujo click-a-click queda "NO VERIFICADO — requiere validación
+manual de Mateo: [pasos exactos]" si el entorno no permite `next dev` + `wrangler dev` (la API ya
+quedó verificada en T-004/T-005 vía curl).
+**Estado:** Completado (2026-09-08)
 **Evidencia:**
 ```
+$ npx tsc --noEmit (frontend) → sin salida
+$ npx next build → ✓ Compiled successfully (12 páginas + Middleware 34.3 kB) · lint OK
+$ npx wrangler deploy --dry-run -c wrangler.toml → OK
 
+Cambios: middleware.ts matcher ['/app/:path*','/portal/:slug/:path*'] con cookies DISTINTAS
+(uc_sesion_admin para /app; uc_sesion_suscriptor para /portal, salvo /portal/:slug/login);
+api.ts (loginPortal, logoutPortal, obtenerFacturasPortal, obtenerSaldoFavorPortal,
+obtenerConsumoPortal, urlPdfFacturaPortal, regenerarCodigoSuscriptor); páginas
+/portal/[slug]/login y /portal/[slug]; botón "Regenerar código" en el detalle del suscriptor.
+
+SEPARACIÓN DE SESIONES verificada con curl contra next dev (:3000) con cookies REALES
+emitidas por el backend (login portal A1 y login admin A):
+  /portal/acueducto-a/login sin cookie           → 200 (login público)
+  /portal/acueducto-a SIN cookie                 → 307 → /portal/acueducto-a/login
+  /portal/acueducto-a con cookie SUSCRIPTOR      → 200 (el suscriptor ve el portal)
+  /portal/acueducto-a con cookie ADMIN SOLO      → 307 → /portal/acueducto-a/login
+        (un admin NO ve el portal como si fuera suscriptor)
+  /app SIN cookie                                → 307 → /login
+  /app con cookie SUSCRIPTOR SOLO                → 307 → /login
+        (un suscriptor NO ve el panel admin)
+  /app/facturacion con cookie ADMIN              → 200 (el admin ve su área)
+  AMBAS cookies a la vez: /portal/acueducto-a → 200 y /app/facturacion → 200
+        (cada middleware usa SOLO su cookie; nunca se confunden)
+
+El flujo click-a-click (formularios/prompt) NO se ejecutó en navegador: pasos para Mateo =
+next dev (:3000) + wrangler dev (:8787) → abrir /portal/acueducto-a/login, ingresar con
+1000000001/A-001, ver factura/saldo/consumo/PDF y Salir; luego /login del admin y regenerar
+el código de un suscriptor.
 ```
 **Commit:** (tras completar)
 
