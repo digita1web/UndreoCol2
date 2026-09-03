@@ -24,3 +24,18 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* Impresión de facturas (006, D-8/CA-5): la vista HTML del detalle imprime solo
+   el contenido; las acciones/layout de pantalla llevan `print:hidden`. */
+@media print {
+  html,
+  body {
+    background: white !important;
+  }
+  /* sin sombras/recortes que coman tinta */
+  * {
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

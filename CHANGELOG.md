@@ -4,6 +4,108 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-06 — Sesión 013: 006-impresion-y-correo-factura completa (T-001 a T-006)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/006-impresion-y-correo-factura/`).
+- **T-001** — Migración `20260906090000_correo-factura.sql`: tabla `notificaciones` con trazabilidad
+  del envío (`intentos`, `ultimo_error`, `enviada_en`) + RLS aislada (admin/lector del cliente).
+  Fixtures `correo-factura.sql` (email a A1 + notificación enviada) y test de aislamiento 006
+  (es_admin_de en notificaciones). 6 tests de aislamiento en verde sobre el mismo estado final.
+  Decisión de arquitectura: **no se crea cola nueva** — se amplía el mensaje de la cola
+  `undreocol-facturacion` (005) con `tipo: 'emitir_factura' | 'enviar_correo_factura'`.
+- **T-002** — `pdf-lib` ^1.17.1 + `src/lib/factura-pdf.ts` (genera el PDF de la factura con renglones,
+  datos del acueducto y totales; logo opcional). Se respetó D-9: **sin pdfme ni Chromium** (el chat
+  inicial los pidió, pero contradicen la especificación aprobada). 4 unit tests → `npm test` 59 en
+  verde (el test decodifica los streams hex de pdf-lib para verificar el contenido del PDF).
+- **T-003** — `src/lib/email.ts` (`env.EMAIL.send` con adjunto en `ArrayBuffer`; sin `env.EMAIL`
+  devuelve `{ok:false}` sin lanzar, regla 20) + bindings `EMAIL`/`FACTURAS_R2` + consumidor ampliado
+  (enruta por `tipo`; para el correo: genera PDF → sube a R2 → envía → actualiza notificaciones con
+  `intentos+1`/`ultimo_error`) + rutas `POST /facturas/:id/enviar-correo` y
+  `POST /facturacion/periodos/:id/enviar-correo` (202, uno por factura con email; sin email se
+  entregan impresas, D-8). **Round-trip local REAL verificado** (202 → log del consumidor → fila en
+  notificaciones actualizada). La decisión de estado (pendiente/fallida + `ultimo_error`) se extrajo
+  a `computarActualizacionNotificacion()` y quedó cubierta por unit tests (fallo trazable con
+  `intentos+1` y error; fallida tras 3 reintentos). `npm test` 65 en verde.
+- **T-004** — `GET /facturas/:id/pdf`: lee R2 (`facturas/{clienteId}/{facturaId}.pdf`) o genera y
+  sube, actualiza `facturas.pdf_url`, responde `200 application/pdf` (inline). **Hallazgo real
+  corregido**: `trg_factura_inmutable` (005) bloqueaba el UPDATE de `pdf_url` → se reescribió la
+  función para permitir el cambio exclusivo de `pdf_url`/`total_pagado`/`estado` (metadata de 006 y
+  avances de 007) manteniendo el bloqueo de valores económicos y el recálculo del cierre (round-trip
+  REAL del cierre re-verificado: factura con total 38.600). Se descartó `pg_trigger_depth()` (dentro
+  del propio trigger siempre es ≥ 1) y se documentó que las GUCs locales no se propagan entre roles.
+- **T-005** — Frontend: `api.ts` (`enviarCorreoFactura`, `enviarCorreoPeriodo`, `urlPdfFactura`);
+  detalle de factura con botones **Ver PDF** / **Imprimir** (`window.print`) / **Enviar por correo**;
+  listado del periodo con **Enviar correos del periodo**; `@media print` (la impresión deja solo la
+  factura, sin acciones). `next build` 12/12 sin errores.
+- **T-006** — Cierre: checklist de `spec.md §8` + esta entrada de CHANGELOG.
+
+**Hallazgo de entorno (send_email en local)**
+En `wrangler dev` el binding `[[send_email]]` se materializa como **mock de miniflare** que "envía"
+con éxito (la fila queda `enviada`). Por eso el caso de fallo (que exige trazar `intentos`/
+`ultimo_error`) no se puede reproducir por la API en local; quedó verificado con unit tests de
+`computarActualizacionNotificacion()` y de `email.ts`. Además Node 20 sin WebSocket no puede
+instanciar supabase-js (realtime) fuera de workerd, así que la verificación end-to-end de las rutas
+es vía curl contra wrangler dev.
+
+**Pendiente (NO VERIFICADO — requiere la cuenta de Cloudflare de Mateo)**
+- Envío real de correo: Workers Paid + dominio verificado (`EMAIL` se ignora/falla en local).
+- R2 real: bucket `undreocol-facturas` en producción (en local el PDF se genera/sirve y `pdf_url` se
+  persiste, pero la simulación de R2 no persiste entre arranques sin `--persist-to`).
+- CA-6: flujo click-a-click en navegador (`next dev` + `wrangler dev`).
+
+### 2026-09-05 — Sesión 012: 005-facturacion completa (T-001 a T-007)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/005-facturacion/`): commit `b5d3e50`, `f08ae42`, `58a1a91`.
+- **T-001** — Migración `20260905090000_facturacion.sql`: enums `tipo_factura`/`estado_factura`,
+  tablas `facturas` (unique `(cliente_id, numero)`, `uq_factura_ciclo`, `chk_total_pagado <= total`),
+  `factura_detalles` (referencia permanente `tarifa_id`/`servicio_id`) y `factura_lecturas`; RLS
+  `FORCE`. **Dos hallazgos reales corregidos**: (1) el trigger inicial bloqueaba el INSERT de un
+  periodo cerrado, lo que habría impedido la emisión del cierre (004 cierra el periodo y 005 factura
+  sobre él) → se reemplazó por `trg_factura_inmutable` (INSERT permitido; UPDATE solo anulación con
+  motivo o `total_pagado` de 007; DELETE bloqueado; recálculo interno de `total` = suma de detalles
+  permitido vía GUC `app.recalculo_interno`). (2) el recálculo de `factura_detalles` chocaba con el
+  trigger de inmutabilidad → se marcó la transacción con GUC.
+- **T-002** — Fixtures `facturacion.sql` + `005_facturacion_aislamiento.sql` (8 pasos). **Hallazgo de
+  regresión**: el fixture cerraba el periodo A y rompía el test de 004 (que asume el periodo A
+  abierto); corregido: los fixtures de features posteriores no mutan el estado que los tests previos
+  asumen. 5 tests de aislamiento (001-005) en verde sobre el mismo estado final.
+- **T-003** — `core/facturacion.ts` (lógica pura, reusa `core/tarifas.ts` D-1): `armarRenglones`,
+  `calcularRecargoMora`, `componerTotal`, `componerNumeroFactura` (D-3), `clasificarAnomaliasFacturacion`.
+  19 unit tests → `npm test` 55 en verde.
+- **T-004** — `lib/facturacion.ts` (capa fina) + rutas `POST /facturacion/periodos/:id/simular`,
+  `GET /facturacion/periodos/:id/facturas`, `GET /facturas/:id`, `POST /facturas/:id/anular`.
+  **Simulación real verificada con curl** (wrangler dev + Supabase local): resumen con
+  facturación total 38.600 (D-1 básico/no básico) y anomalías de A2 (sin tarifa 9d, sin lectura);
+  no insertó nada. Anulación real verificada (sin motivo → 400, con motivo → 200).
+  Corrección de alcance: no se implementó `GET /facturacion/simulaciones/:periodoId` — la simulación
+  no persiste (spec §3.3); el gate de la emisión es de UI + defensa en backend.
+- **T-005** — Consumidor `src/queues/cierre-facturacion.ts` + ruta `POST .../emitir` + binding
+  `FACTURACION_COLA` (producer+consumer en el mismo worker). **Round-trip local REAL de Cloudflare
+  Queues verificado**: `POST /emitir` → 202 (1 encolada), log del consumidor "factura FAC-2026-00001
+  emitida", factura con total 38.600 + 1 detalle, consecutivo atómico en 1, re-emisión → 409.
+  Corrección de arquitectura: se usó un solo worker (fetch+queue) en vez del
+  `wrangler.facturacion.toml` separado. Se añadió la RPC `siguiente_numero_factura()` (SELECT FOR
+  UPDATE, puntos 9b/9c).
+- **T-006** — Frontend: `api.ts` ampliado + paneles `/app/facturacion` (simular → resumen/anomalías →
+  confirmar emisión → listado) y `/app/facturacion/[facturaId]` (datos + desglose + anular).
+  `npm run build` 12/12 y lint en verde.
+- **T-007** — Cierre: checklist de `spec.md §8`, CHANGELOG y los 5 tests de aislamiento re-corridos.
+
+**Hallazgo de entorno (importante para toda esta sesión)**
+`http_proxy`/`https_proxy` están seteados sin `NO_PROXY`, así que las llamadas a `127.0.0.1` pasaban
+por el proxy y devolvían **502** (a Supabase local y a Kong). Solución: `curl --noproxy '*'` y
+`wrangler dev` lanzado con `env -u http_proxy ...`. También se detectó que tras `supabase db reset`
+Kong podía quedar sin inicializar: `supabase stop && supabase start` lo resolvió.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- Despliegue real a Cloudflare: crear la cola `undreocol-facturacion` en la cuenta, conectar
+  producer/consumer y correr el cierre con cron real en la nube (el round-trip local ya está
+  verificado).
+- CA-6: flujo click-a-click en navegador (`next dev` + `wrangler dev`) — la API de simulación/emisión/
+  anulación ya fue verificada por curl y el build/lint confirman el render.
+
 ### 2026-09-04 — Sesión 011: 004-lecturas-y-consumo completa (T-001 a T-006)
 
 **Hecho**
@@ -48,11 +150,12 @@ esquemas auth/storage/realtime, `auth.uid()` nativo). La verificación de esquem
 hizo contra Supabase local real (`supabase db reset --local`), más fiel que el shim de 002/003.
 
 **Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
-- **CA-4** (T-004): correr los `curl` reales de `tasks.md` contra `wrangler dev` conectado a la base
-  local (login admin real → POST /periodos → POST /lecturas → PATCH /.../revisar). Pasos exactos en
-  `tasks.md` T-004.
-- **CA-6** (T-005): flujo completo en navegador (`next dev` + `wrangler dev`). Pasos exactos en
-  `tasks.md` T-005.
+Ninguno tras la re-validación posterior: **CA-4** y **CA-6** se re-validaron contra `wrangler dev` +
+`next dev` + Supabase local real (ver evidencia en `tasks.md` T-004/T-005 y la actualización de
+esta entrada). CA-4: flujo curl end-to-end en verde (login → periodo/lecturas/revisar/cerrar + los
+bloqueos por unique/periodo cerrado reales). CA-6: `/app/lecturas` y `/app/lecturas/periodo` se
+sirven con sesión (HTTP 200) y el middleware redirige a `/login` sin sesión (307). La interacción
+de clic en navegador sigue disponible como verificación manual opcional.
 
 ### 2026-09-02 — Sesión 010: 003-suscriptores-contadores completa (T-001 a T-009)
 

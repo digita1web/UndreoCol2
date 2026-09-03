@@ -203,8 +203,11 @@ middleware existente. `npm run build`/`npm run lint` limpios; flujo en navegador
 
 - [x] Todos los CA (1–6) con evidencia — CA-1, CA-2 y CA-5 verificados contra **Supabase local real**
   PostgreSQL 17.6 (`supabase db reset --local`), entorno con Docker disponible en esta sesión.
-  CA-1/CA-2/CA-5 en el test de aislamiento SQL (T-002), CA-3 con `vitest` (T-003); CA-4 y CA-6 quedan
-  **NO VERIFICADO** (validación manual de Mateo, pasos en tasks.md T-004/T-005).
+  CA-1/CA-2/CA-5 en el test de aislamiento SQL (T-002), CA-3 con `vitest` (T-003). **CA-4**
+  re-verificado con curl real contra `wrangler dev` + Supabase local (flujo end-to-end en verde, ver
+  tasks.md T-004). **CA-6** re-verificado a nivel de render real con `next dev` (200 con sesión, 307
+  a /login sin sesión) más la API de CA-4 (tasks.md T-005); la interacción de clic en navegador
+  sigue disponible como verificación manual opcional.
 - [x] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios — `npm run build` 11/11,
   incluidas `/app/lecturas` y `/app/lecturas/periodo`; `wrangler deploy --dry-run` 814.66 KiB sin errores
 - [x] Tests en verde: `vitest` de `core/consumo.ts` (22 tests, CA-3) — `npm test` 36 tests en verde +

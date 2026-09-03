@@ -36,6 +36,14 @@ import {
   listarPeriodos,
   revisarLectura,
 } from './lib/lecturas';
+import {
+  anularFactura,
+  listarFacturasDePeriodo,
+  obtenerFactura,
+  simularPeriodo,
+} from './lib/facturacion';
+import { generarPdfFactura, type DatosAcueductoPdf } from './lib/factura-pdf';
+import cierreFacturacion from './queues/cierre-facturacion';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -617,4 +625,261 @@ app.patch('/lecturas/:id/revisar', async (c) => {
   }
 });
 
-export default app;
+// --- Facturación (005-facturacion) -------------------------------------------
+
+// POST /facturacion/periodos/:id/simular — modo simulación (dry-run): calcula
+// el cierre SIN insertar nada (spec §3.3). Solo lectura.
+app.post('/facturacion/periodos/:id/simular', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const resumen = await simularPeriodo(ctx.supabase, ctx.clienteId, c.req.param('id'));
+    return c.json({ resumen });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo simular el periodo' }, 400);
+  }
+});
+
+// GET /facturacion/periodos/:id/facturas — lista facturas emitidas del periodo.
+app.get('/facturacion/periodos/:id/facturas', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const facturas = await listarFacturasDePeriodo(ctx.supabase, ctx.clienteId, c.req.param('id'));
+    return c.json({ facturas });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron listar las facturas' }, 400);
+  }
+});
+
+// GET /facturas/:id — detalle de una factura con sus renglones.
+app.get('/facturas/:id', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const { factura, detalles } = await obtenerFactura(ctx.supabase, ctx.clienteId, c.req.param('id'));
+    return c.json({ factura, detalles });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo obtener la factura' }, 400);
+  }
+});
+
+// POST /facturas/:id/anular — anula una factura emitida (motivo obligatorio).
+app.post('/facturas/:id/anular', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req.json<{ motivo?: string }>().catch(() => ({ motivo: undefined }));
+  const motivo = body.motivo?.trim();
+  if (!motivo) return c.json({ error: 'El motivo de anulación es obligatorio' }, 400);
+  try {
+    const factura = await anularFactura(ctx.supabase, ctx.clienteId, c.req.param('id'), motivo, ctx.perfilId);
+    return c.json({ factura });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo anular la factura' }, 400);
+  }
+});
+
+// POST /facturacion/periodos/:id/emitir — modo emisión. Encola UNA factura por
+// mensaje en FACTURACION_COLA (devuelve 202). Defensa: rechaza si el periodo ya
+// tiene facturas emitidas (no duplicar). El gate de "se simuló" es de UI.
+app.post('/facturacion/periodos/:id/emitir', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const cola = c.env.FACTURACION_COLA;
+  if (!cola) return c.json({ error: 'La cola de facturación no está configurada' }, 500);
+  const periodoId = c.req.param('id');
+
+  try {
+    // defensa: no re-emitir un periodo que ya tiene facturas
+    const existentes = await listarFacturasDePeriodo(ctx.supabase, ctx.clienteId, periodoId);
+    if (existentes.length > 0) {
+      return c.json({ error: 'El periodo ya tiene facturas emitidas (no se duplica la emisión)' }, 409);
+    }
+    // resuelve quién se factura (los que tienen lectura + tarifa) y encola 1 c/u
+    const resumen = await simularPeriodo(ctx.supabase, ctx.clienteId, periodoId);
+    const aEmitir = resumen.detalle.filter((d) => d.consumoM3 !== null && d.tieneTarifa && d.total > 0);
+    for (const d of aEmitir) {
+      await cola.send({
+        tipo: 'emitir_factura',
+        clienteId: ctx.clienteId,
+        periodoId,
+        usuarioServicioId: d.usuarioServicioId,
+      });
+    }
+    return c.json({
+      encoladas: aEmitir.length,
+      omitidas: resumen.detalle.length - aEmitir.length,
+      mensaje: 'Emisión encolada: una factura por mensaje en Cloudflare Queues',
+    }, 202);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo encolar la emisión' }, 400);
+  }
+});
+
+// El Worker principal es a la vez HTTP (Hono) y consumidor de la cola de
+// facturación (mismo worker producer+consumer: round-trip local verificado en
+// plan.md §0). En producción Cloudflare enruta igual: un Worker puede tener
+// fetch + queue.
+// POST /facturas/:id/enviar-correo — encola el envío del correo de UNA factura
+// (202). Crea la fila en notificaciones (pendiente). El envío nunca ocurre en
+// este request (cola) — regla 20.
+app.post('/facturas/:id/enviar-correo', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const cola = c.env.FACTURACION_COLA;
+  if (!cola) return c.json({ error: 'La cola de facturación no está configurada' }, 500);
+  const facturaId = c.req.param('id');
+  try {
+    const { factura } = await obtenerFactura(ctx.supabase, ctx.clienteId, facturaId);
+    const { data: suscriptor } = await ctx.supabase
+      .from('usuarios_servicio')
+      .select('email')
+      .eq('id', factura.usuario_servicio_id)
+      .single();
+    const email = (suscriptor?.email ?? '').trim();
+    if (!email) {
+      return c.json({ error: 'El suscriptor de la factura no tiene email registrado' }, 400);
+    }
+    const { data: notificacion, error: errNotif } = await ctx.supabase
+      .from('notificaciones')
+      .insert({
+        cliente_id: ctx.clienteId,
+        usuario_servicio_id: factura.usuario_servicio_id,
+        factura_id: facturaId,
+        tipo: 'factura_generada',
+        canal: 'email',
+        destinatario: email,
+        asunto: `Factura ${factura.numero}`,
+        estado: 'pendiente',
+        intentos: 0,
+      })
+      .select('id')
+      .single();
+    if (errNotif || !notificacion) throw new Error(`No se pudo registrar el envío: ${errNotif?.message ?? ''}`);
+    await cola.send({
+      tipo: 'enviar_correo_factura',
+      clienteId: ctx.clienteId,
+      facturaId,
+      notificacionId: notificacion.id,
+    });
+    return c.json({ encolado: true, notificacionId: notificacion.id }, 202);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo encolar el envío' }, 400);
+  }
+});
+
+// POST /facturacion/periodos/:id/enviar-correo — encola el envío del correo de
+// las facturas del periodo cuyos suscriptores tienen email. Devuelve cuántos se
+// encolaron y cuántos se omitieron (sin email → se entregan impresas, D-8).
+app.post('/facturacion/periodos/:id/enviar-correo', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const cola = c.env.FACTURACION_COLA;
+  if (!cola) return c.json({ error: 'La cola de facturación no está configurada' }, 500);
+  const periodoId = c.req.param('id');
+  try {
+    const facturas = await listarFacturasDePeriodo(ctx.supabase, ctx.clienteId, periodoId);
+    let encoladas = 0;
+    let omitidas = 0;
+    for (const factura of facturas) {
+      const { data: suscriptor } = await ctx.supabase
+        .from('usuarios_servicio')
+        .select('email')
+        .eq('id', factura.usuario_servicio_id)
+        .single();
+      const email = (suscriptor?.email ?? '').trim();
+      if (!email) {
+        omitidas += 1;
+        continue;
+      }
+      const { data: notificacion, error: errNotif } = await ctx.supabase
+        .from('notificaciones')
+        .insert({
+          cliente_id: ctx.clienteId,
+          usuario_servicio_id: factura.usuario_servicio_id,
+          factura_id: factura.id,
+          tipo: 'factura_generada',
+          canal: 'email',
+          destinatario: email,
+          asunto: `Factura ${factura.numero}`,
+          estado: 'pendiente',
+          intentos: 0,
+        })
+        .select('id')
+        .single();
+      if (errNotif || !notificacion) {
+        omitidas += 1; // no rompe el lote (regla 20)
+        continue;
+      }
+      await cola.send({
+        tipo: 'enviar_correo_factura',
+        clienteId: ctx.clienteId,
+        facturaId: factura.id,
+        notificacionId: notificacion.id,
+      });
+      encoladas += 1;
+    }
+    return c.json({
+      encoladas,
+      omitidas,
+      mensaje: 'Envíos encolados (uno por factura con email); sin email se entregan impresas',
+    }, 202);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo encolar el lote' }, 400);
+  }
+});
+
+// GET /facturas/:id/pdf — sirve el PDF de la factura (application/pdf). Si no
+// está en R2 lo genera con pdf-lib y lo sube (pdf_url queda en la factura).
+app.get('/facturas/:id/pdf', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const facturaId = c.req.param('id');
+  try {
+    const { factura, detalles } = await obtenerFactura(ctx.supabase, ctx.clienteId, facturaId);
+    const bucket = c.env.FACTURAS_R2;
+    const key = `facturas/${ctx.clienteId}/${facturaId}.pdf`;
+
+    let pdfBytes: Uint8Array | null = null;
+    if (bucket) {
+      const objeto = await bucket.get(key);
+      if (objeto) {
+        pdfBytes = new Uint8Array(await objeto.arrayBuffer());
+      }
+    }
+    if (!pdfBytes) {
+      const { data: acueductoRow } = await ctx.supabase
+        .from('clientes')
+        .select('nombre, nit, direccion, telefono, municipio, logo_url')
+        .eq('id', ctx.clienteId)
+        .single();
+      const acueducto: DatosAcueductoPdf = {
+        nombre: acueductoRow?.nombre ?? '',
+        nit: acueductoRow?.nit ?? null,
+        direccion: acueductoRow?.direccion ?? null,
+        telefono: acueductoRow?.telefono ?? null,
+        municipio: acueductoRow?.municipio ?? null,
+        logoUrl: acueductoRow?.logo_url ?? null,
+      };
+      pdfBytes = await generarPdfFactura({ factura, detalles, acueducto });
+      if (bucket) {
+        await bucket.put(key, pdfBytes, { httpMetadata: { contentType: 'application/pdf' } });
+        await ctx.supabase.from('facturas').update({ pdf_url: `/facturas/${facturaId}/pdf` }).eq('id', facturaId);
+      }
+    }
+    return new Response(pdfBytes as BodyInit, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${factura.numero}.pdf"`,
+      },
+    });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo generar el PDF' }, 400);
+  }
+});
+
+export default {
+  fetch: app.fetch,
+  queue: cierreFacturacion.queue,
+};

@@ -398,3 +398,126 @@ export function crearLectura(datos: DatosCrearLectura): Promise<{ lectura: Lectu
 export function revisarLectura(id: string): Promise<{ lectura: Lectura }> {
   return peticion<{ lectura: Lectura }>(`/lecturas/${id}/revisar`, { method: 'PATCH' });
 }
+
+// --- Facturación (005-facturacion) -------------------------------------------
+
+export type TipoFactura = 'ciclo' | 'reconexion' | 'ajuste';
+export type EstadoFactura = 'pendiente' | 'pagada' | 'vencida' | 'anulada';
+export type TipoAnomaliaFacturacion =
+  | 'consumo_atipico' | 'usuario_sin_lectura' | 'sin_tarifa'
+  | 'total_cero_o_negativo' | 'variacion_superior_20';
+
+export interface Factura {
+  id: string;
+  cliente_id: string;
+  usuario_servicio_id: string;
+  periodo_id: string | null;
+  tipo: TipoFactura;
+  numero: string;
+  snapshot_suscriptor: Record<string, unknown>;
+  consumo_m3: number;
+  subtotal_servicios: number;
+  recargo_mora: number;
+  saldo_anterior: number;
+  total: number;
+  total_pagado: number;
+  fecha_emision: string;
+  fecha_vencimiento: string;
+  estado: EstadoFactura;
+  motivo_anulacion: string | null;
+  anulada_por: string | null;
+}
+
+export interface DetalleFactura {
+  id: string;
+  factura_id: string;
+  servicio_id: string | null;
+  tarifa_id: string | null;
+  orden: number;
+  descripcion: string;
+  tipo_calculo: 'por_consumo' | 'fijo';
+  consumo_m3: number;
+  cargo_fijo: number;
+  consumo_basico_m3: number;
+  valor_basico: number;
+  consumo_no_basico_m3: number;
+  valor_no_basico: number;
+  subtotal: number;
+}
+
+export interface AnomaliaFacturacion {
+  tipo: TipoAnomaliaFacturacion;
+  usuarioServicioId: string;
+  detalle: string;
+}
+
+export interface RenglonSimulado {
+  descripcion: string;
+  consumoM3: number;
+  subtotal: number;
+}
+
+export interface SuscriptorSimulado {
+  usuarioServicioId: string;
+  codigoSuscriptor: string;
+  nombre: string;
+  categoria: string | null;
+  consumoM3: number | null;
+  tieneTarifa: boolean;
+  renglones: RenglonSimulado[];
+  subtotalServicios: number;
+  total: number;
+  anomalias: AnomaliaFacturacion[];
+}
+
+export interface ResumenSimulacion {
+  periodoId: string;
+  totalSuscriptores: number;
+  suscriptoresConFactura: number;
+  consumoTotalM3: number;
+  facturacionTotal: number;
+  anomalias: AnomaliaFacturacion[];
+  detalle: SuscriptorSimulado[];
+}
+
+export function simularPeriodo(periodoId: string): Promise<{ resumen: ResumenSimulacion }> {
+  return peticion<{ resumen: ResumenSimulacion }>(`/facturacion/periodos/${periodoId}/simular`, { method: 'POST' });
+}
+
+export function emitirPeriodo(periodoId: string): Promise<{ encoladas: number; omitidas: number; mensaje: string }> {
+  return peticion<{ encoladas: number; omitidas: number; mensaje: string }>(`/facturacion/periodos/${periodoId}/emitir`, { method: 'POST' });
+}
+
+export function listarFacturasDePeriodo(periodoId: string): Promise<{ facturas: Factura[] }> {
+  return peticion<{ facturas: Factura[] }>(`/facturacion/periodos/${periodoId}/facturas`);
+}
+
+export function obtenerFactura(facturaId: string): Promise<{ factura: Factura; detalles: DetalleFactura[] }> {
+  return peticion<{ factura: Factura; detalles: DetalleFactura[] }>(`/facturas/${facturaId}`);
+}
+
+export function anularFactura(facturaId: string, motivo: string): Promise<{ factura: Factura }> {
+  return peticion<{ factura: Factura }>(`/facturas/${facturaId}/anular`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo }),
+  });
+}
+
+// --- 006: impresión y correo de facturas ------------------------------------
+
+export function urlPdfFactura(facturaId: string): string {
+  return `${URL_BASE_API}/facturas/${facturaId}/pdf`;
+}
+
+export function enviarCorreoFactura(facturaId: string): Promise<{ encolado: boolean; notificacionId: string }> {
+  return peticion<{ encolado: boolean; notificacionId: string }>(`/facturas/${facturaId}/enviar-correo`, { method: 'POST' });
+}
+
+export function enviarCorreoPeriodo(
+  periodoId: string,
+): Promise<{ encoladas: number; omitidas: number; mensaje: string }> {
+  return peticion<{ encoladas: number; omitidas: number; mensaje: string }>(
+    `/facturacion/periodos/${periodoId}/enviar-correo`,
+    { method: 'POST' },
+  );
+}

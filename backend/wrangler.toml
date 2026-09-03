@@ -9,5 +9,30 @@ compatibility_date = "2026-05-03"
 [vars]
 ALLOWED_ORIGIN = "http://localhost:3000"
 
+# --- Cierre de facturación (005): producer + consumer de la misma cola -------
+# El worker principal es a la vez HTTP (fetch) y consumidor de la cola; así el
+# round-trip se prueba en local con wrangler dev (plan.md §0). En producción
+# Cloudflare enruta los mensajes al handler `queue` del mismo worker.
+[[queues.producers]]
+binding = "FACTURACION_COLA"
+queue = "undreocol-facturacion"
+
+[[queues.consumers]]
+queue = "undreocol-facturacion"
+max_batch_size = 10
+max_retries = 3
+
+# --- PDF de facturas (006): R2 (adjuntos/correo) y Email Workers ------------
+# R2: en local wrangler dev simula el bucket con persistencia en .wrangler/state.
+[[r2_buckets]]
+binding = "FACTURAS_R2"
+bucket_name = "undreocol-facturas"
+
+# Email Workers (D-9): solo efectivo en producción (Workers Paid + dominio
+# verificado). En dev local el binding no se materializa; lib/email.ts detecta
+# la ausencia de env.EMAIL y NO bloquea (regla 20).
+[[send_email]]
+name = "EMAIL"
+
 [observability]
 enabled = true
