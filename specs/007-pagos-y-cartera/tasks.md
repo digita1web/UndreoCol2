@@ -94,14 +94,15 @@ anular_pago necesitaba cast a estado_factura (columna enum).
 
 **Archivos:** `tests/fixtures/pagos.sql`, `tests/aislamiento/007_pagos_aislamiento.sql`
 **Hace:** Fixture sobre el estado de 001-006 (cliente A: factura `ciclo` FAC-2026-00001 total 38.600
-de A1 del fixture 005; cliente B sin facturas): deja **una factura `ajuste` de A1 con
-`fecha_vencimiento` ya pasada** (cartera vencida derivada) y registra pagos directos (insert + update
-de `total_pagado`) para dejar: una factura con abono parcial, una vencida sin pagar y un pago con
-remanente (saldo a favor) — con `recibido_por` = admin A. Test de aislamiento (CA-2, patrón 001-006):
-A no lee/escribe pagos de B; el admin de A registra y anula pagos de su cliente vía RPC; el `lector`
-lee pagos de su cliente pero no escribe (INSERT y RPC rechazados); RPC con factura de otro
-cliente/suscriptor rechazada; aplicar a factura anulada o por más del saldo/valor rechazado; anular
-sin motivo rechazado. Regresión 001-006 en verde sobre el mismo estado final.
+de A1 del fixture 005; cliente B sin facturas): registra pagos directos sobre esa factura SIN crear
+facturas nuevas (regla: los fixtures posteriores no mutan el estado que los tests previos asumen) —
+deja un **abono parcial de 10.000** (factura pendiente con saldo 28.600) y un **pago a favor sin
+aplicar de 2.000** (saldo a favor, regla 14) con `recibido_por` = admin A. La factura vencida para
+CA-6 la crea la verificación de integración (T-004). Test de aislamiento (CA-2, patrón 001-006): A no
+lee/escribe pagos de B; el admin de A registra y anula pagos de su cliente vía RPC; el `lector` lee
+pagos de su cliente pero no escribe (INSERT y RPC rechazados); RPC con factura de otro
+cliente rechazada; aplicar a factura anulada rechazado; anular sin motivo rechazado. Regresión
+001-006 en verde sobre el mismo estado final.
 **Verificación:**
 ```bash
 # tras el reset + fixtures 001-006 de T-001
@@ -112,10 +113,27 @@ for f in 001_fundacion 002_catalogo 003_suscriptores 004_lecturas_consumo 005_fa
 done
 ```
 **Resultado esperado:** `PAGOS-AISLAMIENTO OK` y los 6 previos en verde sobre el mismo estado final.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-07)
 **Evidencia:**
 ```
+Fixtures 001-007 (fundacion..pagos) cargados sobre la base recién reseteada (001→007):
+  cada fixture termina con COMMIT (0 errores).
 
+$ tests/aislamiento/007_pagos_aislamiento.sql → PAGOS-AISLAMIENTO OK
+  PASO 1 tablas+FORCE+enum+trigger+RPCs · PASO 2 admin A ve 2 pagos propios, 0 de B;
+  admin B ve 0 · PASO 3 admin A no inserta pagos de B (RLS) · PASO 4 el lector ve 2
+  pagos pero no inserta ni usa la RPC · PASO 5 la RPC rechaza una factura del cliente B
+  · PASO 6 anular sin motivo rechazado y con motivo revierte ff000000 a 0/pendiente ·
+  PASO 7 la RPC rechaza pagar una factura anulada.
+
+Regresión sobre el mismo estado final (fixtures 001-007):
+  001_fundacion=1 OK · 002_catalogo=1 OK · 003_suscriptores=1 OK
+  004_lecturas_consumo=1 OK · 005_facturacion=1 OK · 006_correo_factura=1 OK
+
+NOTA DE DISEÑO (regla aprendida en 005): el fixture de pagos NO crea facturas nuevas
+porque el aislamiento 005 espera UNA factura del cliente A; solo registra pagos sobre la
+factura FAC-2026-00001 del fixture 005 (abono parcial 10.000 + pago a favor 2.000). La
+factura vencida para CA-6 la crea la verificación de integración (T-004).
 ```
 **Commit:** (tras completar)
 
