@@ -294,10 +294,74 @@ cd frontend && npm run build && npm run lint && npx tsc --noEmit
 **Resultado esperado:** build/lint/tsc limpios (páginas nuevas y las de facturación compilan). El
 flujo click-a-click queda NO VERIFICADO si el entorno no permite `next dev` + `wrangler dev`
 (validación de Mateo con pasos exactos; la API ya quedó verificada en T-004 vía curl).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-03)
 **Evidencia:**
 ```
+`frontend/components/pago-form.tsx` (nuevo): formulario reutilizable de registrar pago (valor,
+método, referencia, fecha, observaciones); si recibe `facturaId` limita el pago a esa factura
+(el sobrante sigue a la siguiente pendiente del suscriptor, spec §3.2); si no, aplica automático a
+las pendientes más antiguas primero. Usado desde `/app/pagos` (por suscriptor) y desde el detalle
+de factura (por factura).
 
+`frontend/app/app/pagos/page.tsx` (nuevo): cartera del acueducto — checkbox "solo morosos", por
+suscriptor muestra por vencer / vencida (con días de mora y la factura vencida más antigua) / total
+adeudado / saldo a favor, botón "Registrar pago" por fila (abre `PagoForm`) y enlace al historial.
+
+`frontend/app/app/pagos/[suscriptorId]/page.tsx` (nuevo): historial del suscriptor — saldo a favor y
+la lista de todos sus pagos (vigentes y anulados) con sus aplicaciones, valor sin aplicar y motivo de
+anulación cuando aplica.
+
+`frontend/app/app/facturacion/[facturaId]/page.tsx` (editado): se agregó "Pagado"/"Saldo" a la
+ficha de datos y una tarjeta "Pagos aplicados" con el historial (fecha, valor, método, referencia,
+quién registró, tachado + motivo si está anulado), botón "Registrar pago" (solo si queda saldo y la
+factura no está anulada) y botón "Anular" por pago vigente (motivo por `window.prompt`, mismo patrón
+que "Anular factura" ya existente). La carga se unificó en un `recargar()` que trae factura + su
+historial de pagos y se reinvoca tras registrar/anular.
+
+`frontend/lib/api.ts`: tipos `MetodoPago`, `AplicacionPago`, `Pago`, `FacturaTrasPago`,
+`ResultadoRegistrarPago`, `ResultadoAnularPago`, `FilaCartera`, `AplicacionHistorialFactura`,
+`PagoHistorial` + funciones `registrarPago`, `anularPago`, `obtenerCartera`,
+`obtenerPagosDeFactura`, `obtenerPagosDeSuscriptor` (todas contra el backend de T-004, nunca
+`@supabase/*`).
+
+$ npx tsc --noEmit  -> sin salida, sin errores
+$ npm run lint      -> sin salida, sin errores
+$ npm run build
+  ✓ Compiled successfully · Generating static pages (13/13)
+  Rutas nuevas: /app/pagos (2.37 kB) · /app/pagos/[suscriptorId] (2.55 kB)
+  /app/facturacion/[facturaId] sigue compilando (3.18 kB, creció por el bloque de pagos)
+
+Integración parcial (SSR, sin interacción real de navegador — sin Chromium/Playwright instalado en
+este entorno): con `wrangler dev` (:8787) ya corriendo y `next dev --port 3000` levantado, se pidió
+cada ruta nueva con la cookie real `uc_sesion_admin` del admin A (obtenida en T-004):
+  GET /app/pagos                                    -> 200, shell SSR contiene "Cartera"
+  GET /app/pagos/d0000000-...0a1 (suscriptor A1)     -> 200, shell SSR contiene "Historial de pagos"
+  y "Saldo a favor"
+  GET /app/facturacion/ff000000-...0a1               -> 200, sin error de renderizado (server
+  component client-only muestra "Cargando…" antes de hidratar, como ya ocurría en esta página antes
+  del cambio)
+Esto confirma que las 3 rutas no rompen el SSR ni el middleware de sesión, pero NO ejecuta el
+JavaScript de cliente (fetch a :8787 con `credentials:'include'`, envío de los formularios, botones
+de anular). `next dev` se detuvo al terminar la prueba.
+
+NO VERIFICADO — requiere validación manual de Mateo (clic a clic en navegador real, este entorno no
+tiene Chromium/Playwright):
+  1. `cd backend && wrangler dev --local -c wrangler.toml --port 8787` (con Supabase local +
+     fixtures 001-007, y sesión admin A vigente en `auth.users`).
+  2. `cd frontend && npm run dev` y entrar en `http://localhost:3000/login` con
+     admin-a@test.local / la contraseña vigente.
+  3. Ir a `/app/pagos`: confirmar que la cartera muestra los mismos suscriptores/valores que
+     `GET /cartera` (T-004); marcar "solo morosos" y confirmar que filtra.
+  4. En una fila con deuda, clic en "Registrar pago", completar valor/método/fecha y enviar; confirmar
+     que la cartera se refresca y, si el pago excede la deuda, que aparece el aviso de sobrante.
+  5. Entrar al historial del suscriptor (enlace del nombre) y confirmar que el pago recién hecho
+     aparece vigente con sus aplicaciones.
+  6. Abrir una factura con saldo desde `/app/facturacion`, usar "Registrar pago" de la tarjeta
+     "Pagos aplicados" y confirmar que el saldo de la factura baja y su estado cambia a "pagada" si
+     corresponde.
+  7. Clic en "Anular" sobre un pago vigente: cancelar el prompt (no debe pasar nada), luego confirmar
+     con un motivo y verificar que el saldo/estado de la factura se recalculan y el pago queda
+     tachado con el motivo visible.
 ```
 **Commit:** (tras completar)
 

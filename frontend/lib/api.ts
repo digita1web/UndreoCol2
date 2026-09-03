@@ -521,3 +521,133 @@ export function enviarCorreoPeriodo(
     { method: 'POST' },
   );
 }
+
+// --- Pagos y cartera (007-pagos-y-cartera) ----------------------------------
+
+export type MetodoPago = 'efectivo' | 'transferencia' | 'consignacion' | 'pse' | 'otro';
+
+export interface AplicacionPago {
+  factura_id: string;
+  valor: number;
+}
+
+export interface Pago {
+  id: string;
+  valor: number;
+  metodo: MetodoPago;
+  fecha_pago: string;
+  referencia: string | null;
+  recibido_por: string | null;
+  observaciones: string | null;
+  usuario_servicio_id: string;
+}
+
+export interface FacturaTrasPago {
+  factura_id: string;
+  total: number;
+  total_pagado: number;
+  estado: EstadoFactura;
+}
+
+export interface ResultadoRegistrarPago {
+  pago: Pago;
+  aplicaciones: AplicacionPago[];
+  remanente: number;
+  facturas: FacturaTrasPago[];
+}
+
+export interface DatosRegistrarPago {
+  usuario_servicio_id: string;
+  valor: number;
+  metodo: MetodoPago;
+  fecha_pago?: string;
+  referencia?: string;
+  observaciones?: string;
+  /** Facturas elegidas a abonar; si se omite, se aplica a las pendientes más
+   *  antiguas primero (regla por defecto del recaudo, spec §3.2). */
+  factura_ids?: string[];
+}
+
+export function registrarPago(datos: DatosRegistrarPago): Promise<ResultadoRegistrarPago> {
+  return peticion<ResultadoRegistrarPago>('/pagos', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
+
+export interface ResultadoAnularPago {
+  pago: Pago & { anulado: boolean; motivo_anulacion: string };
+  facturas: FacturaTrasPago[];
+}
+
+export function anularPago(pagoId: string, motivo: string): Promise<ResultadoAnularPago> {
+  return peticion<ResultadoAnularPago>(`/pagos/${pagoId}/anular`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo }),
+  });
+}
+
+export interface FacturaVencidaMasAntigua {
+  numero: string;
+  diasMora: number;
+}
+
+export interface FilaCartera {
+  usuarioServicioId: string;
+  nombre: string;
+  codigoSuscriptor: string;
+  estado: EstadoSuscriptor;
+  porVencer: number;
+  vencida: number;
+  diasMoraMax: number | null;
+  facturaVencidaMasAntigua: FacturaVencidaMasAntigua | null;
+  totalAdeudado: number;
+  saldoFavor: number;
+}
+
+export function obtenerCartera(
+  filtros: { suscriptorId?: string; soloMorosos?: boolean } = {},
+): Promise<{ cartera: FilaCartera[] }> {
+  const params = new URLSearchParams();
+  if (filtros.suscriptorId) params.set('suscriptor_id', filtros.suscriptorId);
+  if (filtros.soloMorosos) params.set('solo_morosos', 'true');
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return peticion<{ cartera: FilaCartera[] }>(`/cartera${query}`);
+}
+
+export interface AplicacionHistorialFactura {
+  id: string;
+  valor: number;
+  fecha_pago: string;
+  metodo: MetodoPago;
+  referencia: string | null;
+  recibido_por: string | null;
+  anulado: boolean;
+  motivo_anulacion: string | null;
+}
+
+export function obtenerPagosDeFactura(facturaId: string): Promise<{
+  pagos: AplicacionHistorialFactura[];
+  factura: { id: string; numero: string; total: number; total_pagado: number; saldo: number; estado: EstadoFactura };
+}> {
+  return peticion(`/facturas/${facturaId}/pagos`);
+}
+
+export interface PagoHistorial {
+  id: string;
+  valor: number;
+  fecha_pago: string;
+  metodo: MetodoPago;
+  referencia: string | null;
+  recibido_por: string | null;
+  anulado: boolean;
+  motivo_anulacion: string | null;
+  aplicaciones: AplicacionPago[];
+  sinAplicar: number;
+}
+
+export function obtenerPagosDeSuscriptor(
+  suscriptorId: string,
+): Promise<{ pagos: PagoHistorial[]; saldoFavor: number }> {
+  return peticion(`/suscriptores/${suscriptorId}/pagos`);
+}
