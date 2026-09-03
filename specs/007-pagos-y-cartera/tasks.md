@@ -189,10 +189,89 @@ psql "$DATABASE_URL" -c "select numero,estado,total_pagado from facturas ..."
 `pendiente` con `total_pagado` crecido; pago mayor a la deuda → remanente a favor visible en cartera;
 anulación con motivo revierte (recalculado) y sin motivo → 400; cartera deriva `vencida` por fecha;
 historiales muestran las aplicaciones; `tsc`/`eslint`/`wrangler deploy --dry-run` limpios.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-03)
 **Evidencia:**
 ```
+Entorno: `wrangler dev --local -c wrangler.toml --port 8787` (env sin proxy) contra Supabase local
+real ya con fixtures 001-007 cargados. La contraseña del admin A (auth.users) no se conocía
+vigente para esta sesión: se reseteó el hash con pgcrypto (bcrypt cost 10, patrón de
+specs/004-lecturas-y-consumo T-004) a "clave-segura" — solo afecta auth.users local, no
+public.perfiles/membresias.
 
+CA-3 (ya verificado antes de esta tanda, confirmado en base): pago cbfe4f2c... de 28.600 sobre
+FAC-2026-00001 (saldo 28.600 tras el abono parcial de 10.000 del fixture) -> HTTP 201, factura
+pagada, total_pagado=38.600.
+
+CA-6 — cartera y `vencida` derivada (verificado ANTES de mutar más pagos, para capturar el caso
+vencido intacto):
+  Se creó FAC-2026-00002 (ajuste, total 15.000, fecha_vencimiento 2026-07-25, ya vencida) para A1
+  vía INSERT directo (mismo patrón que el fixture: factura de prueba para esta verificación).
+  $ GET /cartera
+    -> 200 {"cartera":[{"...A1...","porVencer":0,"vencida":15000,"diasMoraMax":39,
+       "facturaVencidaMasAntigua":{"numero":"FAC-2026-00002","diasMora":39},
+       "totalAdeudado":15000,"saldoFavor":2000}]}
+  $ GET /cartera?solo_morosos=true -> mismo resultado (vencida > 0)
+  $ GET /cartera?suscriptor_id=<A2> -> 200 {"cartera":[]} (A2 sin deuda)
+  SQL: sum(total-total_pagado) no anuladas de A1 = 15000.00 (coincide)
+  diasMoraMax=39, no 40: `hoy` y `fecha_vencimiento` se parsean con el mismo huso horario local
+  (America/Bogota, UTC-5) en el Worker, así que el conteo de días completos es correcto contra la
+  fecha calendario real (2026-07-25 -> 2026-09-02 = 39 días); el 40 que da un cálculo con
+  `current_date` de una sesión psql en UTC es un artefacto de esa sesión, no del endpoint.
+
+CA-4 — sobrante a favor del suscriptor:
+  Se creó FAC-2026-00003 (ajuste, total 8.000, vencimiento futuro, para no tocar el caso vencido
+  de CA-6) para A1.
+  $ POST /pagos {valor:12000, factura_ids:[FAC-3]} -> 201, aplicó 8.000 a FAC-3 (pagada) y el
+    sobrante de 4.000 SIGUIÓ a la siguiente pendiente más antigua (FAC-2026-00002, spec §3.2:
+    "si sobra, sigue aplicando a la siguiente factura pendiente") -> remanente:0 (correcto, no es
+    el caso de remanente puro).
+  $ POST /pagos {valor:15000, sin factura_ids} -> 201, única candidata restante (FAC-2026-00002,
+    saldo 11.000) recibe 11.000 -> factura pagada, remanente:4000 (sobrante real, spec 3.3/regla 14).
+  SQL: select total_pagado>total as excede from facturas (3 filas) -> excede=false en las 3
+    (nunca total_pagado > total).
+
+  BUG encontrado y corregido en `obtenerCartera` (backend/src/lib/pagos.ts): la función excluía de
+  `/cartera` a cualquier suscriptor sin facturas con saldo vivo, aunque tuviera saldo a favor — tras
+  el pago de 15.000, A1 quedó con saldoFavor=6.000 (2.000 del fixture + 4.000 del remanente) pero
+  `GET /cartera` devolvía `[]`, violando CA-4 ("aparece en la cartera como saldo a favor") y la
+  spec §3.5. Fix: la fila se incluye si hay deuda viva **o** saldo a favor > 0; `solo_morosos` sigue
+  exigiendo `vencida > 0` (un suscriptor solo con saldo a favor no es moroso).
+  Reverificado tras el fix:
+  $ GET /cartera -> 200 [{"...A1...","totalAdeudado":0,"saldoFavor":6000,...}]
+  $ GET /cartera?solo_morosos=true -> 200 [] (correcto: no tiene deuda vencida)
+  $ GET /suscriptores/<A1>/pagos -> saldoFavor:6000 (coincide)
+
+CA-5 — anulación de un pago:
+  $ POST /pagos/<id>/anular {} -> 400 "El motivo de anulación es obligatorio"
+  $ POST /pagos/<id>/anular {"motivo":"   "} -> 400 (blank también rechazado)
+  $ POST /pagos/<id>/anular {"motivo":"Consignación PSE duplicada, error de caja"} sobre el pago de
+    15.000 -> 200, revierte: FAC-2026-00002 vuelve a `pendiente` con total_pagado=4.000 —
+    RECALCULADO desde el pago vigente restante (el de 12.000, que le aplicó 4.000), NO reseteado a
+    0 (confirma a nivel HTTP/lib la misma regla de reversión recalculada que T-001 probó a nivel
+    RPC/SQL). `pagos.anulado=true` con el motivo persistido (no se borra).
+  $ GET /cartera tras la anulación -> vencida vuelve a 11.000, saldoFavor vuelve a 2.000
+    (el remanente de un pago anulado no cuenta) — consistente con CA-4/CA-6.
+
+CA-7 — historial por factura y por suscriptor:
+  $ GET /facturas/<FAC-2026-00002>/pagos -> 200, dos aplicaciones: una vigente (4.000,
+    transferencia, ref CONS-9911, recibido_por=Admin A, anulado:false) y una anulada (11.000, pse,
+    ref PSE-4471, anulado:true con su motivo) + factura {total:15000,total_pagado:4000,saldo:11000,
+    estado:"pendiente"}.
+  $ GET /facturas/<FAC-2026-00001>/pagos -> 200, las 2 aplicaciones vigentes de CA-3 (10.000 y
+    28.600), factura {estado:"pagada",saldo:0}.
+  $ GET /suscriptores/<A1>/pagos -> 200, los 5 pagos del suscriptor (vigentes y el anulado) con sus
+    aplicaciones, `sinAplicar` por pago y `saldoFavor:2000` agregado (solo de los vigentes).
+
+Definición de terminado (backend):
+$ npx tsc --noEmit          -> sin salida, sin errores
+$ npx eslint .              -> sin salida, sin errores
+$ npm test                  -> 7 files / 80 tests OK (incluye los 15 de pagos.test.ts de T-003)
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  Total Upload: 1694.77 KiB / gzip: 386.82 KiB — sin errores
+
+Nota: no se re-corrió `tests/aislamiento/007_pagos_aislamiento.sql` tras estas mutaciones (las
+facturas/pagos de esta verificación quedan en la base local, no en fixtures versionados); se
+revalida junto con la regresión completa en el cierre T-006 tras un `supabase db reset --local`.
 ```
 **Commit:** (tras completar)
 
