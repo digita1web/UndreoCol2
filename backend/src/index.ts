@@ -26,6 +26,7 @@ import {
   listarSuscriptores,
   obtenerSuscriptor,
   reemplazarContador,
+  regenerarCodigoSuscriptor,
   validarCamposEditables as validarCamposEditablesSuscriptor,
 } from './lib/suscriptores';
 import {
@@ -897,6 +898,49 @@ app.get('/facturas/:id/pdf', async (c) => {
     });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo generar el PDF' }, 400);
+  }
+});
+
+// POST /suscriptores/:id/regenerar-codigo — el admin asigna un código de portal
+// nuevo (008, CA-8). El lector recibe 403 por RLS (no solo la interfaz); un
+// código ya existente en el cliente → 409.
+app.post('/suscriptores/:id/regenerar-codigo', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req.json<{ codigo_nuevo?: string }>().catch(() => ({ codigo_nuevo: undefined }));
+  const codigoNuevo = body.codigo_nuevo?.trim() ?? '';
+  if (!codigoNuevo) {
+    return c.json({ error: 'codigo_nuevo es requerido' }, 400);
+  }
+  // CA-8: solo el admin_acueducto regenera códigos (el lector NO, por RLS y
+  // también con una comprobación explícita de membresía → 403 claro).
+  const { data: membresia } = await ctx.supabase
+    .from('membresias')
+    .select('rol')
+    .eq('perfil_id', ctx.perfilId)
+    .eq('cliente_id', ctx.clienteId)
+    .eq('activo', true)
+    .maybeSingle();
+  if (!membresia || membresia.rol !== 'admin_acueducto') {
+    return c.json({ error: 'No autorizado: solo el administrador del acueducto puede regenerar códigos' }, 403);
+  }
+  try {
+    const suscriptor = await regenerarCodigoSuscriptor(
+      ctx.supabase,
+      ctx.clienteId,
+      c.req.param('id'),
+      codigoNuevo,
+    );
+    return c.json({ suscriptor });
+  } catch (e) {
+    const mensaje = e instanceof Error ? e.message : 'No se pudo regenerar el código';
+    // 23505 llega como mensaje 'Ese código ya existe...' → 409. La violación de
+    // RLS (lector) llega como error de la base → 403 (CA-8: no solo la interfaz).
+    if (mensaje.includes('ya existe')) return c.json({ error: mensaje }, 409);
+    if (mensaje.toLowerCase().includes('row-level security') || mensaje.toLowerCase().includes('permission denied')) {
+      return c.json({ error: 'No autorizado: solo el administrador del acueducto puede regenerar códigos' }, 403);
+    }
+    return c.json({ error: mensaje }, 400);
   }
 });
 

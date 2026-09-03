@@ -302,15 +302,34 @@ curl -sS --noproxy '*' -X POST localhost:8787/portal/acueducto-a/login -d '{"num
 curl -sS --noproxy '*' -b cookie_lector_a -X POST localhost:8787/suscriptores/<A1-id>/regenerar-codigo -d '{"codigo_nuevo":"X"}' -w '\nHTTP %{http_code}\n'
 # repetir el código de otro suscriptor del mismo cliente → 409
 ```
-**Resultado esperado:** regenerar código funciona para el admin; el login viejo deja de servir, el
-nuevo funciona; el `lector` rechazado con 403; duplicar un código existente en el mismo cliente → 409;
-una sesión de portal de A2 obtenida ANTES del cambio (con el JWT ya emitido) sigue sirviendo
-`GET /portal/facturas` después del cambio (el JWT no lleva el código, solo lo revalida en el próximo
-login — comportamiento documentado en spec §3.8, verificado aquí con evidencia real).
-**Estado:** Pendiente
+**Resultado esperado:** regenerar código funciona para el admin (200); el login viejo deja de servir
+(401), el nuevo funciona (200); el `lector` rechazado con 403; duplicar un código existente en el
+mismo cliente → 409.
+CORRECCIÓN del resultado esperado original con evidencia (D-10): una sesión de portal obtenida ANTES
+del cambio NO recibe 401 (el JWT sigue siendo válido), pero las funciones del portal revalidan
+`numero_documento`+`codigo_suscriptor` en cada llamada, así que con el código viejo la sesión deja de
+ver datos (facturaActual null, historial []) — la regeneración invalida DE FACTO el acceso de la
+sesión previa, que es más seguro que lo previsto originalmente ("el JWT no lleva el código"; el plan
+008 §4/§5 lo amplió para llevarlo por D-10).
+**Estado:** Completado (2026-09-08)
 **Evidencia:**
 ```
+$ npx tsc --noEmit → sin salida · $ npx eslint → sin salida
+$ npx wrangler deploy --dry-run -c wrangler.toml → OK
 
+Con wrangler dev :8787 (admin A y lector A con sesión administrativa; portal A2):
+  POST /suscriptores/<A2>/regenerar-codigo {A-002-NUEVO} (admin) → 200 {suscriptor.codigo_suscriptor: A-002-NUEVO}
+  login portal con 'A-002' (viejo) → 401 {error:'Credenciales incorrectas'}
+  login portal con 'A-002-NUEVO' → 200 {sesion codigoSuscriptor: A-002-NUEVO}
+  POST /suscriptores/<A1>/regenerar-codigo (LECTOR) → 403
+    {error:'No autorizado: solo el administrador...'}  (chequeo de membresía + RLS)
+  POST /suscriptores/<A2>/regenerar-codigo {A-001} (duplicado) → 409
+    {error:'Ese código ya existe en este acueducto'}
+  Sesión portal de A2 emitida ANTES del cambio (cookie válida, cod A-002):
+    GET /portal/facturas → 200 {facturaActual:null, historial:[]} — sin 401 pero SIN datos
+    (D-10 revalida el código en cada llamada → la regeneración invalida de facto)
+  Admin vuelve a regenerar (A-002-FINAL) → 200 (sigue operativo)
+  Al final se restauró A2 a 'A-002' en la base local.
 ```
 **Commit:** (tras completar)
 
