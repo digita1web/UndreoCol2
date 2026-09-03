@@ -51,6 +51,19 @@ import {
   registrarPago,
 } from './lib/pagos';
 import { redondearPeso } from './core/pagos';
+import {
+  obtenerConsumoPortal,
+  obtenerFacturaCompletaPortal,
+  obtenerFacturasPortal,
+  obtenerSaldoFavorPortal,
+  requerirSesionSuscriptor,
+  resolverClientePorSlug,
+  validarCredencialesPortal,
+} from './lib/portal';
+import {
+  cerrarSesionSuscriptor,
+  iniciarSesionSuscriptor,
+} from './lib/sesion-suscriptor';
 import cierreFacturacion from './queues/cierre-facturacion';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -1020,6 +1033,116 @@ app.get('/suscriptores/:id/pagos', async (c) => {
     return c.json({ pagos, saldoFavor });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo leer el historial' }, 400);
+  }
+});
+
+// --- Portal del suscriptor (008, D-2/D-4/D-10) -------------------------------
+
+// POST /portal/:slug/login — público. Resuelve el cliente por el slug de la URL
+// y valida numero_documento + codigo_suscriptor contra las funciones SECURITY
+// DEFINER del portal (D-10, sin contraseña). ok → 200 + cookie uc_sesion_suscriptor.
+app.post('/portal/:slug/login', async (c) => {
+  const slug = c.req.param('slug').trim().toLowerCase();
+  const body = await c.req
+    .json<{ numero_documento?: string; codigo_suscriptor?: string }>()
+    .catch(() => ({ numero_documento: undefined, codigo_suscriptor: undefined }));
+  const numeroDocumento = body.numero_documento?.trim() ?? '';
+  const codigoSuscriptor = body.codigo_suscriptor?.trim() ?? '';
+  if (!numeroDocumento || !codigoSuscriptor) {
+    return c.json({ error: 'numero_documento y codigo_suscriptor son requeridos' }, 400);
+  }
+  try {
+    const clienteId = await resolverClientePorSlug(c.env, slug);
+    if (!clienteId) return c.json({ error: 'Acueducto no encontrado' }, 404);
+
+    const credenciales = await validarCredencialesPortal(c.env, clienteId, numeroDocumento, codigoSuscriptor);
+    if (credenciales.estado === 'ok' && credenciales.usuarioServicioId) {
+      const sesion = await iniciarSesionSuscriptor(c, {
+        usuarioServicioId: credenciales.usuarioServicioId,
+        clienteId,
+        numeroDocumento,
+        codigoSuscriptor,
+      });
+      return c.json({ sesion });
+    }
+    if (credenciales.estado === 'inactivo') {
+      return c.json({ error: 'El suscriptor está inactivo. Contacte a su acueducto.' }, 403);
+    }
+    if (credenciales.estado === 'bloqueado') {
+      return c.json({ error: 'Demasiados intentos. Intente más tarde.', reintentar_en: credenciales.reintentarEn }, 429);
+    }
+    // 'invalido': mensaje genérico, nunca revela cuál campo falló (CA-1/CA-9)
+    return c.json({ error: 'Credenciales incorrectas' }, 401);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo iniciar sesión' }, 500);
+  }
+});
+
+// POST /portal/logout — borra la cookie del portal (idempotente).
+app.post('/portal/logout', async (c) => {
+  cerrarSesionSuscriptor(c);
+  return c.json({ ok: true });
+});
+
+// GET /portal/facturas — factura actual + historial del suscriptor autenticado.
+app.get('/portal/facturas', async (c) => {
+  const { ctx, respuesta } = await requerirSesionSuscriptor(c);
+  if (!ctx) return respuesta;
+  try {
+    const { facturaActual, historial } = await obtenerFacturasPortal(c.env, ctx.sesion);
+    return c.json({ facturaActual, historial });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron leer las facturas' }, 500);
+  }
+});
+
+// GET /portal/facturas/:id/pdf — sirve el PDF SOLO de una factura del suscriptor
+// autenticado. Si portal_factura_completa devuelve null (factura inexistente o
+// de OTRO suscriptor/cliente → IDOR) responde 404 sin servir bytes (CA-5).
+app.get('/portal/facturas/:id/pdf', async (c) => {
+  const { ctx, respuesta } = await requerirSesionSuscriptor(c);
+  if (!ctx) return respuesta;
+  const facturaId = c.req.param('id');
+  try {
+    const completa = await obtenerFacturaCompletaPortal(c.env, ctx.sesion, facturaId);
+    if (!completa) {
+      return c.json({ error: 'Factura no encontrada' }, 404);
+    }
+    const { factura, detalles, acueducto } = completa;
+    const pdfBytes = await generarPdfFactura({ factura, detalles, acueducto });
+    return new Response(pdfBytes as BodyInit, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${factura.numero}.pdf"`,
+      },
+    });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo generar el PDF' }, 500);
+  }
+});
+
+// GET /portal/saldo-favor — remanente de pagos vigentes sin aplicar (CA-6).
+app.get('/portal/saldo-favor', async (c) => {
+  const { ctx, respuesta } = await requerirSesionSuscriptor(c);
+  if (!ctx) return respuesta;
+  try {
+    const saldoFavor = await obtenerSaldoFavorPortal(c.env, ctx.sesion);
+    return c.json({ saldoFavor });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo leer el saldo a favor' }, 500);
+  }
+});
+
+// GET /portal/consumo — historial de consumo de TODOS los contadores (CA-7).
+app.get('/portal/consumo', async (c) => {
+  const { ctx, respuesta } = await requerirSesionSuscriptor(c);
+  if (!ctx) return respuesta;
+  try {
+    const lecturas = await obtenerConsumoPortal(c.env, ctx.sesion);
+    return c.json({ lecturas });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo leer el consumo' }, 500);
   }
 });
 

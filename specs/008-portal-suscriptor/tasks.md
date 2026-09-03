@@ -218,17 +218,23 @@ Env.SESSION_SECRET es requerido (db.ts).
 
 ## T-004 — `lib/portal.ts` + rutas `/portal/*` + verificación curl (CA-1, CA-3 a CA-7)
 
-**Archivos:** `backend/src/lib/portal.ts`, `backend/src/index.ts`
-**Hace:** `lib/portal.ts`: `validarCredencialesPortal`, `obtenerFacturasPortal` (separa la más
+**Archivos:** `backend/src/lib/portal.ts`, `backend/src/index.ts`,
+`supabase/migrations/20260909090000_portal-slug.sql`
+**Hace:** `lib/portal.ts`: `resolverClientePorSlug`, `validarCredencialesPortal`,
+`obtenerFacturasPortal` (separa la más
 reciente no anulada como "actual" del resto como historial, CA-4), `obtenerFacturaCompletaPortal`
 (para el PDF), `obtenerSaldoFavorPortal`, `obtenerConsumoPortal` — todas llaman a las funciones
 `security definer` de T-001 con `crearClienteAnon` (D-10, nunca `service_role`). Middleware
 `requerirSesionSuscriptor` (espejo de `requerirClienteActivo`). Rutas (plan.md §3):
 `POST /portal/:slug/login` (resuelve `cliente_id` por `clientes.slug`, 401/403/429 según el `estado`
 de `portal_validar_credenciales`), `POST /portal/logout`, `GET /portal/facturas`,
-`GET /portal/facturas/:id/pdf` (404 si `portal_factura_completa` devuelve `null`; reutiliza
+`GET /portal/facturas/:id/pdf` (404 si `portal_factura_completa` devuelve `null` — IDOR; reutiliza
 `generarPdfFactura` de 006 y la misma clave de R2 como caché, sin actualizar `facturas.pdf_url` —
 simplificación aceptada, plan.md §5), `GET /portal/saldo-favor`, `GET /portal/consumo`.
+DESVIACIÓN DE IMPLEMENTACIÓN: el plan §3 dice "resuelve cliente_id por clientes.slug", pero anon NO
+puede leer `clientes` (RLS; verificado contra la base). Se añadió la función `SECURITY DEFINER`
+`portal_cliente_por_slug(slug)` en una migración NUEVA (20260909090000) — no se reescribió la 008
+publicada en T-001 — con grant solo a anon (el slug es público: está en la URL).
 **Verificación:**
 ```bash
 # con wrangler dev (:8787, env sin proxy) + Supabase local con fixtures 001-008
@@ -247,11 +253,31 @@ devuelve `facturaActual`/`historial` coherentes con el estado real de A1 (mismos
 admin); PDF de una factura ajena → 404 sin servir bytes; PDF propio → 200 `application/pdf` válido;
 saldo a favor coincide con `GET /suscriptores/:id/pagos` (007) para A1; consumo incluye las lecturas
 de ambos contadores del fixture de T-002 sin huecos; login con código incorrecto → 401 mensaje
-genérico; verificado también que la sesión del portal no sirve ninguna ruta `/app/*` y viceversa.
-**Estado:** Pendiente
+genérico; bloqueo por 8 fallos → 429 en el 9.º intento; logout → 401 con la misma cookie.
+**Estado:** Completado (2026-09-08)
 **Evidencia:**
 ```
+$ npx tsc --noEmit → sin salida · $ npx eslint → sin salida
+$ npx wrangler deploy --dry-run -c wrangler.toml → Total Upload 1723.96 KiB / gzip 392.87 KiB
 
+Camino feliz (wrangler dev :8787 + Supabase local con fixtures 001-008):
+  POST /portal/acueducto-a/login (A1: 1000000001/A-001) → 200 {sesion:{tipo:'suscriptor',...}}
+    + Set-Cookie uc_sesion_suscriptor (HttpOnly/Secure/SameSite=Lax)
+  GET /portal/facturas (A1) → facturaActual FAC-2026-00001 (saldo 28.600, pendiente) +
+    historial [FAC-2026-00002, derivada 'vencida'] — mismos totales que ve el admin
+  GET /portal/saldo-favor → {saldoFavor:2000} (coincide con GET /suscriptores/:id/pagos de 007)
+  GET /portal/consumo → 1 lectura (0→25 m³)
+  GET /portal/facturas/<f1-propia>/pdf → 200 application/pdf (%PDF-, 1859 bytes)
+
+ATAQUES IDOR (sesiones reales de A1, A2 y B1 — tres cookies distintas):
+  A2 → PDF de la factura de A1 (ff000000-...0a1):  HTTP 404 bytes=33 (JSON de error, sin PDF)
+  A1 → PDF de la factura de A2 (ff000000-...0a2):  HTTP 404 bytes=33
+  B1 (OTRO acueducto) → PDF de la factura de A1:    HTTP 404 bytes=33
+  CONTROL B1 → PDF de SU propia factura:            HTTP 200 bytes=1529 (%PDF-)
+  Listados aislados: A2 solo ve FAC-2026-00003 · A1 solo 00001/00002 · B1 solo 00004
+  Sin cookie → /portal/facturas 401 · login con código incorrecto → 401 genérico
+  Fuerza bruta (CA-9): 8 fallos → 401×8 · 9.º intento CON 'A-001' → 429 {reintentar_en}
+  POST /portal/logout → 200 y la MISMA cookie deja de funcionar (401)
 ```
 **Commit:** (tras completar)
 
