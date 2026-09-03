@@ -54,10 +54,39 @@ SQL
 ```
 **Resultado esperado:** reset 001→007 desde cero; tablas/enum/trigger existen; un INSERT que viola
 cada check/regla del trigger se rechaza con mensaje claro.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-07)
 **Evidencia:**
 ```
+$ supabase db reset --local → Finished (001→007 migraciones aplicadas desde cero)
+  tablas: pagos, pago_aplicaciones · enum metodo_pago: efectivo,transferencia,consignacion,pse,otro
+  trigger trg_pago_aplicacion_valida (BEFORE INSERT OR UPDATE) · RLS FORCE en ambas tablas
+  RPCs: registrar_pago, anular_pago (SECURITY INVOKER; revoke anon/public + grant authenticated)
 
+Smoke contra Supabase local real (checks/trigger, como postgres, transacción rollback):
+  P1 OK  abono a factura de OTRO suscriptor → rechazado
+  P2 OK  suma de abonos > valor del pago → rechazado
+  P3 OK  abono > saldo vivo de la factura → rechazado
+  P4 OK  pago con valor <= 0 → rechazado (check de tabla)
+  P5 OK  abono a factura anulada → rechazado
+  P6 OK  mismo pago abonando 2 veces la misma factura → rechazado (unique)
+
+Smoke de RPCs (rol authenticated + jwt del admin A; transacción rollback):
+  R1 OK  pago total 38600 → factura pagada, total_pagado=38600, remanente 0
+  R2 OK  anular sin motivo → rechazado
+  R3 OK  anular con motivo → revierte a pendiente con total_pagado 0
+  R4 OK  pago parcial 10000 → pendiente con total_pagado 10000
+  R5 OK  segundo pago 28600 → factura pagada (dos pagos)
+  R6 OK  anular el 2.º pago → reversión RECALCULADA: quedó pendiente con 10000 (NO 0)
+  R7 OK  pago 40000 con abono 38600 → remanente 1400 a favor del suscriptor (regla 14)
+  R8 OK  suma de abonos > valor del pago → rechazada por la RPC
+  R9 OK  el lector no registra pagos → rechazado
+
+DESVIACIÓN TÉCNICA vs plan.md §2 (documentada en la cabecera de la migración):
+registrar_pago recibe p_aplicaciones jsonb calculadas por core/pagos.ts (CLAUDE §5.3: el
+dinero se calcula en core/) en vez de distribuir en SQL; la RPC valida con FOR UPDATE y
+aplica. Comportamiento observable del spec idéntico. Se corrigió en el camino: (a)
+parámetros con default antes que recibido_por (42P13) → reordenados; (b) CASE del update de
+anular_pago necesitaba cast a estado_factura (columna enum).
 ```
 **Commit:** (tras completar)
 
