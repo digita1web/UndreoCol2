@@ -151,10 +151,13 @@ cd backend && npm test 2>&1 | tail -6
 npx tsc --noEmit && npx eslint src/core/pagos.ts tests/unit/pagos.test.ts
 ```
 **Resultado esperado:** tests de pagos en verde (remanente incluido) y `npm test` total sin romper.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-07)
 **Evidencia:**
 ```
-
+$ npx vitest run tests/unit/pagos.test.ts → 15 passed (redondearPeso, distribuirPago 11,
+  calcularEstadoTrasPago 2)
+$ npm test → 7 files / 80 tests OK (65 previos + 15 de pagos)
+$ npx tsc --noEmit → sin salida · $ npx eslint → sin salida
 ```
 **Commit:** (tras completar)
 
