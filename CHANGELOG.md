@@ -4,6 +4,48 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-03 — Sesión 014: 007-pagos-y-cartera completa (T-001 a T-006)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/007-pagos-y-cartera/`): CA-1 a CA-8, RPCs atómicas con
+  remanente y reversión recalculada, sin colas (cada pago es una transacción por request).
+- **T-001** — Migración `20260907090000_pagos.sql`: enum `metodo_pago`, tablas `pagos` y
+  `pago_aplicaciones` (checks de integridad: valor > 0, suma de aplicaciones ≤ valor del pago, nunca
+  se abona más del saldo vivo de una factura, no se aplica a facturas anuladas ni de otro
+  suscriptor) + trigger `trg_pago_aplicacion_valida` + RLS `FORCE` + RPCs `SECURITY INVOKER`
+  `registrar_pago`/`anular_pago` (`SELECT FOR UPDATE`, distribución más antigua primero, remanente,
+  reversión recalculada desde los pagos vigentes). Desviación documentada: la distribución de la
+  aplicación la calcula `core/pagos.ts` (CLAUDE §5.3) y se pasa a la RPC como jsonb ya calculado, en
+  vez de distribuirse en SQL.
+- **T-002** — Fixtures `pagos.sql` (abono parcial de 10.000 + pago a favor de 2.000 sobre la factura
+  de 005, sin crear facturas nuevas) y test de aislamiento 007 (RLS + RPCs rechazando al `lector`,
+  facturas de otro cliente, facturas anuladas y anulación sin motivo) con regresión 001-006 en verde.
+- **T-003** — `core/pagos.ts`: `redondearPeso` (regla única del peso), `distribuirPago` (más antigua
+  primero, remanente) y `calcularEstadoTrasPago`. 15 unit tests (`npm test` 80 en verde).
+- **T-004** — `lib/pagos.ts` + rutas Hono (`POST /pagos`, `POST /pagos/:id/anular`, `GET /cartera`,
+  `GET /facturas/:id/pagos`, `GET /suscriptores/:id/pagos`). Verificado con curl real contra
+  `wrangler dev` + Supabase local: pago total/parcial, remanente a favor, anulación con reversión
+  recalculada (no resetea a cero: recalcula desde el pago vigente restante), cartera con `vencida`
+  derivada por fecha e historiales por factura y por suscriptor.
+- **T-005** — Frontend: `api.ts` ampliado + páginas `/app/pagos` (cartera con registrar pago) y
+  `/app/pagos/[suscriptorId]` (historial); detalle de factura con bloque de pagos aplicados,
+  registrar pago y anular pago con motivo. `build`/`lint`/`tsc` limpios.
+- **T-006** — Cierre: `supabase db reset --local` + fixtures 001-007 de cero + los 7 tests de
+  aislamiento en verde, checklist de `spec.md §8` + esta entrada.
+
+**Hallazgo real corregido durante la verificación (CA-4)**
+`obtenerCartera` (`lib/pagos.ts`) excluía por completo del reporte a cualquier suscriptor sin
+facturas con saldo vivo, **aunque tuviera saldo a favor** — un sobrepago dejaba un remanente que no
+aparecía en ningún lado de `/cartera`, contradiciendo el texto exacto de CA-4 ("aparece en la cartera
+como saldo a favor") y la spec §3.5. Corregido: la fila se incluye si hay deuda viva **o** saldo a
+favor > 0; `solo_morosos` sigue exigiendo deuda vencida.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- CA-8: flujo click-a-click en navegador real (registrar pago, ver el sobrante, anular con motivo).
+  Este entorno no tiene Chromium/Playwright; se verificó que las 3 rutas nuevas/editadas renderizan
+  sin error por SSR con la cookie de sesión real, pero no la interacción de cliente. Pasos exactos en
+  `specs/007-pagos-y-cartera/tasks.md` T-005.
+
 ### 2026-09-06 — Sesión 013: 006-impresion-y-correo-factura completa (T-001 a T-006)
 
 **Hecho**
