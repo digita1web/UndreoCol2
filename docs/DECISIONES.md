@@ -210,3 +210,68 @@ visual de `pdfme`. La plantilla de factura se define programáticamente
 - Si en el futuro se necesita una plantilla visual editable por el
   administrador del acueducto (personalización de logo, colores), se puede
   reincorporar `pdfme` como mejora, sin bloquear el lanzamiento inicial.
+
+---
+
+## D-10 — Aislamiento del portal del suscriptor: RPCs `SECURITY DEFINER` acotadas, nunca `service_role`
+**Fecha:** 2026-09-03 | **Tomada por:** Mateo Castro
+
+### Contexto
+El suscriptor del portal no tiene `auth.uid()` (D-2): no existe sesión de Supabase Auth sobre la que
+apoyar las políticas RLS existentes (todas resueltas con `es_admin_de()`/`mis_clientes()`, que
+dependen de `auth.uid()`). `docs/esquema-propuesto.sql` ya anotaba que "el aislamiento del portal es
+responsabilidad de la capa de servidor, no de RLS", pero `CLAUDE.md §5.4/§12` prohíbe de forma
+absoluta usar `SUPABASE_SERVICE_ROLE_KEY` en cualquier ruta que atienda peticiones de usuario — y el
+portal sirve exactamente ese tipo de peticiones. Sin resolver esto, la feature 008
+(`specs/008-portal-suscriptor/spec.md §7`) no puede garantizar el aislamiento por ningún mecanismo ya
+existente en el proyecto.
+
+### Opciones evaluadas
+
+| Opción | Resultado |
+|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` en las rutas del Worker que atienden al portal, filtrando en la app | Descartada: viola directamente la prohibición absoluta de `CLAUDE.md §12`; el service role bypassa RLS por completo y un error de filtrado en la app quedaría sin ninguna red de seguridad en la base |
+| Nuevo rol de Postgres dedicado con `SET LOCAL` de GUCs de sesión (patrón del bloque "compatibilidad self-hosted" de `esquema-propuesto.sql`) | Descartada para esta arquitectura: requiere una conexión Postgres persistente por request (no HTTP/PostgREST vía `supabase-js`), que no es el patrón que usa el resto del backend (`db.ts`) |
+| RPCs `SECURITY DEFINER` acotadas, una por consulta del portal, invocadas con la clave `anon` | **Elegida** |
+
+### Decisión
+
+El portal **nunca** usa `SUPABASE_SERVICE_ROLE_KEY`. El Worker sigue usando la clave `anon` normal
+(la misma que ya usa `crearClienteAnon()` para `/salud` y `/auth/registro`). Todo el acceso a datos
+del portal pasa por funciones `SECURITY DEFINER` específicas y acotadas — mismo patrón ya usado en
+`es_admin_de()` (`fundacion-tenancy.sql`) y `tarifa_vigente()` (`catalogo-y-tarifas.sql`): funciones
+pequeñas, de propósito único, que devuelven exactamente lo que necesitan devolver, nunca acceso de
+tabla completa.
+
+Regla de diseño para cada función del portal (p. ej. `obtener_factura_suscriptor`,
+`obtener_historial_suscriptor`, `obtener_saldo_favor_suscriptor`, `obtener_consumo_suscriptor`):
+1. Recibe como parámetros las credenciales reales del suscriptor (`numero_documento` +
+   `codigo_suscriptor`, más el `cliente_id` ya resuelto por el `slug` de la URL — D-… ver
+   `spec.md §3.1`) — **nunca** un `usuario_servicio_id` desnudo como única prueba de identidad.
+2. Valida esas credenciales **dentro de la función**, contra `usuarios_servicio` del `cliente_id`
+   dado, antes de leer nada más.
+3. Si no coinciden, devuelve vacío/NULL — nunca un error que distinga cuál campo falló (spec CA-1).
+4. Si coinciden, devuelve solo la fila o el conjunto acotado que corresponde a ESE suscriptor.
+`GRANT EXECUTE` a `anon` (es la clave que usa el Worker); `REVOKE` de cualquier otro acceso de tabla
+directo a `anon`/`authenticated` sobre las tablas que el portal lee, si no lo tenían ya bloqueado por
+RLS.
+
+**Consecuencia para la sesión (D-4):** como la clave `anon` es pública, cualquiera puede invocar
+estas funciones directamente sin pasar por el Worker — la seguridad no depende de que la llamada
+venga del Worker, depende de que quien llama aporte credenciales válidas en cada invocación. Por eso
+las funciones de consulta del portal (no solo el login) exigen `numero_documento` + `codigo_suscriptor`
+como argumentos reales, no solo el `usuario_servicio_id` de la sesión. Esto implica que el JWT propio
+del suscriptor (`backend/src/lib/sesion-suscriptor.ts`) debe poder reproducir esas credenciales en
+cada petición para no obligar al suscriptor a volver a escribirlas en cada página — el diseño exacto
+(qué claims firma el JWT internamente) se define en `/plan` de 008, sin romper la interfaz pública ya
+fijada (`SesionSuscriptor { tipo, usuarioServicioId, clienteId, expiraEn }`).
+
+### Razón
+- Cumple la prohibición absoluta de `CLAUDE.md §12` al pie de la letra: `SERVICE_ROLE_KEY` no se toca.
+- Extiende un patrón ya validado y en producción en el propio proyecto (`SECURITY DEFINER` acotado),
+  en vez de introducir un mecanismo nuevo.
+- El aislamiento no depende de que el Worker se comporte bien (defensa en profundidad): incluso si
+  alguien usa la clave `anon` pública directamente contra la API de Supabase, sin las credenciales
+  reales de un suscriptor no obtiene ningún dato de nadie.
+- No requiere una conexión Postgres persistente ni cambiar el cliente HTTP (`supabase-js`) que ya usa
+  todo el backend.
