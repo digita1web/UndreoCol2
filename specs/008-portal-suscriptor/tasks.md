@@ -75,10 +75,40 @@ Smoke funcional (rol `anon`, con las credenciales reales de 001/003 — ver Nota
   9.ª devuelve `{estado:'bloqueado', reintentar_en:...}` **aunque el código de la 9.ª sea correcto**;
   limpiar la fila de `portal_intentos_login` de prueba al terminar (no debe quedar en el estado que
   hereda T-002)
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-03)
 **Evidencia:**
 ```
+$ supabase db reset --local → Finished (001→008 migraciones aplicadas desde cero, sin errores)
+$ psql -f tests/fixtures/fundacion.sql / catalogo.sql / suscriptores.sql → cada uno COMMIT (0 errores)
 
+\d configuracion → portal_umbral_intentos_login smallint not null default 8,
+                    portal_bloqueo_minutos integer not null default 15
+\d portal_intentos_login → tabla creada, RLS forced, única política
+                            "portal_intentos_login_plataforma" (select, es_admin_plataforma())
+                            — SIN política de insert/update para ningún rol
+select proname, prosecdef from pg_proc where proname like 'portal_%' →
+  las 5 funciones (portal_validar_credenciales, portal_facturas_suscriptor,
+  portal_factura_completa, portal_saldo_favor_suscriptor, portal_consumo_suscriptor)
+  con prosecdef = true
+routine_privileges → anon tiene EXECUTE en las 5 (junto con authenticated/postgres/
+  service_role, que ya lo tenían implícito); revoke from public aplicado correctamente
+  (sin la revocación, PUBLIC también habría quedado con EXECUTE por defecto de Postgres)
+
+Smoke funcional (rol anon, transacción con ROLLBACK — nada persiste):
+  P1 OK  credenciales correctas de A1 → {"estado":"ok","usuario_servicio_id":"d0000000-...0a1"}
+  P2 OK  código incorrecto → {"estado":"invalido"}
+  P3 OK  código correcto de A1 + cliente_id de B → {"estado":"invalido"} (el slug manda)
+  P4 OK  facturas/saldo/consumo de A1 (sin fixtures de 004-007 aún) → [] / 0 / []
+  P5 OK  `select * from portal_intentos_login` como anon → 0 filas (RLS sin política para anon)
+  P6 OK  8 intentos fallidos seguidos (numero_documento 1000000002) → el 9.º intento, CON el
+    código correcto ('A-002'), devuelve {"estado":"bloqueado","reintentar_en":"..."} — confirma
+    que el bloqueo se evalúa ANTES de revisar las credenciales
+  P7 OK  (adicional, no listado arriba) estado='inactivo' en A1 (UPDATE dentro de la misma
+    transacción con rollback): login devuelve {"estado":"inactivo"} (no "invalido"); el CA-9
+    counter NO sube (0 filas en portal_intentos_login para ese numero_documento) — un acierto de
+    credenciales sobre una cuenta inactiva no cuenta como intento fallido; y
+    portal_facturas_suscriptor con las mismas credenciales devuelve [] (pierde acceso de
+    inmediato, CLAUDE.md §10-22d, sin verificación aparte)
 ```
 **Commit:** (tras completar)
 
