@@ -6,6 +6,9 @@ export interface Env {
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   ALLOWED_ORIGIN: string;
+  // Secreto de firma del JWT propio del portal del suscriptor (D-2/D-4/D-10):
+  // vive en .dev.vars y en los secretos del Worker; nunca se commitea.
+  SESSION_SECRET: string;
   // Binding de Cloudflare Queues del cierre de facturación (producer/consumer).
   FACTURACION_COLA?: Queue<MensajeFacturaCierre>;
   // Email Workers (D-9): solo existe en producción/remote; en dev local NO está

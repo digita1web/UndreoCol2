@@ -195,10 +195,24 @@ npx tsc --noEmit && npx eslint src/lib/sesion-suscriptor.ts tests/unit/sesion-su
 `'suscriptor'` → `null`; firma con secreto distinto → `null`; `exp` vencido → `null`; con menos de 7
 días de vida, `verificarSesionSuscriptor` devuelve una sesión con `expiraEn` renovado (mayor); con más
 de 7 días, `expiraEn` no cambia. `tsc`/`eslint` sin errores.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-08)
 **Evidencia:**
 ```
+$ npx vitest run tests/unit/sesion-suscriptor.test.ts → 10 passed
+  round-trip: iniciar escribe cookie uc_sesion_suscriptor (HttpOnly/Secure/SameSite=Lax) y
+    verificar devuelve los claims (sub/cid/doc/cod)
+  sin cookie → null · tipo 'administrativa' → null (22c) · secreto distinto → null ·
+  exp vencido → null
+  con exp a 3 días (< 7) → renueva: expiraEn ~ 30 días y reescribe la cookie
+  con exp a 20 días (> 7) → NO renueva (mismo expiraEn, sin Set-Cookie)
+  renovarSesionSuscriptor → expiraEn futuro + cookie · cerrar → Max-Age=0
+$ npm test → 9 files / 90 tests OK (80 previos + 10 de la sesión del portal)
+$ npx tsc --noEmit → sin salida · $ npx eslint → sin salida
 
+Nota de implementación: hono 4 exporta sign/verify desde 'hono/jwt' (no 'hono/utils/jwt',
+que no existe en la v4.6 instalada) — se verificó con tsc. SESSION_SECRET generado con
+crypto.randomBytes(32) y agregado a backend/.dev.vars (gitignored — nunca al repo);
+Env.SESSION_SECRET es requerido (db.ts).
 ```
 **Commit:** (tras completar)
 
