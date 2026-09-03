@@ -1,0 +1,270 @@
+# TASKS — 008: portal-suscriptor
+
+**Spec aprobado:** 2026-09-03 (spec.md commit `d015ee0`)
+**Plan aprobado:** 2026-09-03 (plan.md commit `310949f`)
+
+Una tarea = un commit. Sin evidencia no hay commit (CLAUDE.md §4 y §9). Nunca `git push`.
+
+---
+
+## Notas de entorno y prerrequisitos
+
+- **Entorno:** Supabase local real (CLI, PostgreSQL) + Docker. La base se reconstruye con
+  `supabase db reset --local` (001→008 migraciones) y se cargan los fixtures 001-008 antes de cada
+  paso que lo requiera. `http_proxy` sin NO_PROXY da 502 a 127.0.0.1 → usar `curl --noproxy '*'` y
+  lanzar `wrangler dev` con `env -u http_proxy -u https_proxy`.
+- **Credenciales reales ya disponibles desde 001/003** (sin esperar un fixture nuevo): A1 =
+  `cliente_id a0000000-...0001`, `numero_documento '1000000001'`, `codigo_suscriptor 'A-001'`; A2 =
+  `numero_documento '1000000002'`, `codigo_suscriptor 'A-002'`; B1 (cliente B) =
+  `numero_documento '2000000001'`, `codigo_suscriptor 'B-001'`. `clientes.slug`: `acueducto-a` /
+  `acueducto-b` (fixture de 001). Suficiente para probar las funciones desde T-001 sin depender del
+  fixture nuevo de T-002.
+- **D-10 (obligatorio):** ninguna ruta del portal usa `SUPABASE_SERVICE_ROLE_KEY`. El Worker llama las
+  funciones del portal con `crearClienteAnon`. Cada función revalida `numero_documento`+
+  `codigo_suscriptor` internamente — nunca confía en un id recibido como único parámetro.
+  `SESSION_SECRET` nunca se commitea (vive en `.dev.vars`, gitignored, y en secretos de Mateo en
+  producción).
+- **Orden de verificación (plan.md §8):** migración + smoke de las funciones (CA-6/CA-7/CA-9 lógica) →
+  fixture + aislamiento (CA-2/CA-9 completo, regresión 001-007) → `sesion-suscriptor.ts` + unit JWT →
+  `lib/portal.ts` + rutas + curl/wrangler dev (CA-1, CA-3 a CA-7) → regenerar código (CA-8) →
+  frontend (CA-10) → cierre.
+
+---
+
+## T-001 — Migración: `configuracion` (umbral) + `portal_intentos_login` + funciones `SECURITY DEFINER` (D-10)
+
+**Archivos:** `supabase/migrations/20260908090000_portal-suscriptor.sql`
+**Hace:** (plan.md §2) `alter table configuracion add column portal_umbral_intentos_login smallint
+not null default 8, add column portal_bloqueo_minutos integer not null default 15`; tabla
+`portal_intentos_login` (`cliente_id`, `numero_documento`, `intentos`, `bloqueado_hasta`,
+`ultimo_intento`, unique `(cliente_id, numero_documento)`) con RLS `FORCE` y una única política de
+`select` para `es_admin_plataforma()` (sin política de escritura: solo la tocan las funciones
+`security definer`, que bypasean RLS como su dueño); funciones `security definer`
+`portal_validar_credenciales`, `portal_facturas_suscriptor`, `portal_factura_completa`,
+`portal_saldo_favor_suscriptor`, `portal_consumo_suscriptor` (plan.md §2, todas revalidan
+`numero_documento`+`codigo_suscriptor`+`estado <> 'inactivo'` contra `usuarios_servicio` del
+`cliente_id` recibido); `revoke all ... from public` + `grant execute ... to anon` en las cinco.
+**Verificación:**
+```bash
+supabase db reset --local
+DB="$DATABASE_URL"
+psql "$DB" -v ON_ERROR_STOP=1 -f tests/fixtures/fundacion.sql
+psql "$DB" -v ON_ERROR_STOP=1 -f tests/fixtures/catalogo.sql
+psql "$DB" -v ON_ERROR_STOP=1 -f tests/fixtures/suscriptores.sql
+psql "$DB" -v ON_ERROR_STOP=1 <<'SQL'
+\d configuracion
+\d portal_intentos_login
+select proname, prosecdef from pg_proc where proname like 'portal_%';
+select routine_name, grantee, privilege_type from information_schema.routine_privileges
+  where routine_name like 'portal_%';
+SQL
+```
+**Resultado esperado:** reset 001→008 desde cero; `configuracion` tiene las 2 columnas nuevas con sus
+defaults (8/15); `portal_intentos_login` existe con `relforcerowsecurity`; las 5 funciones existen con
+`prosecdef = true`; `anon` tiene `EXECUTE` en las 5 y ningún otro rol lo tiene por `PUBLIC`.
+
+Smoke funcional (rol `anon`, con las credenciales reales de 001/003 — ver Notas de entorno):
+- P1 `portal_validar_credenciales(cliente_a, '1000000001', 'A-001')` → `{estado:'ok', usuario_servicio_id: d0000000-...0a1}`
+- P2 mismo cliente, código incorrecto → `{estado:'invalido'}` (mensaje genérico, no distingue campo)
+- P3 código correcto de A1 pero `cliente_id` de B → `{estado:'invalido'}` (el slug manda, spec §3.1)
+- P4 `portal_facturas_suscriptor`/`portal_saldo_favor_suscriptor`/`portal_consumo_suscriptor` con
+  credenciales de A1 sin facturas/pagos/lecturas todavía → `[]`/`0`/`[]` (no error)
+- P5 `select * from portal_intentos_login` como `anon` → rechazado por RLS (sin política de select
+  para `anon`); como `es_admin_plataforma()` → visible
+- P6 8 llamadas seguidas con código incorrecto para el mismo `(cliente_id, numero_documento)` → la
+  9.ª devuelve `{estado:'bloqueado', reintentar_en:...}` **aunque el código de la 9.ª sea correcto**;
+  limpiar la fila de `portal_intentos_login` de prueba al terminar (no debe quedar en el estado que
+  hereda T-002)
+**Estado:** Pendiente
+**Evidencia:**
+```
+
+```
+**Commit:** (tras completar)
+
+## T-002 — Fixture `portal.sql` + aislamiento `008_` (CA-2, CA-9)
+
+**Archivos:** `tests/fixtures/portal.sql`, `tests/aislamiento/008_portal_aislamiento.sql`
+**Hace:** Fixture sobre el estado de 001-007 (no muta facturas/pagos ya asumidos por aislamientos
+previos): agrega un **segundo contador histórico** a A1 (reemplazo simulado: contador viejo
+`estado='reemplazado'` + lecturas antiguas, contador nuevo = el ya activo) para poder probar CA-7
+(consumo sin cortes); dos filas de `portal_intentos_login` ya bloqueadas (una vencida, una vigente)
+para probar el borde del bloqueo sin repetir 8 intentos en cada corrida del test. Test de aislamiento
+(CA-2, CA-9; sin `set local role`/`request.jwt.claim.sub` — el portal no tiene `auth.uid()`, se llama
+a las funciones directamente como `anon` con distintas combinaciones): credenciales correctas de A1
+devuelven solo datos de A1; A1 pidiendo `portal_factura_completa` con el id de una factura de A2 o de
+B1 → `null`; credenciales de A1 con `cliente_id` de B → nada; la fila de `portal_intentos_login` ya
+bloqueada rechaza incluso con credenciales correctas; la fila vencida (bloqueo ya expiró) permite
+intentar de nuevo. Regresión 001-007 en verde sobre el mismo estado final.
+**Verificación:**
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/lecturas.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/facturacion.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/correo-factura.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/pagos.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/portal.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/008_portal_aislamiento.sql
+for f in 001_fundacion 002_catalogo 003_suscriptores 004_lecturas_consumo 005_facturacion 006_correo_factura 007_pagos; do
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/${f}_aislamiento.sql
+done
+```
+**Resultado esperado:** `PORTAL-AISLAMIENTO OK` y los 7 previos en verde sobre el mismo estado final.
+**Estado:** Pendiente
+**Evidencia:**
+```
+
+```
+**Commit:** (tras completar)
+
+## T-003 — `sesion-suscriptor.ts` (JWT propio, D-4/D-10) + unit tests
+
+**Archivos:** `backend/src/lib/db.ts`, `backend/.dev.vars`, `backend/src/lib/sesion-suscriptor.ts`,
+`backend/tests/unit/sesion-suscriptor.test.ts`
+**Hace:** `Env.SESSION_SECRET: string` en `db.ts`; `SESSION_SECRET` generado localmente en
+`.dev.vars` (nunca al repo). Implementa `iniciarSesionSuscriptor`/`verificarSesionSuscriptor`/
+`renovarSesionSuscriptor` (plan.md §4): JWT firmado con `hono/utils/jwt` (HS256, `SESSION_SECRET`),
+claims `sub`/`cid`/`doc`/`cod`/`tipo`/`exp`; cookie `uc_sesion_suscriptor`
+(`HttpOnly+Secure+SameSite=Lax`, `DURACION_SESION_SUSCRIPTOR_SEG`); `verificarSesionSuscriptor` nunca
+lanza (inválida/vencida/`tipo` incorrecto → `null`) y renueva automáticamente si quedan menos de
+`UMBRAL_RENOVACION_SUSCRIPTOR_SEG`. Elimina `ErrorSesionSuscriptorPendiente` (ya no aplica). Unit
+tests del round-trip sin Workers ni base (`vitest`).
+**Verificación:**
+```bash
+cd backend && npx vitest run tests/unit/sesion-suscriptor.test.ts
+npx tsc --noEmit && npx eslint src/lib/sesion-suscriptor.ts tests/unit/sesion-suscriptor.test.ts
+```
+**Resultado esperado:** unit en verde: firmar+verificar devuelve los mismos claims; `tipo` distinto de
+`'suscriptor'` → `null`; firma con secreto distinto → `null`; `exp` vencido → `null`; con menos de 7
+días de vida, `verificarSesionSuscriptor` devuelve una sesión con `expiraEn` renovado (mayor); con más
+de 7 días, `expiraEn` no cambia. `tsc`/`eslint` sin errores.
+**Estado:** Pendiente
+**Evidencia:**
+```
+
+```
+**Commit:** (tras completar)
+
+## T-004 — `lib/portal.ts` + rutas `/portal/*` + verificación curl (CA-1, CA-3 a CA-7)
+
+**Archivos:** `backend/src/lib/portal.ts`, `backend/src/index.ts`
+**Hace:** `lib/portal.ts`: `validarCredencialesPortal`, `obtenerFacturasPortal` (separa la más
+reciente no anulada como "actual" del resto como historial, CA-4), `obtenerFacturaCompletaPortal`
+(para el PDF), `obtenerSaldoFavorPortal`, `obtenerConsumoPortal` — todas llaman a las funciones
+`security definer` de T-001 con `crearClienteAnon` (D-10, nunca `service_role`). Middleware
+`requerirSesionSuscriptor` (espejo de `requerirClienteActivo`). Rutas (plan.md §3):
+`POST /portal/:slug/login` (resuelve `cliente_id` por `clientes.slug`, 401/403/429 según el `estado`
+de `portal_validar_credenciales`), `POST /portal/logout`, `GET /portal/facturas`,
+`GET /portal/facturas/:id/pdf` (404 si `portal_factura_completa` devuelve `null`; reutiliza
+`generarPdfFactura` de 006 y la misma clave de R2 como caché, sin actualizar `facturas.pdf_url` —
+simplificación aceptada, plan.md §5), `GET /portal/saldo-favor`, `GET /portal/consumo`.
+**Verificación:**
+```bash
+# con wrangler dev (:8787, env sin proxy) + Supabase local con fixtures 001-008
+curl -sS --noproxy '*' -c cookie -X POST localhost:8787/portal/acueducto-a/login \
+  -H 'Content-Type: application/json' -d '{"numero_documento":"1000000001","codigo_suscriptor":"A-001"}' \
+  -w '\nHTTP %{http_code}\n'
+curl -sS --noproxy '*' -b cookie localhost:8787/portal/facturas -w '\nHTTP %{http_code}\n'
+curl -sS --noproxy '*' -b cookie localhost:8787/portal/facturas/<id-de-A2-o-de-B1>/pdf -o /dev/null -w '\nHTTP %{http_code}\n'
+curl -sS --noproxy '*' -b cookie localhost:8787/portal/facturas/<id-propio>/pdf -o factura.pdf -w '\nHTTP %{http_code}\n'
+curl -sS --noproxy '*' -b cookie localhost:8787/portal/saldo-favor -w '\nHTTP %{http_code}\n'
+curl -sS --noproxy '*' -b cookie localhost:8787/portal/consumo -w '\nHTTP %{http_code}\n'
+curl -sS --noproxy '*' -X POST localhost:8787/portal/acueducto-a/login -d '{"numero_documento":"1000000001","codigo_suscriptor":"mala"}' -w '\nHTTP %{http_code}\n'
+```
+**Resultado esperado:** login correcto → 200 + `Set-Cookie uc_sesion_suscriptor`; `/portal/facturas`
+devuelve `facturaActual`/`historial` coherentes con el estado real de A1 (mismos totales que ve el
+admin); PDF de una factura ajena → 404 sin servir bytes; PDF propio → 200 `application/pdf` válido;
+saldo a favor coincide con `GET /suscriptores/:id/pagos` (007) para A1; consumo incluye las lecturas
+de ambos contadores del fixture de T-002 sin huecos; login con código incorrecto → 401 mensaje
+genérico; verificado también que la sesión del portal no sirve ninguna ruta `/app/*` y viceversa.
+**Estado:** Pendiente
+**Evidencia:**
+```
+
+```
+**Commit:** (tras completar)
+
+## T-005 — Regenerar código de suscriptor (admin, CA-8)
+
+**Archivos:** `backend/src/lib/suscriptores.ts`, `backend/src/index.ts`
+**Hace:** `regenerarCodigoSuscriptor(supabase, clienteId, usuarioServicioId, codigoNuevo)` — `UPDATE`
+directo sobre `usuarios_servicio` con el cliente ya autenticado del admin (la RLS existente
+`usuarios_servicio_escritura` ya lo permite, plan.md §2 — sin RPC nueva). Ruta
+`POST /suscriptores/:id/regenerar-codigo` (`requerirClienteActivo`): `{codigo_nuevo}` → 200
+`{suscriptor}`; 409 si el código ya existe en el cliente (`unique (cliente_id, codigo_suscriptor)`);
+el `lector` recibe 403 (RLS, no solo la interfaz).
+**Verificación:**
+```bash
+# admin A autenticado (cookie de sesión administrativa)
+curl -sS --noproxy '*' -b cookie_admin_a -X POST localhost:8787/suscriptores/<A2-id>/regenerar-codigo \
+  -H 'Content-Type: application/json' -d '{"codigo_nuevo":"A-002-NUEVO"}' -w '\nHTTP %{http_code}\n'
+# login del portal con el código viejo (debe fallar) y con el nuevo (debe funcionar)
+curl -sS --noproxy '*' -X POST localhost:8787/portal/acueducto-a/login -d '{"numero_documento":"1000000002","codigo_suscriptor":"A-002"}' -w '\nHTTP %{http_code}\n'
+curl -sS --noproxy '*' -X POST localhost:8787/portal/acueducto-a/login -d '{"numero_documento":"1000000002","codigo_suscriptor":"A-002-NUEVO"}' -w '\nHTTP %{http_code}\n'
+# lector A intentando regenerar código → 403
+curl -sS --noproxy '*' -b cookie_lector_a -X POST localhost:8787/suscriptores/<A1-id>/regenerar-codigo -d '{"codigo_nuevo":"X"}' -w '\nHTTP %{http_code}\n'
+# repetir el código de otro suscriptor del mismo cliente → 409
+```
+**Resultado esperado:** regenerar código funciona para el admin; el login viejo deja de servir, el
+nuevo funciona; el `lector` rechazado con 403; duplicar un código existente en el mismo cliente → 409;
+una sesión de portal de A2 obtenida ANTES del cambio (con el JWT ya emitido) sigue sirviendo
+`GET /portal/facturas` después del cambio (el JWT no lleva el código, solo lo revalida en el próximo
+login — comportamiento documentado en spec §3.8, verificado aquí con evidencia real).
+**Estado:** Pendiente
+**Evidencia:**
+```
+
+```
+**Commit:** (tras completar)
+
+## T-006 — Frontend: login, página del portal y botón de regenerar código (CA-10)
+
+**Archivos:** `frontend/middleware.ts`, `frontend/lib/api.ts`,
+`frontend/app/portal/[slug]/login/page.tsx` (crear), `frontend/app/portal/[slug]/page.tsx` (crear),
+`frontend/app/app/suscriptores/[id]/page.tsx` (editar)
+**Hace:** `middleware.ts`: matcher `/portal/:slug/:path*` que exige la cookie `uc_sesion_suscriptor`
+salvo en `/portal/:slug/login`, redirige ahí si falta (independiente del matcher `/app/:path*`
+existente). `api.ts`: tipos y funciones `loginPortal`, `logoutPortal`, `obtenerFacturasPortal`,
+`obtenerSaldoFavorPortal`, `obtenerConsumoPortal`, `urlPdfFacturaPortal`, `regenerarCodigoSuscriptor`.
+Página `/portal/[slug]/login`: formulario `numero_documento` + `codigo_suscriptor`, mensaje de error
+genérico. Página `/portal/[slug]`: factura actual (monto/vencimiento/estado), historial, saldo a
+favor, historial de consumo, enlace de descarga de PDF por factura, botón salir. Detalle de
+suscriptor (admin): botón "Regenerar código" (pide el código nuevo, confirma antes de enviar).
+**Verificación:**
+```bash
+cd backend && npx tsc --noEmit && npx eslint . && npm test
+npx wrangler deploy --dry-run -c wrangler.toml
+cd frontend && npm run build && npm run lint && npx tsc --noEmit
+```
+**Resultado esperado:** `build`/`lint`/`tsc` limpios (páginas nuevas del portal y el botón de
+suscriptores compilan); `wrangler deploy --dry-run` sin errores. El flujo click-a-click queda "NO
+VERIFICADO — requiere validación manual de Mateo: [pasos exactos]" si el entorno no permite
+`next dev` + `wrangler dev` (la API ya quedó verificada en T-004/T-005 vía curl).
+**Estado:** Pendiente
+**Evidencia:**
+```
+
+```
+**Commit:** (tras completar)
+
+## T-007 — Cierre: CHANGELOG + checklist CLAUDE.md §11
+
+**Archivos:** `CHANGELOG.md`, `specs/008-portal-suscriptor/spec.md` (checklist §8)
+**Hace:** Entrada de CHANGELOG (Sesión 015) y checklist de `spec.md §8` con evidencia real. Queda
+documentado el pendiente de Mateo (flujo click-a-click; la lógica del portal quedó verificada por
+SQL/RPC + curl contra Supabase local).
+**Verificación:**
+```bash
+cd backend && npx tsc --noEmit && npx eslint . && npm test
+npx wrangler deploy --dry-run -c wrangler.toml
+cd frontend && npm run build && npm run lint
+for f in 001_fundacion 002_catalogo 003_suscriptores 004_lecturas_consumo 005_facturacion 006_correo_factura 007_pagos 008_portal; do
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/${f}_aislamiento.sql
+done
+```
+**Resultado esperado:** builds/tests/aislamientos en verde sobre el estado final; evidencia pegada.
+**Estado:** Pendiente
+**Evidencia:**
+```
+
+```
+**Commit:** (tras completar)
