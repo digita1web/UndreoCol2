@@ -117,12 +117,32 @@ npx wrangler deploy --dry-run -c wrangler.toml
 #  ver en notificaciones: fila fallida/pendiente con ultimo_error (el envío real NO se simula)
 ```
 **Resultado esperado:** tsc/eslint/dry-run limpios; en local el request responde 202 y la fila de
-`notificaciones` registra el fallo sin bloquear (CA-4). El envío real queda NO VERIFICADO (cuenta de
-Mateo) con pasos exactos.
-**Estado:** Pendiente
+`notificaciones` registra el resultado sin bloquear (CA-4). El envío real queda NO VERIFICADO (cuenta
+de Mateo) con pasos exactos.
+**Estado:** Completado (2026-09-06)
 **Evidencia:**
 ```
+$ npx tsc --noEmit → sin salida · $ npx eslint → sin salida
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  env.EMAIL (unrestricted) Send Email · env.FACTURAS_R2 (undreocol-facturas) R2 Bucket
+  Total Upload: 1680.56 KiB / gzip: 383.96 KiB (pdf-lib suma ~4MB al bundle; dentro del límite)
 
+Round-trip local REAL (wrangler dev :8787, sin proxy):
+  POST /facturas/ff000000-...0a1/enviar-correo → 202 {"encolado":true, notificacionId:...}
+  Log consumidor: "cierre-facturacion: correo de factura FAC-2026-00001 procesado"
+  Fila en notificaciones: enviada | intentos=1 | error=(null)
+
+HALLAZGO de entorno: en `wrangler dev` el binding send_email se materializa como MOCK de
+miniflare que "envía" con éxito (la fila queda enviada). Por eso el caso de FALLO no se puede
+reproducir por la API en local; además Node 20 sin WebSocket no puede instanciar supabase-js
+para una prueba de integración directa. El REQUERIMIENTO EXPLÍCITO (fallo trazable: intentos + 1
+y ultimo_error poblado) se verificó extrayendo la decisión a la función pura
+computarActualizacionNotificacion() y cubriéndola con unit tests:
+  ✓ envío fallido → intentos=1, estado=pendiente, ultimo_error poblado (reintentable)
+  ✓ envío exitoso → estado=enviada, intentos=1, enviada_en
+  ✓ tras agotar 3 reintentos → estado=fallida (el admin lo gestiona)
+  ✓ enviarFacturaPorCorreo sin env.EMAIL → ok:false SIN lanzar (regla 20)
+$ npm test → 6 files / 65 tests OK (email 6 tests, factura-pdf 4)
 ```
 **Commit:** (tras completar)
 

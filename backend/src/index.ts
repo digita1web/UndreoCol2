@@ -699,6 +699,7 @@ app.post('/facturacion/periodos/:id/emitir', async (c) => {
     const aEmitir = resumen.detalle.filter((d) => d.consumoM3 !== null && d.tieneTarifa && d.total > 0);
     for (const d of aEmitir) {
       await cola.send({
+        tipo: 'emitir_factura',
         clienteId: ctx.clienteId,
         periodoId,
         usuarioServicioId: d.usuarioServicioId,
@@ -718,6 +719,115 @@ app.post('/facturacion/periodos/:id/emitir', async (c) => {
 // facturación (mismo worker producer+consumer: round-trip local verificado en
 // plan.md §0). En producción Cloudflare enruta igual: un Worker puede tener
 // fetch + queue.
+// POST /facturas/:id/enviar-correo — encola el envío del correo de UNA factura
+// (202). Crea la fila en notificaciones (pendiente). El envío nunca ocurre en
+// este request (cola) — regla 20.
+app.post('/facturas/:id/enviar-correo', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const cola = c.env.FACTURACION_COLA;
+  if (!cola) return c.json({ error: 'La cola de facturación no está configurada' }, 500);
+  const facturaId = c.req.param('id');
+  try {
+    const { factura } = await obtenerFactura(ctx.supabase, ctx.clienteId, facturaId);
+    const { data: suscriptor } = await ctx.supabase
+      .from('usuarios_servicio')
+      .select('email')
+      .eq('id', factura.usuario_servicio_id)
+      .single();
+    const email = (suscriptor?.email ?? '').trim();
+    if (!email) {
+      return c.json({ error: 'El suscriptor de la factura no tiene email registrado' }, 400);
+    }
+    const { data: notificacion, error: errNotif } = await ctx.supabase
+      .from('notificaciones')
+      .insert({
+        cliente_id: ctx.clienteId,
+        usuario_servicio_id: factura.usuario_servicio_id,
+        factura_id: facturaId,
+        tipo: 'factura_generada',
+        canal: 'email',
+        destinatario: email,
+        asunto: `Factura ${factura.numero}`,
+        estado: 'pendiente',
+        intentos: 0,
+      })
+      .select('id')
+      .single();
+    if (errNotif || !notificacion) throw new Error(`No se pudo registrar el envío: ${errNotif?.message ?? ''}`);
+    await cola.send({
+      tipo: 'enviar_correo_factura',
+      clienteId: ctx.clienteId,
+      facturaId,
+      notificacionId: notificacion.id,
+    });
+    return c.json({ encolado: true, notificacionId: notificacion.id }, 202);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo encolar el envío' }, 400);
+  }
+});
+
+// POST /facturacion/periodos/:id/enviar-correo — encola el envío del correo de
+// las facturas del periodo cuyos suscriptores tienen email. Devuelve cuántos se
+// encolaron y cuántos se omitieron (sin email → se entregan impresas, D-8).
+app.post('/facturacion/periodos/:id/enviar-correo', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const cola = c.env.FACTURACION_COLA;
+  if (!cola) return c.json({ error: 'La cola de facturación no está configurada' }, 500);
+  const periodoId = c.req.param('id');
+  try {
+    const facturas = await listarFacturasDePeriodo(ctx.supabase, ctx.clienteId, periodoId);
+    let encoladas = 0;
+    let omitidas = 0;
+    for (const factura of facturas) {
+      const { data: suscriptor } = await ctx.supabase
+        .from('usuarios_servicio')
+        .select('email')
+        .eq('id', factura.usuario_servicio_id)
+        .single();
+      const email = (suscriptor?.email ?? '').trim();
+      if (!email) {
+        omitidas += 1;
+        continue;
+      }
+      const { data: notificacion, error: errNotif } = await ctx.supabase
+        .from('notificaciones')
+        .insert({
+          cliente_id: ctx.clienteId,
+          usuario_servicio_id: factura.usuario_servicio_id,
+          factura_id: factura.id,
+          tipo: 'factura_generada',
+          canal: 'email',
+          destinatario: email,
+          asunto: `Factura ${factura.numero}`,
+          estado: 'pendiente',
+          intentos: 0,
+        })
+        .select('id')
+        .single();
+      if (errNotif || !notificacion) {
+        omitidas += 1; // no rompe el lote (regla 20)
+        continue;
+      }
+      await cola.send({
+        tipo: 'enviar_correo_factura',
+        clienteId: ctx.clienteId,
+        facturaId: factura.id,
+        notificacionId: notificacion.id,
+      });
+      encoladas += 1;
+    }
+    return c.json({
+      encoladas,
+      omitidas,
+      mensaje: 'Envíos encolados (uno por factura con email); sin email se entregan impresas',
+    }, 202);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo encolar el lote' }, 400);
+  }
+});
+
 export default {
   fetch: app.fetch,
   queue: cierreFacturacion.queue,

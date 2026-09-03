@@ -21,6 +21,8 @@ import {
   type RenglonFactura,
 } from '../core/facturacion';
 import type { Tarifa } from '../core/tarifas';
+import { generarPdfFactura, type DatosAcueductoPdf } from '../lib/factura-pdf';
+import { computarActualizacionNotificacion, enviarFacturaPorCorreo } from '../lib/email';
 
 export type MensajeFactura = MensajeFacturaCierre;
 
@@ -44,6 +46,9 @@ export async function emitirFacturaDeMensaje(env: Env, mensaje: MensajeFactura):
   const supabase = crearClienteServicio(env);
 
   const { clienteId, periodoId, usuarioServicioId } = mensaje;
+  if (!periodoId || !usuarioServicioId) {
+    throw new Error('Mensaje emitir_factura inválido: faltan periodoId/usuarioServicioId');
+  }
 
   // --- contexto del periodo y del suscriptor ------------------------------
   const { data: periodo } = await supabase
@@ -219,19 +224,127 @@ export async function emitirFacturaDeMensaje(env: Env, mensaje: MensajeFactura):
   return numeroFactura;
 }
 
-// Handler de cola de Cloudflare Queues (export default del worker consumidor).
+// ---------------------------------------------------------------------------
+// Envío del correo de una factura (006): genera el PDF, lo sube a R2, envía y
+// actualiza la fila de notificaciones (intentos/ultimo_error) — el fallo NUNCA
+// bloquea el flujo y queda trazable para el reintento (spec 006 §3.4).
+// ---------------------------------------------------------------------------
+
+function clavePdf(clienteId: string, facturaId: string): string {
+  return `facturas/${clienteId}/${facturaId}.pdf`;
+}
+
+export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): Promise<string> {
+  const supabase = crearClienteServicio(env);
+
+  const { clienteId, facturaId, notificacionId } = mensaje;
+  if (!facturaId) throw new Error('Mensaje enviar_correo_factura inválido: falta facturaId');
+
+  // lee factura + detalles + cliente (acueducto) + email del suscriptor
+  const { data: factura } = await supabase
+    .from('facturas')
+    .select('*, usuario_servicio_id')
+    .eq('id', facturaId)
+    .single();
+  if (!factura) throw new Error(`Factura ${facturaId} no existe`);
+
+  const { data: detallesData } = await supabase
+    .from('factura_detalles')
+    .select('*')
+    .eq('factura_id', facturaId)
+    .order('orden', { ascending: true });
+  const detalles = detallesData ?? [];
+
+  const { data: acueductoRow } = await supabase
+    .from('clientes')
+    .select('nombre, nit, direccion, telefono, municipio, logo_url')
+    .eq('id', clienteId)
+    .single();
+
+  const { data: suscriptor } = await supabase
+    .from('usuarios_servicio')
+    .select('email')
+    .eq('id', factura.usuario_servicio_id)
+    .single();
+
+  const destinatario = (suscriptor?.email ?? '').trim();
+  if (!destinatario) {
+    throw new Error(`Suscriptor de la factura ${facturaId} sin email registrado`);
+  }
+
+  const acueducto: DatosAcueductoPdf = {
+    nombre: acueductoRow?.nombre ?? '',
+    nit: acueductoRow?.nit ?? null,
+    direccion: acueductoRow?.direccion ?? null,
+    telefono: acueductoRow?.telefono ?? null,
+    municipio: acueductoRow?.municipio ?? null,
+    logoUrl: acueductoRow?.logo_url ?? null,
+  };
+
+  // genera el PDF y lo sube a R2 (la primera vez); pdf_url queda en la factura
+  const pdfBytes = await generarPdfFactura({ factura, detalles, acueducto });
+  const key = clavePdf(clienteId, facturaId);
+  const bucket = env.FACTURAS_R2;
+  if (bucket) {
+    await bucket.put(key, pdfBytes, { httpMetadata: { contentType: 'application/pdf' } });
+    await supabase.from('facturas').update({ pdf_url: `/facturas/${facturaId}/pdf` }).eq('id', facturaId);
+  }
+
+  const numero = String(factura.numero ?? facturaId);
+  const resultado = await enviarFacturaPorCorreo(env, {
+    destinatario,
+    remitente: 'no-responder@undreocol.app', // dominio verificado de UndreoCol (producción)
+    asunto: `Factura ${numero} — ${acueducto.nombre}`,
+    cuerpoHtml: `<p>Adjuntamos la factura <strong>${numero}</strong> de ${acueducto.nombre}.</p>`,
+    pdfBytes,
+    pdfNombre: `${numero}.pdf`,
+  });
+
+  // actualiza la fila de notificaciones (si el mensaje trae notificacionId):
+  // SIEMPRE con intentos + 1 y, si falla, ultimo_error poblado (trazabilidad
+  // del fallo para el reintento — spec 006 §3.4, requerimiento explícito).
+  if (notificacionId) {
+    const { data: notif } = await supabase
+      .from('notificaciones')
+      .select('intentos')
+      .eq('id', notificacionId)
+      .single();
+    const actualizacion = computarActualizacionNotificacion(resultado, Number(notif?.intentos ?? 0));
+    const { error: errNotif } = await supabase
+      .from('notificaciones')
+      .update(actualizacion)
+      .eq('id', notificacionId);
+    if (errNotif) {
+      console.error('cierre-facturacion: no se pudo actualizar la notificación', errNotif.message);
+    }
+  }
+
+  if (!resultado.ok) {
+    throw new Error(`Envío fallido: ${resultado.error}`);
+  }
+  return numero;
+}
+
+// Handler de cola de Cloudflare Queues (export default del worker consumidor):
+// enruta por `tipo` — 'emitir_factura' (005) o 'enviar_correo_factura' (006).
 export default {
   async queue(batch: { messages: Array<{ body: MensajeFactura }> }, env: Env): Promise<void> {
     for (const mensaje of batch.messages) {
       try {
-        const numero = await emitirFacturaDeMensaje(env, mensaje.body);
-        console.log(`cierre-facturacion: factura ${numero} emitida`);
+        if (mensaje.body.tipo === 'enviar_correo_factura') {
+          const numero = await enviarCorreoDeFactura(env, mensaje.body);
+          console.log(`cierre-facturacion: correo de factura ${numero} procesado`);
+        } else {
+          const numero = await emitirFacturaDeMensaje(env, mensaje.body);
+          console.log(`cierre-facturacion: factura ${numero} emitida`);
+        }
       } catch (e) {
-        console.error('cierre-facturacion: error emitiendo factura', e instanceof Error ? e.message : e);
-        // Sin reintento automático en esta versión: el error queda en el log y en
-        // el resumen de la simulación para que el admin lo gestione.
+        console.error('cierre-facturacion: error procesando mensaje', e instanceof Error ? e.message : e);
+        // El error queda en el log y en notificaciones (intentos/ultimo_error);
+        // sin reintento automático en esta versión (lo gestiona el admin).
       }
     }
   },
 };
+
 

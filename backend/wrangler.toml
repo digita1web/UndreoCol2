@@ -22,5 +22,17 @@ queue = "undreocol-facturacion"
 max_batch_size = 10
 max_retries = 3
 
+# --- PDF de facturas (006): R2 (adjuntos/correo) y Email Workers ------------
+# R2: en local wrangler dev simula el bucket con persistencia en .wrangler/state.
+[[r2_buckets]]
+binding = "FACTURAS_R2"
+bucket_name = "undreocol-facturas"
+
+# Email Workers (D-9): solo efectivo en producción (Workers Paid + dominio
+# verificado). En dev local el binding no se materializa; lib/email.ts detecta
+# la ausencia de env.EMAIL y NO bloquea (regla 20).
+[[send_email]]
+name = "EMAIL"
+
 [observability]
 enabled = true
