@@ -43,6 +43,14 @@ import {
   simularPeriodo,
 } from './lib/facturacion';
 import { generarPdfFactura, type DatosAcueductoPdf } from './lib/factura-pdf';
+import {
+  anularPago,
+  obtenerCartera,
+  obtenerPagosDeFactura,
+  obtenerPagosDeSuscriptor,
+  registrarPago,
+} from './lib/pagos';
+import { redondearPeso } from './core/pagos';
 import cierreFacturacion from './queues/cierre-facturacion';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -876,6 +884,142 @@ app.get('/facturas/:id/pdf', async (c) => {
     });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo generar el PDF' }, 400);
+  }
+});
+
+// --- Pagos y cartera (007-pagos-y-cartera) ------------------------------------
+
+// Métodos de pago permitidos (enum metodo_pago de la base; validación aquí para
+// responder 400 antes de llegar a la RPC).
+const METODOS_PAGO = ['efectivo', 'transferencia', 'consignacion', 'pse', 'otro'];
+
+// POST /pagos — registra un pago y lo aplica a las facturas del suscriptor
+// (201). El admin elige el valor, método, referencia opcional y las facturas a
+// abonar (si no las elige, se aplica a las pendientes más antiguas primero —
+// core.distribuirPago). La RPC valida y aplica atómicamente.
+app.post('/pagos', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{
+      usuario_servicio_id?: string;
+      valor?: number;
+      metodo?: string;
+      fecha_pago?: string;
+      referencia?: string | null;
+      observaciones?: string | null;
+      factura_ids?: string[];
+    }>()
+    .catch(() => ({
+      usuario_servicio_id: undefined,
+      valor: undefined,
+      metodo: undefined,
+      fecha_pago: undefined,
+      referencia: undefined,
+      observaciones: undefined,
+      factura_ids: undefined,
+    }));
+  const valor = body.valor === undefined ? Number.NaN : redondearPeso(Number(body.valor));
+  if (!body.usuario_servicio_id || !Number.isFinite(valor) || valor <= 0) {
+    return c.json({ error: 'usuario_servicio_id y valor (> 0) son requeridos' }, 400);
+  }
+  if (!body.metodo || !METODOS_PAGO.includes(body.metodo)) {
+    return c.json({ error: `metodo debe ser uno de: ${METODOS_PAGO.join(', ')}` }, 400);
+  }
+  try {
+    const resultado = await registrarPago(ctx.supabase, ctx.clienteId, ctx.perfilId, {
+      usuario_servicio_id: body.usuario_servicio_id,
+      valor,
+      metodo: body.metodo as 'efectivo' | 'transferencia' | 'consignacion' | 'pse' | 'otro',
+      fecha_pago: body.fecha_pago,
+      referencia: body.referencia,
+      observaciones: body.observaciones,
+      factura_ids: body.factura_ids,
+    });
+    return c.json(resultado, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo registrar el pago' }, 400);
+  }
+});
+
+// POST /pagos/:id/anular — anula un pago vigente (motivo obligatorio; revierte
+// las facturas abonadas recalculando desde los pagos vigentes).
+app.post('/pagos/:id/anular', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req.json<{ motivo?: string }>().catch(() => ({ motivo: undefined }));
+  if (!body.motivo || !body.motivo.trim()) {
+    return c.json({ error: 'El motivo de anulación es obligatorio' }, 400);
+  }
+  try {
+    const resultado = await anularPago(
+      ctx.supabase,
+      ctx.clienteId,
+      c.req.param('id'),
+      body.motivo,
+      ctx.perfilId,
+    );
+    return c.json(resultado);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo anular el pago' }, 400);
+  }
+});
+
+// GET /cartera — cartera por suscriptor con deuda (por vencer / vencida con días
+// de mora / total / saldo a favor). Filtros opcionales: suscriptor_id, solo_morosos.
+app.get('/cartera', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const cartera = await obtenerCartera(ctx.supabase, ctx.clienteId, {
+      suscriptorId: c.req.query('suscriptor_id') || null,
+      soloMorosos: c.req.query('solo_morosos') === 'true',
+    });
+    return c.json({ cartera });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo obtener la cartera' }, 400);
+  }
+});
+
+// GET /facturas/:id/pagos — historial de pagos aplicados a una factura + saldo.
+app.get('/facturas/:id/pagos', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const facturaId = c.req.param('id');
+    const [pagos, { factura }] = await Promise.all([
+      obtenerPagosDeFactura(ctx.supabase, ctx.clienteId, facturaId),
+      obtenerFactura(ctx.supabase, ctx.clienteId, facturaId),
+    ]);
+    return c.json({
+      pagos,
+      factura: {
+        id: factura.id,
+        numero: factura.numero,
+        total: factura.total,
+        total_pagado: factura.total_pagado,
+        saldo: factura.total - factura.total_pagado,
+        estado: factura.estado,
+      },
+    });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo leer el historial' }, 400);
+  }
+});
+
+// GET /suscriptores/:id/pagos — historial de pagos de un suscriptor (vigentes y
+// anulados) con sus aplicaciones y el valor sin aplicar (saldo a favor).
+app.get('/suscriptores/:id/pagos', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const pagos = await obtenerPagosDeSuscriptor(ctx.supabase, ctx.clienteId, c.req.param('id'));
+    const saldoFavor = pagos
+      .filter((p) => !p.anulado)
+      .reduce((acc, p) => acc + p.sinAplicar, 0);
+    return c.json({ pagos, saldoFavor });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo leer el historial' }, 400);
   }
 });
 

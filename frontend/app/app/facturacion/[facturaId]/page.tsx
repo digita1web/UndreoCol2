@@ -1,16 +1,28 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PagoForm } from '@/components/pago-form';
 import {
   anularFactura,
+  anularPago,
   enviarCorreoFactura,
   obtenerFactura,
+  obtenerPagosDeFactura,
   urlPdfFactura,
+  type AplicacionHistorialFactura,
   type DetalleFactura,
   type Factura,
 } from '@/lib/api';
+
+const NOMBRES_METODO: Record<string, string> = {
+  efectivo: 'Efectivo',
+  transferencia: 'Transferencia',
+  consignacion: 'Consignación',
+  pse: 'PSE',
+  otro: 'Otro',
+};
 
 interface PageProps {
   params: Promise<{ facturaId: string }>;
@@ -20,11 +32,13 @@ export default function DetalleFacturaPage({ params }: PageProps) {
   const { facturaId } = use(params);
   const [factura, setFactura] = useState<Factura | null>(null);
   const [detalles, setDetalles] = useState<DetalleFactura[]>([]);
+  const [pagos, setPagos] = useState<AplicacionHistorialFactura[]>([]);
+  const [mostrarFormPago, setMostrarFormPago] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
-  useEffect(() => {
+  const recargar = useCallback(() => {
     if (!facturaId) return;
     obtenerFactura(facturaId)
       .then((r) => {
@@ -32,7 +46,24 @@ export default function DetalleFacturaPage({ params }: PageProps) {
         setDetalles(r.detalles);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'No se pudo cargar la factura'));
+    obtenerPagosDeFactura(facturaId)
+      .then((r) => setPagos(r.pagos))
+      .catch((e) => setError(e instanceof Error ? e.message : 'No se pudo cargar el historial de pagos'));
   }, [facturaId]);
+
+  useEffect(recargar, [recargar]);
+
+  async function alAnularPago(pagoId: string) {
+    const motivo = window.prompt('Motivo de anulación del pago (obligatorio):');
+    if (!motivo) return;
+    try {
+      await anularPago(pagoId, motivo);
+      setError(null);
+      recargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo anular el pago');
+    }
+  }
 
   async function alEnviarCorreo() {
     if (!factura) return;
@@ -118,6 +149,7 @@ export default function DetalleFacturaPage({ params }: PageProps) {
           <p><strong>Recargo mora:</strong> ${factura.recargo_mora.toLocaleString('es-CO')}</p>
           <p><strong>Saldo anterior:</strong> ${factura.saldo_anterior.toLocaleString('es-CO')}</p>
           <p className="text-base"><strong>Total:</strong> ${factura.total.toLocaleString('es-CO')}</p>
+          <p><strong>Pagado:</strong> ${factura.total_pagado.toLocaleString('es-CO')} · <strong>Saldo:</strong> ${(factura.total - factura.total_pagado).toLocaleString('es-CO')}</p>
           <p className="text-xs text-muted-foreground">Emisión {factura.fecha_emision} · vence {factura.fecha_vencimiento}</p>
           {factura.motivo_anulacion && (
             <p className="text-xs text-red-600">Anulada: {factura.motivo_anulacion}</p>
@@ -142,6 +174,61 @@ export default function DetalleFacturaPage({ params }: PageProps) {
                 </p>
               </div>
               <p className="font-medium">${d.subtotal.toLocaleString('es-CO')}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="print:hidden">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>Pagos aplicados</CardTitle>
+            {factura.estado !== 'anulada' && factura.total_pagado < factura.total && (
+              <button
+                className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+                onClick={() => setMostrarFormPago((v) => !v)}
+              >
+                {mostrarFormPago ? 'Cerrar' : 'Registrar pago'}
+              </button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {mostrarFormPago && (
+            <PagoForm
+              usuarioServicioId={factura.usuario_servicio_id}
+              facturaId={factura.id}
+              onRegistrado={(resultado) => {
+                setMostrarFormPago(false);
+                setAviso(
+                  resultado.remanente > 0
+                    ? `Pago registrado. Sobrante a favor del suscriptor: $${resultado.remanente.toLocaleString('es-CO')}.`
+                    : 'Pago registrado.',
+                );
+                recargar();
+              }}
+              onCancelar={() => setMostrarFormPago(false)}
+            />
+          )}
+          {pagos.length === 0 && <p className="text-sm text-muted-foreground">Sin pagos aplicados a esta factura.</p>}
+          {pagos.map((p) => (
+            <div key={p.id} className="flex items-center justify-between border-b border-border pb-2 text-sm last:border-0">
+              <div>
+                <p className={p.anulado ? 'text-muted-foreground line-through' : 'font-medium'}>
+                  ${p.valor.toLocaleString('es-CO')} · {NOMBRES_METODO[p.metodo] ?? p.metodo}
+                  {p.referencia && ` · ${p.referencia}`}
+                </p>
+                <p className="text-xs text-muted-foreground">{p.fecha_pago} · registrado por {p.recibido_por ?? '—'}</p>
+                {p.anulado && <p className="text-xs text-red-600">Anulado: {p.motivo_anulacion}</p>}
+              </div>
+              {!p.anulado && (
+                <button
+                  className="h-8 w-fit rounded-md border border-red-300 px-3 text-xs font-medium text-red-600 hover:bg-red-50"
+                  onClick={() => alAnularPago(p.id)}
+                >
+                  Anular
+                </button>
+              )}
             </div>
           ))}
         </CardContent>
