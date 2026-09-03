@@ -502,3 +502,22 @@ export function anularFactura(facturaId: string, motivo: string): Promise<{ fact
     body: JSON.stringify({ motivo }),
   });
 }
+
+// --- 006: impresión y correo de facturas ------------------------------------
+
+export function urlPdfFactura(facturaId: string): string {
+  return `${URL_BASE_API}/facturas/${facturaId}/pdf`;
+}
+
+export function enviarCorreoFactura(facturaId: string): Promise<{ encolado: boolean; notificacionId: string }> {
+  return peticion<{ encolado: boolean; notificacionId: string }>(`/facturas/${facturaId}/enviar-correo`, { method: 'POST' });
+}
+
+export function enviarCorreoPeriodo(
+  periodoId: string,
+): Promise<{ encoladas: number; omitidas: number; mensaje: string }> {
+  return peticion<{ encoladas: number; omitidas: number; mensaje: string }>(
+    `/facturacion/periodos/${periodoId}/enviar-correo`,
+    { method: 'POST' },
+  );
+}

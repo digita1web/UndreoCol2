@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   emitirPeriodo,
+  enviarCorreoPeriodo,
   listarFacturasDePeriodo,
   listarPeriodos,
   simularPeriodo,
@@ -75,6 +76,22 @@ export default function FacturacionPage() {
       await cargarFacturas(periodoId);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo emitir el periodo');
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  async function alEnviarCorreosPeriodo() {
+    if (!periodoId || !facturas?.length) return;
+    if (!window.confirm('¿Enviar el correo con el PDF a los suscriptores de las facturas del periodo que tengan email? (sin email se entregan impresas)')) return;
+    setError(null);
+    setInfo(null);
+    setTrabajando(true);
+    try {
+      const r = await enviarCorreoPeriodo(periodoId);
+      setInfo(`${r.mensaje} · encolados ${r.encoladas}, omitidos ${r.omitidas}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo encolar el lote de correos');
     } finally {
       setTrabajando(false);
     }
@@ -161,7 +178,18 @@ export default function FacturacionPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Facturas del periodo</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>Facturas del periodo</CardTitle>
+            {facturas && facturas.length > 0 && (
+              <button
+                className="h-9 w-fit rounded-md bg-green-700 px-4 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50 print:hidden"
+                onClick={alEnviarCorreosPeriodo}
+                disabled={trabajando}
+              >
+                {trabajando ? 'Encolando…' : 'Enviar correos del periodo'}
+              </button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {facturas === null && <p className="text-sm text-muted-foreground">Selecciona un periodo…</p>}

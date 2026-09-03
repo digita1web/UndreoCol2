@@ -184,7 +184,7 @@ es metadata del PDF (006), no un valor económico. Corrección en la migración 
     el update lo hace un rol distinto (service_role); por eso el mecanismo se probó con
     el round-trip real (service_role) y quedó en verde.
 ```
-**Commit:** (tras completar)
+**Commit:** 52117dc
 
 ## T-005 — Frontend: `@media print` + botones de envío (CA-5/CA-6)
 
@@ -201,10 +201,24 @@ cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** build/lint limpios (páginas de facturación siguen compilando). El flujo
 click-a-click queda NO VERIFICADO (validación de Mateo si no corre next dev + wrangler dev).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-06)
 **Evidencia:**
 ```
+$ npx tsc --noEmit (frontend) → sin salida
+$ npx next build (frontend) → ✓ Compiled successfully in 9.9s · ✓ Generating static pages (12/12)
+  sin errores (las páginas /app/facturacion y /app/facturacion/[facturaId] compilan)
 
+Cambios:
+  - lib/api.ts: enviarCorreoFactura(facturaId) → POST /facturas/:id/enviar-correo (202);
+    enviarCorreoPeriodo(periodoId) → POST /facturacion/periodos/:id/enviar-correo (202);
+    urlPdfFactura(facturaId) → URL del PDF (GET con la cookie de sesión, Content-Disposition inline).
+  - Detalle de factura: botones "Ver PDF" (nueva pestaña) / "Imprimir" (window.print) /
+    "Enviar por correo" (no para anuladas); aviso de encolado.
+  - Listado del periodo: botón "Enviar correos del periodo" (solo si hay facturas).
+  - @media print (globals.css + print:hidden en botones): la impresión del detalle deja
+    solo la factura (datos + desglose), sin acciones/navegación.
+El flujo click-a-click no se ejecutó (requiere next dev + wrangler dev simultáneos); los
+endpoints del backend quedaron verificados en T-003/T-004 vía curl.
 ```
 **Commit:** (tras completar)
 

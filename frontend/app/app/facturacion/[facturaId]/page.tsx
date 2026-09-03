@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   anularFactura,
+  enviarCorreoFactura,
   obtenerFactura,
+  urlPdfFactura,
   type DetalleFactura,
   type Factura,
 } from '@/lib/api';
@@ -19,6 +21,8 @@ export default function DetalleFacturaPage({ params }: PageProps) {
   const [factura, setFactura] = useState<Factura | null>(null);
   const [detalles, setDetalles] = useState<DetalleFactura[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
     if (!facturaId) return;
@@ -29,6 +33,22 @@ export default function DetalleFacturaPage({ params }: PageProps) {
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'No se pudo cargar la factura'));
   }, [facturaId]);
+
+  async function alEnviarCorreo() {
+    if (!factura) return;
+    setAviso(null);
+    setError(null);
+    setEnviando(true);
+    try {
+      const r = await enviarCorreoFactura(factura.id);
+      setAviso(`Envío encolado con la factura ${factura.numero} como PDF adjunto.`);
+      void r;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo encolar el envío');
+    } finally {
+      setEnviando(false);
+    }
+  }
 
   async function alAnular() {
     if (!factura) return;
@@ -50,11 +70,39 @@ export default function DetalleFacturaPage({ params }: PageProps) {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
+      {error && <p className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {aviso && <p className="rounded-md border border-green-200 bg-green-50 p-2 text-sm text-green-700">{aviso}</p>}
+      <div className="flex items-center justify-between print:hidden">
         <h1 className="text-2xl font-semibold">Factura {factura.numero}</h1>
         <Link href="/app/facturacion" className="text-sm text-blue-600 hover:underline">
           ← Facturación
         </Link>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 print:hidden">
+        <a
+          className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+          href={urlPdfFactura(factura.id)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Ver PDF
+        </a>
+        <button
+          className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          onClick={() => window.print()}
+        >
+          Imprimir
+        </button>
+        {factura.estado !== 'anulada' && (
+          <button
+            className="h-9 w-fit rounded-md bg-green-700 px-4 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
+            onClick={alEnviarCorreo}
+            disabled={enviando}
+          >
+            {enviando ? 'Encolando…' : 'Enviar por correo'}
+          </button>
+        )}
       </div>
 
       <Card>
@@ -101,7 +149,7 @@ export default function DetalleFacturaPage({ params }: PageProps) {
 
       {factura.estado !== 'anulada' && (
         <button
-          className="h-9 w-fit rounded-md border border-red-300 px-4 text-sm font-medium text-red-600 hover:bg-red-50"
+          className="h-9 w-fit rounded-md border border-red-300 px-4 text-sm font-medium text-red-600 hover:bg-red-50 print:hidden"
           onClick={alAnular}
         >
           Anular factura
