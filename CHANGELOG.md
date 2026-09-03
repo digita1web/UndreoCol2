@@ -4,6 +4,59 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-03 — Sesión 015: 008-portal-suscriptor completa (T-001 a T-007)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/008-portal-suscriptor/`): CA-1 a CA-10 y **D-10** nueva en
+  `docs/DECISIONES.md` (el aislamiento del portal se hace con funciones `SECURITY DEFINER` acotadas
+  invocadas con la clave `anon`; `SUPABASE_SERVICE_ROLE_KEY` nunca se usa en rutas del portal —
+  CLAUDE.md §12 sin excepción).
+- **T-001** — Migración `20260908090000_portal-suscriptor.sql`: columnas de `configuracion`
+  (`portal_umbral_intentos_login` 8 / `portal_bloqueo_minutos` 15), tabla `portal_intentos_login`
+  (fuerza bruta por `(cliente_id, numero_documento)`; RLS FORCE con única política de lectura para
+  la plataforma; la escriben solo las funciones security definer) y las 5 funciones del portal
+  (`portal_validar_credenciales`, `portal_facturas_suscriptor`, `portal_factura_completa`,
+  `portal_saldo_favor_suscriptor`, `portal_consumo_suscriptor`) — cada una revalida
+  `numero_documento`+`codigo_suscriptor` dentro del `cliente_id` recibido. Smoke con rol `anon`:
+  login ok/invalido/bloqueado tras 8 fallos/inactivo (sin contar como intento fallido) y datos sin
+  fixtures → vacíos.
+- **T-002** — Fixture `portal.sql` (dos filas de `portal_intentos_login`: A1 bloqueo vigente, A2
+  bloqueo vencido) + aislamiento `008_portal_aislamiento.sql` (CA-2/CA-9). Regla aprendida en 005/007
+  aplicada: el fixture NO agrega contadores/lecturas de A1 (romperían los conteos de los aislamientos
+  003/004) — el histórico de dos contadores de CA-7 se crea en el aislamiento con ROLLBACK
+  (cerrando temporalmente el periodo actual para respetar `uq_periodo_abierto`). `PORTAL-AISLAMIENTO
+  OK` + regresión 001-007 en verde.
+- **T-003** — `sesion-suscriptor.ts` implementado (JWT propio HS256 con `hono/jwt`, cookie
+  `uc_sesion_suscriptor` HttpOnly+Secure+SameSite=Lax, 30 días, renovación < 7 días; `SesionSuscriptor`
+  lleva `numeroDocumento`+`codigoSuscriptor` por D-10). 10 unit tests; `npm test` 90 en verde.
+  Nota: hono 4 exporta `sign`/`verify` desde `hono/jwt` (no `hono/utils/jwt`). `SESSION_SECRET` en
+  `.dev.vars` (gitignored).
+- **T-004** — `lib/portal.ts` (todas las llamadas con `crearClienteAnon`, D-10) + rutas
+  `POST /portal/:slug/login` (401 genérico / 403 inactivo / 429 bloqueado), `POST /portal/logout`,
+  `GET /portal/facturas`, `GET /portal/facturas/:id/pdf` (404 si no es del suscriptor — **IDOR
+  bloqueado**), `GET /portal/saldo-favor`, `GET /portal/consumo`. **Desviación de implementación
+  documentada**: el login resuelve el slug con la función `SECURITY DEFINER`
+  `portal_cliente_por_slug` (migración nueva `20260909090000_portal-slug.sql`) porque `anon` no puede
+  leer `clientes` (RLS). **Ataques IDOR verificados con curl** (sesiones reales de A1/A2/B1): PDF de
+  factura ajena y de otro acueducto → 404 sin bytes; listados aislados; fuerza bruta → 429; logout →
+  401.
+- **T-005** — Regenerar código (CA-8): `POST /suscriptores/:id/regenerar-codigo` (admin → 200,
+  lector → 403 por membresía + RLS, código duplicado → 409). Login con el código viejo → 401; con el
+  nuevo → 200. Hallazgo con evidencia: por D-10, una sesión previa no recibe 401 pero deja de ver
+  datos (las funciones revalidan el código) — la regeneración invalida de facto la sesión anterior.
+- **T-006** — Frontend del portal (CA-10): `middleware.ts` separa por área con cookies DISTINTAS
+  (`uc_sesion_admin` para `/app/*`, `uc_sesion_suscriptor` para `/portal/:slug/*` salvo el login);
+  páginas `/portal/[slug]/login` y `/portal/[slug]`; botón de regenerar código en el detalle del
+  suscriptor. `next build` 12 páginas OK. **Separación de sesiones verificada con curl**: un admin
+  con su cookie NO ve el portal (307 al login del portal) y un suscriptor NO ve el panel `/app`
+  (307 a `/login`); con ambas cookies cada área responde con la suya.
+- **T-007** — Cierre: checklist `spec.md §8`, CHANGELOG y regresión completa desde cero
+  (`supabase db reset --local`, 9 migraciones, fixtures 001-008, aislamientos 001-008 en verde).
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- CA-10: flujo click-a-click en navegador (`next dev` + `wrangler dev`) con los pasos exactos
+  documentados en tasks.md T-006 (la API y la separación de sesiones ya quedaron verificadas con curl).
+
 ### 2026-09-03 — Sesión 014: 007-pagos-y-cartera completa (T-001 a T-006)
 
 **Hecho**

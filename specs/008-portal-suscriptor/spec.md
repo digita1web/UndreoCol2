@@ -234,13 +234,21 @@ T-005).
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1-10) con evidencia real — CA-1 a CA-9 contra Supabase local + curl/wrangler dev;
-      CA-10 (flujo en navegador) con pasos exactos si el entorno no permite `next dev` + `wrangler dev`.
-- [ ] El aislamiento del portal se implementa exactamente como fija D-10 (funciones `SECURITY
-      DEFINER` acotadas, `anon`, sin `SUPABASE_SERVICE_ROLE_KEY`) — verificado en `/plan` antes de
-      `/tasks` y con evidencia real en el cierre.
-- [ ] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios.
-- [ ] Test de aislamiento del portal en verde, con regresión de 001-007.
-- [ ] `CHANGELOG.md` actualizado en el cierre de la feature.
-- [ ] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase.
-- [ ] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica).
+- [x] Todos los CA (1-10) con evidencia real — CA-1/CA-9 contra Supabase local (RPCs, fuerza bruta,
+  inactivo) + curl/wrangler dev; CA-2 aislamiento 008; CA-3 a CA-7 con curl (login, facturas,
+  PDF/IDOR, saldo, consumo); CA-8 (regenerar código: 200/401/403/409 + sesión previa sin datos por
+  D-10); CA-10 (frontend del portal) con build/lint/tsc limpios y **separación de sesiones
+  admin/suscriptor verificada con curl**; el flujo click-a-click queda NO VERIFICADO con pasos
+  exactos para Mateo.
+- [x] El aislamiento del portal se implementa exactamente como fija D-10 (funciones `SECURITY
+      DEFINER` acotadas, `anon`, sin `SUPABASE_SERVICE_ROLE_KEY`) — con evidencia real en el cierre
+      (grants solo a `anon`; ninguna ruta del portal usa `service_role`).
+- [x] Build (frontend, `next build` 12 páginas + Middleware 34.3 kB) y `wrangler deploy --dry-run`
+      (backend, 1725.97 KiB/gzip 393.26 KiB) limpios.
+- [x] Test de aislamiento del portal en verde, con regresión de 001-007 (008 pasa: `PORTAL-AISLAMIENTO
+      OK`; regresión 001-007 OK sobre el mismo estado final tras `supabase db reset --local`).
+- [x] `CHANGELOG.md` actualizado en el cierre de la feature (Sesión 015).
+- [x] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase.
+- [x] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica).
+- Commits de la feature 008: `ec7d0b6` (T-001), `dc3fe2a` (T-002), `de7f386` (T-003), `44b078d`
+  (T-004), `b2cf83b` (T-005), `ee8a5e2` (T-006), + el de cierre (T-007).

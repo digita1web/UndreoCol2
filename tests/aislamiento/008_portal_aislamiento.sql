@@ -21,7 +21,8 @@
 \set ON_ERROR_STOP on
 
 -- ---------------------------------------------------------------------------
--- PASO 1: existen las 5 funciones SECURITY DEFINER con grant a anon, las
+-- PASO 1: existen las 6 funciones SECURITY DEFINER del portal (las 5 del T-001
+-- + portal_cliente_por_slug de la migración 009/T-004) con grant a anon, las
 -- columnas de configuracion, y la tabla portal_intentos_login con 2 filas
 -- ---------------------------------------------------------------------------
 do $$
@@ -29,16 +30,16 @@ declare
   n integer;
 begin
   select count(*) into n from pg_proc where proname like 'portal\_%';
-  if n <> 5 then raise exception 'PASO 1 FALLÓ: % funciones portal (esperaba 5)', n; end if;
+  if n <> 6 then raise exception 'PASO 1 FALLÓ: % funciones portal (esperaba 6)', n; end if;
 
   select count(*) into n from pg_proc p
     join pg_roles r on r.oid = p.proowner
    where p.proname like 'portal\_%' and p.prosecdef;
-  if n <> 5 then raise exception 'PASO 1 FALLÓ: % de las funciones NO son SECURITY DEFINER', 5 - n; end if;
+  if n <> 6 then raise exception 'PASO 1 FALLÓ: % de las funciones NO son SECURITY DEFINER', 6 - n; end if;
 
   select count(*) into n from information_schema.routine_privileges
    where routine_name like 'portal\_%' and grantee = 'anon';
-  if n <> 5 then raise exception 'PASO 1 FALLÓ: anon no tiene EXECUTE en las 5 (tiene %)', n; end if;
+  if n <> 6 then raise exception 'PASO 1 FALLÓ: anon no tiene EXECUTE en las 6 (tiene %)', n; end if;
 
   select count(*) into n from information_schema.columns
    where table_name = 'configuracion'

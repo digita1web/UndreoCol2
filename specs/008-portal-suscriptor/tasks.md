@@ -408,9 +408,22 @@ for f in 001_fundacion 002_catalogo 003_suscriptores 004_lecturas_consumo 005_fa
 done
 ```
 **Resultado esperado:** builds/tests/aislamientos en verde sobre el estado final; evidencia pegada.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-03)
 **Evidencia:**
 ```
+CHANGELOG.md — Sesión 015: 008-portal-suscriptor completa (T-001 a T-007), con D-10, la desviación
+  de portal_cliente_por_slug y el hallazgo de la sesión previa sin datos al regenerar (CA-8/D-10).
+spec.md §8 — checklist completo con evidencia (CA-1..CA-10) y la lista de commits de la feature.
 
+Regresión completa desde cero:
+  $ supabase db reset --local → Finished · 9 migraciones aplicadas (001→009)
+  fixtures 001-008 (fundacion..portal) → todos COMMIT
+  aislamientos 001-008 → todos OK (001..007 = 1 · 008 = PORTAL-AISLAMIENTO OK;
+    el PASO 1 del 008 se actualizó a 6 funciones portal por la migración 009/T-004)
+
+Estado final verificado:
+  - npm test (backend) → 90 tests OK · tsc/eslint limpios
+  - wrangler deploy --dry-run → OK (Total Upload 1725.97 KiB / gzip 393.26 KiB)
+  - next build (frontend) → 12 páginas + Middleware 34.3 kB (T-006)
 ```
 **Commit:** (tras completar)
