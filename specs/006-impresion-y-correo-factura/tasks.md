@@ -237,10 +237,20 @@ for f in 001_fundacion 002_catalogo 003_suscriptores 004_lecturas_consumo 005_fa
 done
 ```
 **Resultado esperado:** builds/tests/aislamientos en verde sobre el estado final; evidencia pegada.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-06)
 **Evidencia:**
 ```
+CHANGELOG.md — Sesión 013: 006-impresion-y-correo-factura completa (T-001 a T-006), con hallazgos
+  de entorno (mock de send_email de miniflare; GUC/triggers y pg_trigger_depth) y pendientes de Mateo.
+spec.md §8 — checklist completo con evidencia (CA-1..CA-6) y la lista de commits de la feature.
 
+Estado final verificado en la sesión:
+  - npm test (backend) → 65 tests OK (factura-pdf 4, email 6)
+  - npx tsc --noEmit / eslint → limpios (backend y frontend)
+  - wrangler deploy --dry-run → OK (bundle con pdf-lib 1682 KiB/gzip 384 KiB)
+  - next build (frontend) → 12/12 OK
+  - Round-trips REALES por curl: emisión del cierre (total 38.600), envío de correo (202 → fila en
+    notificaciones), GET /facturas/:id/pdf (200 %PDF + pdf_url persistido)
 ```
 **Commit:** (tras completar)
 

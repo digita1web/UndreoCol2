@@ -4,6 +4,56 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-06 — Sesión 013: 006-impresion-y-correo-factura completa (T-001 a T-006)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/006-impresion-y-correo-factura/`).
+- **T-001** — Migración `20260906090000_correo-factura.sql`: tabla `notificaciones` con trazabilidad
+  del envío (`intentos`, `ultimo_error`, `enviada_en`) + RLS aislada (admin/lector del cliente).
+  Fixtures `correo-factura.sql` (email a A1 + notificación enviada) y test de aislamiento 006
+  (es_admin_de en notificaciones). 6 tests de aislamiento en verde sobre el mismo estado final.
+  Decisión de arquitectura: **no se crea cola nueva** — se amplía el mensaje de la cola
+  `undreocol-facturacion` (005) con `tipo: 'emitir_factura' | 'enviar_correo_factura'`.
+- **T-002** — `pdf-lib` ^1.17.1 + `src/lib/factura-pdf.ts` (genera el PDF de la factura con renglones,
+  datos del acueducto y totales; logo opcional). Se respetó D-9: **sin pdfme ni Chromium** (el chat
+  inicial los pidió, pero contradicen la especificación aprobada). 4 unit tests → `npm test` 59 en
+  verde (el test decodifica los streams hex de pdf-lib para verificar el contenido del PDF).
+- **T-003** — `src/lib/email.ts` (`env.EMAIL.send` con adjunto en `ArrayBuffer`; sin `env.EMAIL`
+  devuelve `{ok:false}` sin lanzar, regla 20) + bindings `EMAIL`/`FACTURAS_R2` + consumidor ampliado
+  (enruta por `tipo`; para el correo: genera PDF → sube a R2 → envía → actualiza notificaciones con
+  `intentos+1`/`ultimo_error`) + rutas `POST /facturas/:id/enviar-correo` y
+  `POST /facturacion/periodos/:id/enviar-correo` (202, uno por factura con email; sin email se
+  entregan impresas, D-8). **Round-trip local REAL verificado** (202 → log del consumidor → fila en
+  notificaciones actualizada). La decisión de estado (pendiente/fallida + `ultimo_error`) se extrajo
+  a `computarActualizacionNotificacion()` y quedó cubierta por unit tests (fallo trazable con
+  `intentos+1` y error; fallida tras 3 reintentos). `npm test` 65 en verde.
+- **T-004** — `GET /facturas/:id/pdf`: lee R2 (`facturas/{clienteId}/{facturaId}.pdf`) o genera y
+  sube, actualiza `facturas.pdf_url`, responde `200 application/pdf` (inline). **Hallazgo real
+  corregido**: `trg_factura_inmutable` (005) bloqueaba el UPDATE de `pdf_url` → se reescribió la
+  función para permitir el cambio exclusivo de `pdf_url`/`total_pagado`/`estado` (metadata de 006 y
+  avances de 007) manteniendo el bloqueo de valores económicos y el recálculo del cierre (round-trip
+  REAL del cierre re-verificado: factura con total 38.600). Se descartó `pg_trigger_depth()` (dentro
+  del propio trigger siempre es ≥ 1) y se documentó que las GUCs locales no se propagan entre roles.
+- **T-005** — Frontend: `api.ts` (`enviarCorreoFactura`, `enviarCorreoPeriodo`, `urlPdfFactura`);
+  detalle de factura con botones **Ver PDF** / **Imprimir** (`window.print`) / **Enviar por correo**;
+  listado del periodo con **Enviar correos del periodo**; `@media print` (la impresión deja solo la
+  factura, sin acciones). `next build` 12/12 sin errores.
+- **T-006** — Cierre: checklist de `spec.md §8` + esta entrada de CHANGELOG.
+
+**Hallazgo de entorno (send_email en local)**
+En `wrangler dev` el binding `[[send_email]]` se materializa como **mock de miniflare** que "envía"
+con éxito (la fila queda `enviada`). Por eso el caso de fallo (que exige trazar `intentos`/
+`ultimo_error`) no se puede reproducir por la API en local; quedó verificado con unit tests de
+`computarActualizacionNotificacion()` y de `email.ts`. Además Node 20 sin WebSocket no puede
+instanciar supabase-js (realtime) fuera de workerd, así que la verificación end-to-end de las rutas
+es vía curl contra wrangler dev.
+
+**Pendiente (NO VERIFICADO — requiere la cuenta de Cloudflare de Mateo)**
+- Envío real de correo: Workers Paid + dominio verificado (`EMAIL` se ignora/falla en local).
+- R2 real: bucket `undreocol-facturas` en producción (en local el PDF se genera/sirve y `pdf_url` se
+  persiste, pero la simulación de R2 no persiste entre arranques sin `--persist-to`).
+- CA-6: flujo click-a-click en navegador (`next dev` + `wrangler dev`).
+
 ### 2026-09-05 — Sesión 012: 005-facturacion completa (T-001 a T-007)
 
 **Hecho**

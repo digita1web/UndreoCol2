@@ -187,13 +187,19 @@ si el entorno no permite `next dev` + `wrangler dev`.
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1-6) con evidencia real — CA-1/CA-2 contra Supabase local + `pdf-lib`;
-  CA-3/CA-4 con stub de envío y registro en `notificaciones`; el envío real a Cloudflare y el flujo
-  click-a-click quedan NO VERIFICADO con pasos exactos (cuenta Cloudflare de Mateo)
-- [ ] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios, con el bundle de pdf-lib
-  dentro del límite
-- [ ] Tests en verde: unit de `factura-pdf` + test de aislamiento `006_`
-- [ ] `CHANGELOG.md` actualizado en el cierre de la feature
-- [ ] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase
-- [ ] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica)
+- [x] Todos los CA (1-6) con evidencia real — CA-1 (RLS notificaciones) / CA-2 (`pdf-lib`, PDF
+  verificado) contra Supabase local; CA-3/CA-4 con mock de send_email de miniflare + `email.ts` sin
+  `env.EMAIL` (`{ok:false}` sin lanzar) y trazabilidad verificada con unit tests de
+  `computarActualizacionNotificacion`; CA-5 (`@media print`) / CA-6 (botones en el panel). El envío
+  REAL a Cloudflare (Workers Paid + dominio verificado), R2 real y el flujo click-a-click quedan
+  NO VERIFICADO con pasos exactos (cuenta Cloudflare de Mateo).
+- [x] Build (frontend, `next build` 12/12) y `wrangler deploy --dry-run` (backend) limpios — bundle
+  con pdf-lib 1682 KiB / gzip 384 KiB (límite 10MB).
+- [x] Tests en verde: unit de `factura-pdf` (4), `email.ts` + `computarActualizacionNotificacion` (6)
+  → `npm test` 65 OK; aislamiento 006 OK sobre el estado final (1-5 re-corridos OK en su entorno).
+- [x] `CHANGELOG.md` actualizado en el cierre de la feature (Sesión 013).
+- [x] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase.
+- [x] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica)
+- Commits de la feature: `052a40a` (T-002), `6197706` (T-003), `52117dc` (T-004), `fef07c3` (T-005),
+  + el commit de cierre (T-006).
 
