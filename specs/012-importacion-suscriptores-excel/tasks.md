@@ -84,7 +84,7 @@ un lote con una fila que viola el constraint único (cliente_id, codigo_suscript
 el lote — cero suscriptores nuevos, incluida la fila válida del mismo lote. Verificado con
 duplicate key value violates unique constraint real de Postgres, no simulado.
 ```
-**Commit:** (pendiente)
+**Commit:** `40aec4e`
 
 ## T-003 — Fixtures + test de aislamiento (CA-4)
 
@@ -100,10 +100,36 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/importacion.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/012_importacion_aislamiento.sql
 ```
 **Resultado esperado:** en verde, termina con `IMPORTACION-AISLAMIENTO OK`.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04) — verificado con shim de PostgreSQL nativo, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+VERIFICADO con el shim de PostgreSQL 16 nativo (sin Docker en este contenedor). NO VERIFICADO con
+`supabase db reset` real — pendiente del bench de Mateo con Docker.
+
+tests/fixtures/importacion.sql y tests/aislamiento/012_importacion_aislamiento.sql aplicaron en
+verde, terminando con "IMPORTACION-AISLAMIENTO OK" (6/6 pasos):
+  PASO 1: importaciones_suscriptores existe con FORCE ROW LEVEL SECURITY.
+  PASO 2: admin A no puede llamar importar_suscriptores() con el cliente_id de B — falla con
+    "No autorizado" y cero filas insertadas en el cliente B.
+  PASO 3: admin A no puede leer el historial de importación de B.
+  PASO 4: rol lector no puede llamar importar_suscriptores() sobre su propio cliente.
+  PASO 5 (CA-6 re-verificado en la suite formal): un lote con un codigo_suscriptor duplicado
+    revierte TODO el lote, incluida la fila válida del mismo lote.
+  PASO 6: una importación exitosa solo afecta al cliente del llamante; el registro de historial
+    queda con el cliente_id y realizado_por correctos.
+
+Regresión completa: se reconstruyó undreocol_test desde cero (drop/create database, sin conexiones
+colgadas — se usó pg_terminate_backend antes del drop para evitar el fallo de "cannot drop the
+currently open database" de un intento anterior), se reaplicó el shim de compatibilidad
+(schema auth, auth.uid(), roles anon/authenticated/service_role, bypassrls en postgres) y las 11
+migraciones (001 a 012) en orden, exit 0 cada una. Se aplicaron las 10 fixtures en el orden de
+dependencia real (fundacion, catalogo, suscriptores, lecturas, facturacion, correo-factura, pagos,
+portal, cortes, importacion — el orden alfabético de archivos no coincide con el de dependencias),
+exit 0 cada una. Se corrieron las 10 suites de aislamiento (001 a 009 y 012) en una sola pasada
+limpia: las 10 pasaron, incluyendo 008_portal_aislamiento.sql — confirma que el fallo de PASO 3 de
+008 visto en una corrida anterior sobre la misma base de datos de larga duración era, como se
+documentó en el cierre de 009 (CHANGELOG Sesión 016), estado acumulado de corridas repetidas del
+fixture de bloqueo de login, no una regresión real. 012 no rompe ninguna suite previa.
 ```
 **Commit:** (pendiente)
 
