@@ -58,10 +58,24 @@ psql "$DATABASE_URL" -c "select relname, relforcerowsecurity from pg_class where
 ```
 **Resultado esperado:** las 9 migraciones previas y la nueva aplican sin errores; tabla y funciones
 con la forma del plan; RLS `FORCE`.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04) — verificado con shim de PostgreSQL nativo, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+VERIFICADO con el shim de PostgreSQL 16 nativo (sin Docker en este contenedor — auth.uid() vía GUC,
+roles anon/authenticated/service_role). NO VERIFICADO con `supabase db reset` real / Supabase local
++ PostgREST — pendiente de que Mateo lo corra en su bench con Docker.
+
+Las 10 migraciones (001 a 009) aplican en secuencia sin errores, EXIT=0 cada una.
+
+\d cortes_reconexiones: 10 columnas, motivo/responsable/tipo/fecha NOT NULL como en el plan;
+  FKs cliente_id/usuario_servicio_id/responsable/factura_reconexion_id correctas; 2 políticas RLS
+  (lectura/escritura) listadas.
+relforcerowsecurity: cortes_reconexiones = t.
+registrar_corte(p_usuario_servicio_id uuid, p_motivo text, p_perfil uuid): security_type=INVOKER.
+reconectar(p_usuario_servicio_id uuid, p_deuda_vencida numeric, p_motivo_excepcion text,
+  p_perfil uuid): security_type=INVOKER.
+Grants: ambas funciones EXECUTE otorgado a authenticated (revocado de anon/public en el DDL,
+  confirmado que no aparecen en information_schema.routine_privileges para esas dos filas).
 ```
 **Commit:** (pendiente)
 
