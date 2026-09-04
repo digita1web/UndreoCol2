@@ -313,4 +313,4 @@ Sesión 016 para el detalle).
 CHANGELOG.md actualizado (Sesión 016) y checklist de spec.md §8 marcada con evidencia real,
 incluyendo el único ítem NO VERIFICADO (CA-7 en navegador) con sus pasos exactos.
 ```
-**Commit:** (pendiente)
+**Commit:** `a7362a0`
