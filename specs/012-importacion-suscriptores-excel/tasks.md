@@ -147,12 +147,38 @@ el reporte (spec §3.5).
 cd backend && npx tsc --noEmit && npx eslint .
 ```
 **Resultado esperado:** sin errores.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04) — verificado con shim de PostgreSQL nativo, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+`npx tsc --noEmit` y `npx eslint src/lib/importacion-suscriptores.ts` sin errores.
+`npx vitest run`: 9 archivos, 105/105 tests en verde (sin regresión, incluye los 15 de
+importacion-suscriptores.test.ts de T-001).
+
+CA-3 (duplicados contra la base) — VERIFICADO el comportamiento de la consulta real de
+detectarDuplicadosContraBase() contra Postgres, incluyendo el caso explícito que pide el CA
+("solo numero_documento coincide, codigo_suscriptor es distinto"):
+  - usuarios_servicio de cliente A ya tiene codigo_suscriptor='A-001', numero_documento='1000000001'.
+  - Consulta equivalente con codigo_suscriptor in ('IMP-CODIGO-NUEVO') or numero_documento in
+    ('1000000001') → devuelve la fila de A-001: el numero_documento coincide aunque el
+    codigo_suscriptor no, exactamente el caso que el constraint único de la base NO cubre
+    (spec §3.3) y que esta validación sí debe atrapar.
+  - Consulta con valores genuinamente nuevos (codigo_suscriptor='IMP-NUEVO-1',
+    numero_documento='9999999999') → 0 filas, sin falso positivo.
+
+NO VERIFICADO con supabase-js real contra PostgREST — este contenedor no tiene Docker/Supabase CLI
+para levantar PostgREST; detectarDuplicadosContraBase() y confirmarImportacion() se probaron a
+nivel de la consulta SQL que ejecutan (equivalente exacto de lo que construye el .or() de
+supabase-js), no invocando el cliente supabase-js en sí. Requiere validación manual de Mateo con
+su bench (Docker + supabase start): correr detectarDuplicadosContraBase()/confirmarImportacion()
+desde un script o desde las rutas de T-005 contra un proyecto Supabase local real.
+
+categoriasSinTarifa() (advertencia informativa, spec §5, no bloqueante): implementada siguiendo el
+mismo patrón que backend/src/lib/facturacion.ts (tarifa_vigente() por servicio activo). NO
+VERIFICADA funcionalmente en esta tarea — no hay servicios/tarifas de prueba con huecos armados
+para este caso; se limita a revisión de código y tipos. Queda para la verificación manual E2E de
+T-008 si Mateo quiere confirmarla con datos reales.
 ```
-**Commit:** (pendiente)
+**Commit:** `(pendiente)`
 
 ## T-005 — Backend: rutas `/suscriptores/importar/*` (CA-5)
 
