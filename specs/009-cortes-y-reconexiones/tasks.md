@@ -82,9 +82,11 @@ Grants: ambas funciones EXECUTE otorgado a authenticated (revocado de anon/publi
 ## T-002 — Fixtures + test de aislamiento (CA-2) + regresión CA-3
 
 **Archivos:** `tests/fixtures/cortes.sql`, `tests/aislamiento/009_cortes_aislamiento.sql`
-**Hace:** Fixture con suscriptores de A y B con facturas vencidas (reutiliza clientes/suscriptores
-de fixtures previos, agrega facturas vencidas mínimas para tener candidatos a corte). Test de
-aislamiento cubriendo:
+**Hace:** `tests/fixtures/cortes.sql` es intencionalmente un no-op documentado: 001-008 ya dejan
+clientes/suscriptores/membresías suficientes, y agregar una factura vencida al fixture compartido
+rompería el conteo de filas que 005/007 ya asumen (misma regla aprendida en esas sesiones). Los
+escenarios que necesitan estado temporal (suscriptor cortado, factura vencida) se crean dentro de
+cada transacción del test de aislamiento, con `ROLLBACK` al final. Test de aislamiento cubriendo:
 1. Acueducto A no lee/escribe `cortes_reconexiones` de B.
 2. `registrar_corte()`/`reconectar()` sobre un `usuario_servicio_id` de B fallan con "no existe".
 3. Rol `lector` no puede llamar ninguna de las dos funciones.
@@ -103,10 +105,36 @@ grep -n "estado', 'activo'" backend/src/lib/facturacion.ts backend/src/queues/ci
 ```
 **Resultado esperado:** ambos scripts en verde, terminan con `CORTES-AISLAMIENTO OK`; el `grep`
 sigue encontrando el filtro en ambos archivos.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04) — verificado con shim de PostgreSQL nativo, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+VERIFICADO con el shim de PostgreSQL 16 nativo (mismo entorno de T-001). NO VERIFICADO con
+Supabase local real — pendiente del bench de Mateo.
+
+Los 9 fixtures (fundacion, catalogo, suscriptores, lecturas, facturacion, correo-factura, pagos,
+portal, cortes) aplican en secuencia sin errores.
+
+tests/aislamiento/009_cortes_aislamiento.sql → 7 pasos en verde → "CORTES-AISLAMIENTO OK":
+  PASO 1: tabla + RLS FORCE existen.
+  PASO 2: admin A no puede cortar/reconectar un suscriptor de B ("no existe").
+  PASO 3: lector A no puede cortar un suscriptor de su propio cliente ("no existe" — mismo
+    comportamiento de RLS+FOR UPDATE ya documentado en 002/003, confirmado de nuevo aquí).
+  PASO 4: corte exitoso (estado→cortado, fila en historial); segundo corte sobre el mismo
+    suscriptor → "ya está cortado".
+  PASO 5: reconectar() sobre un suscriptor activo → "no está cortado".
+  PASO 6: reconexión SIN deuda vencida — no exige motivo; factura generada con
+    tipo='reconexion', numero con prefijo REC-, total = configuracion.valor_reconexion (se fijó
+    en 45000 dentro de la transacción del escenario, el default de configuracion es 0),
+    periodo_id NULL; estado del suscriptor vuelve a activo; una segunda reconexión se rechaza.
+  PASO 7: reconexión CON deuda vencida simulada (100000) — sin motivo de excepción se rechaza;
+    con motivo, se acepta y deuda_vencida_al_reconectar queda registrada correctamente.
+
+Regresión completa 001-008 en verde sobre este mismo estado: FUNDACION/CATALOGO/SUSCRIPTORES/
+  LECTURAS-CONSUMO/FACTURACION/CORREO-FACTURA/PAGOS/PORTAL-AISLAMIENTO OK (los 8).
+
+grep -n "estado', 'activo'" backend/src/lib/facturacion.ts backend/src/queues/cierre-facturacion.ts
+  → 3 coincidencias (líneas 136/152 y 86 respectivamente) — el filtro de CA-3 sigue intacto,
+  no se tocó ninguno de los dos archivos en esta tarea.
 ```
 **Commit:** (pendiente)
 

@@ -1,0 +1,21 @@
+-- =============================================================================
+-- UndreoCol — Fixtures de cortes y reconexiones (009)
+-- Referencia: specs/009-cortes-y-reconexiones/plan.md §8 y tasks.md T-002
+--
+-- REGLA (aprendida en 005-008): un fixture compartido no debe mutar el estado
+-- que los tests de aislamiento previos ya asumen (ej. 005 espera UNA factura
+-- del cliente A). Por eso este archivo NO agrega facturas vencidas ni cambia
+-- el estado de ningún suscriptor: los escenarios que 009 necesita (una
+-- factura vencida para probar el bloqueo de reconexión, un suscriptor ya
+-- cortado para probar el rechazo de un segundo corte) se crean
+-- transaccionalmente DENTRO de tests/aislamiento/009_cortes_aislamiento.sql,
+-- con ROLLBACK al final de cada escenario — mismo patrón que 007/008.
+--
+-- No hay nada que insertar aquí: 001-008 ya dejan clientes A/B, suscriptores
+-- A1/A2/B1 y sus membresías, suficientes como base. Este archivo existe para
+-- mantener la convención de una tarea = sus propios fixtures, documentada.
+--
+-- Ejecutar con: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/cortes.sql
+-- =============================================================================
+
+select 1; -- no-op intencional, ver nota arriba
