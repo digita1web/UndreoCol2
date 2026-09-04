@@ -248,14 +248,28 @@ cd frontend && npm run dev
 # navegar manualmente el flujo descrito arriba
 ```
 **Resultado esperado:** el flujo completo funciona sin error visible en ningún paso.
-**Estado:** Pendiente
+**Estado:** NO VERIFICADO — requiere validación manual de Mateo
 **Evidencia:**
 ```
-(pendiente — si este contenedor no puede levantar wrangler dev + next dev simultáneos contra una
-base real, se declara "NO VERIFICADO — requiere validación manual de Mateo" con los pasos exactos
-de arriba)
+Confirmado: este contenedor no tiene Docker/PostgREST (ver T-001), así que `wrangler dev` no
+tendría un endpoint REST real detrás de @supabase/supabase-js — no tiene sentido levantar
+`next dev` contra eso.
+
+NO VERIFICADO — requiere validación manual de Mateo, pasos exactos:
+  1. Con las migraciones 001-009 aplicadas en Supabase local real (Docker) y `wrangler dev` +
+     `next dev` corriendo, login con un usuario admin_acueducto de prueba.
+  2. Ir a /app/cortes → confirmar que la lista de candidatos coincide con lo que muestra
+     /app/pagos (cartera) filtrado por el umbral configurado.
+  3. Entrar al detalle de un suscriptor activo → cortarlo con un motivo → confirmar que el
+     estado cambia a "cortado" y aparece en el historial.
+  4. Volver a /app/cortes → confirmar que ya no aparece como candidato (dejó de estar activo).
+  5. En el detalle del suscriptor cortado → confirmar que aparece el formulario de reconexión
+     con la deuda vencida real (si tiene) → reconectar (con motivo de excepción si aplica).
+  6. Confirmar que se generó una factura tipo "reconexion" visible en /app/facturacion con el
+     monto de configuracion.valor_reconexion.
+  7. Confirmar en la consola del navegador que no hay errores no manejados en ningún paso.
 ```
-**Commit:** (no aplica si queda NO VERIFICADO — tarea sin cambios de código)
+**Commit:** (no aplica — tarea sin cambios de código)
 
 ## T-007 — Cierre: CHANGELOG + checklist `spec.md §8`
 
@@ -269,9 +283,34 @@ cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** los 5 comandos en verde (no hay `vitest` nuevo propio de 009, pero la suite
 completa debe seguir pasando), evidencia pegada en el CHANGELOG y en esta tarea.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
-(pendiente)
+$ cd backend && npx tsc --noEmit
+(sin salida)
+
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  Bindings: EMAIL, FACTURACION_COLA, FACTURAS_R2, ALLOWED_ORIGIN — sin errores
+
+$ npx vitest run
+  Test Files  9 passed (9)
+       Tests  105 passed (105)
+
+$ cd frontend && npm run build
+  ✓ Compiled successfully · ✓ Generating static pages (14/14)
+  incluye /app/cortes y /app/suscriptores/[id] ampliada
+
+$ npm run lint
+  (sin salida)
+
+Adicional (no en la lista de 5, parte del cierre real): reconstrucción completa de la base
+(drop/create database, 10 migraciones, 9 fixtures) y corrida de los 9 tests de aislamiento
+(001 a 009) en una sola pasada limpia — los 9 en verde, incluido 008 que había fallado
+espuriamente en una corrida anterior por estado acumulado de repetir tests sobre la misma base
+durante la sesión (investigado antes de reportarlo, no es una regresión de 009 — ver CHANGELOG
+Sesión 016 para el detalle).
+
+CHANGELOG.md actualizado (Sesión 016) y checklist de spec.md §8 marcada con evidencia real,
+incluyendo el único ítem NO VERIFICADO (CA-7 en navegador) con sus pasos exactos.
 ```
 **Commit:** (pendiente)

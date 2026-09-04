@@ -4,6 +4,56 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-04 — Sesión 016: 009-cortes-y-reconexiones completa (T-001 a T-007)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/009-cortes-y-reconexiones/`): alcance reducido (opción a)
+  aprobado explícitamente por Mateo — el corte y la reconexión son acciones de `admin_acueducto`
+  desde el panel, con confirmación humana siempre explícita (nunca corte desatendido). La "orden de
+  corte ejecutada por el lector desde su celular" que describe
+  `docs/ESPECIFICACION-FUNCIONAL.md §2.11` (opción b) queda documentada como feature futura — el
+  volumen actual del acueducto piloto no la justifica todavía.
+- **T-001** — Migración `20260911090000_cortes-reconexiones.sql`: tabla `cortes_reconexiones`
+  (`motivo`/`responsable` `NOT NULL` a nivel de esquema), `registrar_corte()` y `reconectar()`
+  (`SECURITY INVOKER`, `SELECT FOR UPDATE`, mismo patrón que `anular_pago()` de 007).
+  `reconectar()` reutiliza `siguiente_numero_factura()` (005) sin modificarla e inserta la factura
+  de reconexión con un renglón en `factura_detalles` (`servicio_id`/`tarifa_id` `NULL`), dejando que
+  el trigger de 005 calcule el total.
+- **T-002** — Fixture no-op documentado (agregar una factura vencida al fixture compartido rompería
+  el conteo de filas que 005/007 ya asumen) + test de aislamiento (7 pasos): cross-tenant, rol
+  lector, rechazo de doble corte, rechazo de reconexión sobre activo, bloqueo de reconexión con
+  deuda vencida sin motivo de excepción, factura de reconexión con monto/tipo/prefijo/periodo_id
+  correctos. Regresión CA-3 confirmada por `grep`: el filtro `estado = 'activo'` de
+  `facturacion.ts`/`cierre-facturacion.ts` sigue intacto.
+- **T-003** — `lib/cortes.ts` (candidatos por umbral reutilizando `obtenerCartera()` de 007, RPCs
+  de corte/reconexión, historial) + 4 rutas Hono.
+- **T-004/T-005** — `lib/api.ts` ampliado + panel `/app/cortes` (candidatos, nunca ejecuta nada por
+  sí solo) + tarjetas de corte/reconexión e historial en el detalle del suscriptor.
+  `ReconexionForm` consulta la deuda vencida antes de intentar reconectar, para pedir el motivo de
+  excepción en el propio formulario.
+- **T-007** — Cierre: checklist de `spec.md §8` y esta entrada.
+
+**Desviación de entorno (igual que 002/003, CLAUDE.md §8)**
+Este contenedor no tiene Docker funcional. Verificación de esquema/RLS/funciones contra
+PostgreSQL 16 nativo con el shim de compatibilidad ya usado en sesiones previas (el trabajo de
+004-008 sí se hizo con Supabase local real en Docker, según su propio `tasks.md` — este contenedor
+específico no lo tiene disponible).
+
+**Hallazgo durante el cierre:** la primera corrida de la regresión completa 001-009 mostró
+`008_portal_aislamiento.sql` fallando en su PASO 3 ("A1 bloqueado devolvió ok"). Investigado antes
+de reportarlo: no era una regresión de 009 — era estado acumulado de correr los tests de
+aislamiento repetidamente sobre la misma base a lo largo de la sesión (el fixture de intentos de
+login no es idempotente para corridas repetidas sin reset). Reconstruida la base desde cero
+(`drop`/`create database`, 10 migraciones, 9 fixtures) y corridos los 9 tests de aislamiento en una
+sola pasada limpia: los 9 en verde, incluido 008.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- CA-3/CA-4 de tasks.md (T-003): `curl` real contra `wrangler dev` — sin PostgREST en este
+  contenedor no hay endpoint REST real detrás de `@supabase/supabase-js`.
+- CA-7 (T-006): flujo completo en navegador. Pasos exactos en `tasks.md` T-006.
+- Repetir `supabase db reset` en un entorno con Docker para la verificación oficial completa de
+  T-001/T-002 (incluye PostgREST/GoTrue, que el shim de este contenedor no cubre).
+
 ### 2026-09-03 — Sesión 015: 008-portal-suscriptor completa (T-001 a T-007)
 
 **Hecho**

@@ -190,9 +190,18 @@ el entorno no lo permite, con pasos exactos.
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1–7) con evidencia
-- [ ] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios
-- [ ] Test de aislamiento de `cortes_reconexiones` en verde, con regresión de 001-008
-- [ ] CA-3 (regresión del bloqueo de facturación) verificado explícitamente, no asumido
-- [ ] `CHANGELOG.md` actualizado
-- [ ] Aprobación de Mateo
+- [x] Todos los CA (1–7) con evidencia — CA-1 a CA-6 verificados contra PostgreSQL 16 nativo + shim
+  (sin Docker/PostgREST en este contenedor); CA-7 (flujo en navegador) queda
+  **NO VERIFICADO — requiere validación manual de Mateo** (tasks.md T-006, pasos exactos)
+- [x] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios — `npm run build` 14/14
+  páginas (incluidas `/app/cortes` y `/app/suscriptores/[id]` ampliada); `wrangler deploy --dry-run`
+  sin errores; `vitest run` 105/105 sin regresión
+- [x] Test de aislamiento de `cortes_reconexiones` en verde, con regresión de 001-008 — reconstruida
+  la base desde cero y corridos los 9 tests de aislamiento (001 a 009) en una sola pasada limpia,
+  los 9 en verde (ver CHANGELOG Sesión 016 sobre el hallazgo de una falla espuria por estado
+  acumulado en corridas previas, no una regresión real)
+- [x] CA-3 (regresión del bloqueo de facturación) verificado explícitamente, no asumido —
+  `grep` confirma el filtro `estado = 'activo'` intacto en `facturacion.ts`/`cierre-facturacion.ts`
+- [x] `CHANGELOG.md` actualizado
+- [x] Aprobación de Mateo — spec (con sus 2 decisiones de alcance), plan y tasks aprobados
+  explícitamente antes de cada fase
