@@ -38,7 +38,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   semgrep:
@@ -53,9 +52,10 @@ jobs:
 
       # Paso 1 — reporte completo, TODAS las severidades (INFO/WARNING/ERROR).
       # No bloquea el job (continue-on-error): esto es visibilidad, no el gate.
-      # Sube los resultados a GitHub Code Scanning (pestaña Security) para que
-      # los hallazgos de severidad media/baja queden visibles y trazables sin
-      # bloquear ningún merge.
+      # Queda en el log del job — no se sube a GitHub Code Scanning (pestaña
+      # Security) porque ese repositorio privado no tiene Advanced Security
+      # habilitado y el paso de subida (github/codeql-action/upload-sarif)
+      # fallaba con "Resource not accessible by integration".
       - name: Semgrep — reporte completo (no bloqueante)
         id: semgrep_full
         continue-on-error: true
@@ -66,14 +66,7 @@ jobs:
             --config p/react \
             --config p/secrets \
             --metrics=off \
-            --sarif --output=semgrep.sarif \
             .
-
-      - name: Subir resultados a GitHub Code Scanning
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: semgrep.sarif
 
       # Paso 2 — el gate real. `--severity ERROR` filtra solo la severidad
       # más alta de Semgrep; `--error` hace que el CLI salga con código 1 si
