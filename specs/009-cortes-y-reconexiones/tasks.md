@@ -216,10 +216,21 @@ de `cortes_reconexiones`, mismo lugar que el historial de reemplazos de contador
 cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** build y lint sin errores ni warnings de TypeScript.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
-(pendiente)
+$ npx tsc --noEmit → sin salida
+$ npm run lint     → sin salida
+$ npm run build
+  ✓ Compiled successfully · ✓ Generating static pages (14/14)
+  Route (app): /app/cortes 2.46 kB, First Load JS 115 kB — registrada correctamente
+  /app/suscriptores/[id] 3.15 kB, First Load JS 116 kB (incluye ahora las tarjetas de
+  corte/reconexión e historial)
+
+ReconexionForm consulta obtenerCartera({ suscriptorId }) ANTES de intentar reconectar, para
+mostrar la deuda vencida y exigir el motivo de excepción en el formulario mismo — no solo
+esperar el rechazo 400 del backend (doble verificación cliente+servidor, mismo criterio que el
+resto del proyecto).
 ```
 **Commit:** (pendiente)
 
