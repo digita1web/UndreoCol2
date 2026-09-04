@@ -60,10 +60,29 @@ psql "$DATABASE_URL" -c "select relname, relforcerowsecurity from pg_class where
 ```
 **Resultado esperado:** las 10 migraciones previas y la nueva aplican sin errores; tabla y función
 con la forma del plan; RLS `FORCE`.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04) — verificado con shim de PostgreSQL nativo, ver evidencia
 **Evidencia:**
 ```
-(pendiente)
+VERIFICADO con el shim de PostgreSQL 16 nativo (sin Docker en este contenedor). NO VERIFICADO con
+`supabase db reset` real — pendiente del bench de Mateo con Docker.
+
+Las 11 migraciones (001 a 012) aplican en secuencia sin errores, EXIT=0 cada una.
+
+\d importaciones_suscriptores: 9 columnas, filas_intentadas/filas_importadas/filas_con_error/
+  errores NOT NULL, FKs cliente_id/realizado_por correctas, 2 políticas RLS.
+relforcerowsecurity: importaciones_suscriptores = t.
+importar_suscriptores(p_cliente_id, p_filas_validas, p_filas_con_error, p_nombre_archivo,
+  p_perfil): security_type=INVOKER.
+
+Prueba funcional real (no solo forma del esquema): llamada directa a importar_suscriptores() con
+2 filas válidas + 1 fila de error ya conocida → insertó exactamente 2 usuarios_servicio nuevos,
+el historial quedó con filas_intentadas=3/filas_importadas=2/filas_con_error=1 y el array de
+errores correcto.
+
+Prueba de atomicidad (CA-6, adelantada aquí porque la migración es donde vive la garantía real):
+un lote con una fila que viola el constraint único (cliente_id, codigo_suscriptor) revierte TODO
+el lote — cero suscriptores nuevos, incluida la fila válida del mismo lote. Verificado con
+duplicate key value violates unique constraint real de Postgres, no simulado.
 ```
 **Commit:** (pendiente)
 
