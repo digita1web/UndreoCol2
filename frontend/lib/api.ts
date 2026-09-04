@@ -776,3 +776,66 @@ export interface EventoCorte {
 export function historialCortes(suscriptorId: string): Promise<{ historial: EventoCorte[] }> {
   return peticion(`/suscriptores/${suscriptorId}/historial-cortes`);
 }
+
+// --- Importación masiva de suscriptores (012-importacion-suscriptores-excel) --
+
+export type CampoSuscriptorImportacion =
+  | 'codigo_suscriptor' | 'nombre' | 'numero_documento' | 'direccion' | 'categoria'
+  | 'tipo_documento' | 'telefono' | 'email' | 'sector' | 'notas';
+
+export type MapeoColumnasImportacion = Partial<Record<CampoSuscriptorImportacion, string>>;
+
+export type FilaCrudaImportacion = Record<string, string | number | null | undefined>;
+
+export interface FilaNormalizadaImportacion {
+  codigo_suscriptor: string;
+  nombre: string;
+  numero_documento: string;
+  direccion: string;
+  categoria: string;
+  tipo_documento?: string;
+  telefono?: string;
+  email?: string;
+  sector?: string;
+  notas?: string;
+}
+
+export interface ErrorFilaImportacion {
+  indiceFila: number;
+  motivo: string;
+}
+
+export interface ResultadoValidacionImportacion {
+  validas: Array<{ indiceFila: number; fila: FilaNormalizadaImportacion }>;
+  errores: ErrorFilaImportacion[];
+}
+
+export function validarImportacion(
+  filas: FilaCrudaImportacion[],
+  mapeo: MapeoColumnasImportacion,
+): Promise<ResultadoValidacionImportacion> {
+  return peticion('/suscriptores/importar/validar', {
+    method: 'POST',
+    body: JSON.stringify({ filas, mapeo }),
+  });
+}
+
+export interface ReporteImportacion {
+  id: string;
+  filasIntentadas: number;
+  filasImportadas: number;
+  filasConError: number;
+  errores: ErrorFilaImportacion[];
+  categoriasSinTarifa: string[];
+}
+
+export function confirmarImportacion(
+  filasValidas: Array<{ indiceFila: number; fila: FilaNormalizadaImportacion }>,
+  errores: ErrorFilaImportacion[],
+  nombreArchivo: string,
+): Promise<ReporteImportacion> {
+  return peticion('/suscriptores/importar/confirmar', {
+    method: 'POST',
+    body: JSON.stringify({ filasValidas, errores, nombreArchivo }),
+  });
+}

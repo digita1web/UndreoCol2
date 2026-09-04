@@ -227,10 +227,18 @@ cd frontend && npx tsc --noEmit
 grep -rn "@supabase" frontend/app/ frontend/components/ frontend/lib/
 ```
 **Resultado esperado:** sin errores; `grep` sin imports reales de `@supabase`.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
-(pendiente)
+`npx tsc --noEmit` sin errores. `grep -rn "@supabase" frontend/app/ frontend/components/ frontend/lib/`
+solo encuentra la línea del comentario de cabecera de lib/api.ts ("Nunca importa @supabase/*"),
+ningún import real.
+
+Agregadas validarImportacion(filas, mapeo) → POST /suscriptores/importar/validar y
+confirmarImportacion(filasValidas, errores, nombreArchivo) → POST
+/suscriptores/importar/confirmar, mismo wrapper peticion<T>() del resto del archivo. Tipos
+espejo de core/importacion-suscriptores.ts (backend) con sufijo "Importacion" para no chocar con
+otros tipos del archivo.
 ```
 **Commit:** (pendiente)
 
