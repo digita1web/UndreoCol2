@@ -178,7 +178,7 @@ VERIFICADA funcionalmente en esta tarea — no hay servicios/tarifas de prueba c
 para este caso; se limita a revisión de código y tipos. Queda para la verificación manual E2E de
 T-008 si Mateo quiere confirmarla con datos reales.
 ```
-**Commit:** `(pendiente)`
+**Commit:** `8c30ff0`
 
 ## T-005 — Backend: rutas `/suscriptores/importar/*` (CA-5)
 
@@ -192,11 +192,29 @@ npx wrangler deploy --dry-run -c wrangler.toml
 npx vitest run
 ```
 **Resultado esperado:** sin errores; Worker empaqueta; suite completa sigue en verde.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
-(pendiente)
+`npx tsc --noEmit` y `npx eslint src/index.ts` sin errores.
+`npx wrangler deploy --dry-run -c wrangler.toml`: Total Upload 1738.46 KiB / gzip 395.76 KiB,
+bindings intactos (EMAIL, FACTURACION_COLA, FACTURAS_R2, ALLOWED_ORIGIN), exit 0.
+`npx vitest run`: 9 archivos, 105/105 tests en verde, sin regresión.
+
+Rutas agregadas: POST /suscriptores/importar/validar (valida body.filas no vacío y
+<= LIMITE_FILAS_IMPORTACION=2000 antes de procesar, CLAUDE.md §5.5 — corre validarFilas() de
+core/ + detectarDuplicadosContraBase() de lib/, no escribe nada) y POST
+/suscriptores/importar/confirmar (exige nombreArchivo y al menos una fila válida, llama
+confirmarImportacion()). Ambas detrás de requerirClienteActivo() (mismo guard que el resto del
+panel — sesión admin + cliente activo resuelto).
+
+NO VERIFICADO con peticiones HTTP reales (curl/wrangler dev contra Postgres real) — este
+contenedor no tiene Docker/Supabase CLI para levantar PostgREST. Requiere validación manual de
+Mateo: `npx wrangler dev` en backend/ + `supabase start` local, luego
+`curl -X POST http://localhost:8787/suscriptores/importar/validar -H "Cookie: <sesión admin>" -d '{"filas":[...],"mapeo":{...}}'`
+seguido de `curl -X POST .../suscriptores/importar/confirmar -d '{"filasValidas":[...],"errores":[...],"nombreArchivo":"prueba.xlsx"}'`
+y confirmar el reporte + la fila nueva en importaciones_suscriptores.
 ```
+**Commit:** (pendiente)
 **Commit:** (pendiente)
 
 ## T-006 — Frontend: `lib/api.ts` — funciones de importación

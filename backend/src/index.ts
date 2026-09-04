@@ -58,6 +58,8 @@ import {
   listarCandidatosCorte,
   reconectarSuscriptor,
 } from './lib/cortes';
+import { validarFilas, type FilaCruda, type MapeoColumnas, type ErrorFila, type FilaNormalizada } from './core/importacion-suscriptores';
+import { confirmarImportacion, detectarDuplicadosContraBase } from './lib/importacion-suscriptores';
 import {
   obtenerConsumoPortal,
   obtenerFacturaCompletaPortal,
@@ -1149,6 +1151,69 @@ app.get('/suscriptores/:id/historial-cortes', async (c) => {
     return c.json({ historial });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo consultar el historial' }, 400);
+  }
+});
+
+// --- Importación masiva de suscriptores (012-importacion-suscriptores-excel) --
+// Límite explícito de filas por archivo (plan.md §7, CLAUDE.md §5.5): un
+// acueducto piloto tiene unos pocos cientos de suscriptores; un archivo más
+// grande se rechaza antes de procesar nada, nunca un intento silencioso.
+const LIMITE_FILAS_IMPORTACION = 2000;
+
+// POST /suscriptores/importar/validar — corre CA-1/CA-2 (core/, puro) + CA-3
+// (duplicados contra la base, lib/), no escribe nada.
+app.post('/suscriptores/importar/validar', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{ filas?: FilaCruda[]; mapeo?: MapeoColumnas }>()
+    .catch(() => ({ filas: undefined, mapeo: undefined }));
+  const filas = body.filas ?? [];
+  const mapeo = body.mapeo ?? {};
+  if (!Array.isArray(filas) || filas.length === 0) {
+    return c.json({ error: 'El archivo no tiene filas' }, 400);
+  }
+  if (filas.length > LIMITE_FILAS_IMPORTACION) {
+    return c.json({ error: `El archivo supera el límite de ${LIMITE_FILAS_IMPORTACION} filas por importación` }, 400);
+  }
+  try {
+    const resultadoCore = validarFilas(filas, mapeo);
+    const resultado = await detectarDuplicadosContraBase(ctx.supabase, ctx.clienteId, resultadoCore);
+    return c.json(resultado);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo validar el archivo' }, 400);
+  }
+});
+
+// POST /suscriptores/importar/confirmar — recibe las filas ya validadas (de
+// /validar, sin volver a tocarlas) y las errores a registrar en el
+// historial; inserta transaccionalmente (CA-6) vía la RPC importar_suscriptores().
+app.post('/suscriptores/importar/confirmar', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{
+      filasValidas?: Array<{ indiceFila: number; fila: FilaNormalizada }>;
+      errores?: ErrorFila[];
+      nombreArchivo?: string;
+    }>()
+    .catch(() => ({ filasValidas: undefined, errores: undefined, nombreArchivo: undefined }));
+  const filasValidas = body.filasValidas ?? [];
+  const errores = body.errores ?? [];
+  const nombreArchivo = body.nombreArchivo?.trim();
+  if (!nombreArchivo) {
+    return c.json({ error: 'Falta el nombre del archivo importado' }, 400);
+  }
+  if (filasValidas.length === 0) {
+    return c.json({ error: 'No hay filas válidas para importar' }, 400);
+  }
+  try {
+    const reporte = await confirmarImportacion(
+      ctx.supabase, ctx.clienteId, filasValidas, errores, nombreArchivo, ctx.perfilId,
+    );
+    return c.json(reporte, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo confirmar la importación' }, 400);
   }
 });
 
