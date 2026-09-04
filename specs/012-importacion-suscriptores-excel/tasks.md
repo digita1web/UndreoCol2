@@ -254,10 +254,50 @@ errores, confirmación, reporte final.
 cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** build y lint sin errores ni warnings de TypeScript.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04) — ver advertencia de seguridad de la dependencia abajo
 **Evidencia:**
 ```
-(pendiente)
+`npm run build`: compila y tipa sin errores ni warnings (Next.js 15.5.25), 15 rutas generadas
+incluyendo /app/suscriptores/importar (113 kB propio / 229 kB First Load JS — el peso de xlsx/
+SheetJS, esperado para un parser de archivos, solo carga en esta ruta). `npm run lint` limpio.
+`grep -rn "@supabase" frontend/app/ frontend/components/ frontend/lib/` solo la línea del
+comentario de cabecera de lib/api.ts, sin imports reales (CLAUDE.md §5.2).
+
+frontend/components/importacion-mapeo.tsx: input de archivo .xlsx/.csv, XLSX.read() +
+sheet_to_json() en el navegador (nunca se envía el archivo crudo a la API, CLAUDE.md §5.5),
+detecta columnas del encabezado, formulario de mapeo de los 10 campos (5 requeridos marcados con
+*, botón "Validar" deshabilitado hasta que los 5 requeridos tengan columna asignada, spec §3.1).
+frontend/components/importacion-resumen.tsx: resumen de validas/errores (3.3), botón "Importar
+N fila(s) válida(s)" que SOLO envía las filas válidas (nunca "importar todo e ignorar errores",
+3.4), reporte final con conteos + advertencia no bloqueante de categoriasSinTarifa + id de la
+importación (3.5). frontend/app/app/suscriptores/importar/page.tsx: conecta ambos, llama
+validarImportacion()/confirmarImportacion() de T-006. Enlace agregado desde
+/app/suscriptores ("Importar desde Excel").
+
+ADVERTENCIA DE SEGURIDAD DE LA DEPENDENCIA — hallazgo real de `npm audit`, no solo revisión de
+licencia: el paquete `xlsx@0.18.5` publicado en el registro de npm (el que se pudo instalar en
+este contenedor) tiene 2 vulnerabilidades altas SIN parche en npm: Prototype Pollution
+(GHSA-4r6h-8v6p-xvw6) y ReDoS (GHSA-5pgg-2g8v-p4x9). SheetJS dejó de publicar versiones
+parcheadas en el registro de npm y las distribuye solo desde su propio CDN
+(cdn.sheetjs.com/xlsx-0.20.3/...) — intenté instalar esa versión parcheada en este contenedor y
+el proxy de red la bloqueó (cdn.sheetjs.com no está en la lista blanca de este entorno, CONNECT
+403). El parseo ocurre enteramente en el navegador del admin sobre un archivo que el propio admin
+elige subir (no es una API pública ni toca el Worker/la base), así que el radio de impacto real es
+la pestaña del navegador del admin, no el servidor ni los datos de otros acueductos — pero sigue
+siendo una vulnerabilidad real y sin parchear en una dependencia nueva.
+
+NO VERIFICADO / acción pendiente de Mateo: desde su bench (con acceso normal a internet), cambiar
+la fuente de instalación en frontend/package.json de `"xlsx": "^0.18.5"` a la URL del tarball
+parcheado de SheetJS (`"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"` o la versión
+estable que SheetJS tenga publicada en ese momento — revisar https://docs.sheetjs.com/docs/getting-started/installation/nodejs
+para la URL vigente) y correr `npm install` de nuevo — es un cambio de una línea en package.json,
+la API que usa importacion-mapeo.tsx (XLSX.read/XLSX.utils.sheet_to_json) es estable entre esas
+versiones, así que no debería requerir cambios de código, pero SÍ requiere volver a correr
+`npm run build` para confirmarlo.
+
+Flujo real en navegador con un archivo .xlsx/.csv de prueba: NO VERIFICADO en esta tarea — este
+contenedor no puede levantar `wrangler dev` + `next dev` contra una base real (sin Docker/
+PostgREST). Queda para T-008.
 ```
 **Commit:** (pendiente)
 
