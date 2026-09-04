@@ -1,0 +1,97 @@
+name: semgrep
+
+# Análisis estático de seguridad automatizado. Corre en cada push y cada pull
+# request, a cualquier rama (sin filtro de `branches`, que en GitHub Actions
+# significa "todas"). Complementa — no reemplaza — la auditoría dirigida por
+# LLM que se hace una sola vez antes de producción (docs/PLAN-PRODUCCION.md).
+#
+# Ruleset elegido (investigado en esta sesión, sin ruleset propio de
+# Cloudflare Workers en el registro de Semgrep):
+#   - p/security-audit: pack general de seguridad de Semgrep (patrones
+#     OWASP-style, cross-language) — el ruleset gratuito estándar que pidió
+#     Mateo explícitamente.
+#   - p/typescript: cubre todo el proyecto (backend/ y frontend/ son 100%
+#     TypeScript, CLAUDE.md §2 — "TypeScript estricto").
+#   - p/react: específico para frontend/ (Next.js App Router usa React;
+#     Semgrep no publica un pack "Next.js" propio, React es el que aplica).
+#   - p/secrets: detección de credenciales hardcodeadas — directamente
+#     relevante porque CLAUDE.md §12 prohíbe absolutamente commitear claves,
+#     tokens o `.env`, y este proyecto maneja SUPABASE_SERVICE_ROLE_KEY,
+#     SESSION_SECRET, CLOUDFLARE_API_TOKEN, etc.
+#
+# Verificado en esta sesión contra el código real del repositorio (sin poder
+# alcanzar semgrep.dev desde este contenedor — proxy de red restringido a una
+# lista blanca que no lo incluye) usando el mismo código fuente de reglas,
+# clonado desde github.com/semgrep/semgrep-rules (equivalente exacto a los
+# rulesets de TypeScript/React/JavaScript-security/secrets que aquí se piden
+# por nombre de paquete del registro): 2 hallazgos reales, ambos severidad
+# WARNING (backend/src/index.ts:204 ReDoS potencial en una regex de slug;
+# backend/src/queues/cierre-facturacion.ts:298 HTML sin escapar en un
+# template string de un correo). Ningún hallazgo ERROR en el código actual.
+# En GitHub Actions (con acceso real a internet, a diferencia de este
+# contenedor) el workflow sí resuelve `p/...` directamente contra el
+# registro de Semgrep.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep — análisis estático de seguridad
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar Semgrep
+        run: pip install semgrep
+
+      # Paso 1 — reporte completo, TODAS las severidades (INFO/WARNING/ERROR).
+      # No bloquea el job (continue-on-error): esto es visibilidad, no el gate.
+      # Queda en el log del job — no se sube a GitHub Code Scanning (pestaña
+      # Security) porque ese repositorio privado no tiene Advanced Security
+      # habilitado y el paso de subida (github/codeql-action/upload-sarif)
+      # fallaba con "Resource not accessible by integration".
+      - name: Semgrep — reporte completo (no bloqueante)
+        id: semgrep_full
+        continue-on-error: true
+        run: |
+          semgrep scan \
+            --config p/security-audit \
+            --config p/typescript \
+            --config p/react \
+            --config p/secrets \
+            --metrics=off \
+            .
+
+      # Paso 2 — el gate real. `--severity ERROR` filtra solo la severidad
+      # más alta de Semgrep; `--error` hace que el CLI salga con código 1 si
+      # hay al menos un hallazgo (verificado en esta sesión: SIN `--error`,
+      # `semgrep scan` sale con código 0 sin importar cuántos hallazgos tenga
+      # — la etiqueta "Blocking" que muestra en pantalla es solo visual/de
+      # Semgrep Cloud Platform, no afecta el exit code del CLI open-source).
+      # Un exit code distinto de 0 aquí falla este step, lo que falla el job,
+      # lo que deja este check en rojo en el push/PR.
+      - name: Semgrep — bloquear si hay hallazgos de severidad ERROR
+        run: |
+          semgrep scan \
+            --config p/security-audit \
+            --config p/typescript \
+            --config p/react \
+            --config p/secrets \
+            --metrics=off \
+            --severity ERROR \
+            --error \
+            .
+
+# NOTA IMPORTANTE PARA MATEO — este workflow por sí solo NO bloquea el merge:
+# hace que el check "semgrep" quede en rojo cuando hay un hallazgo ERROR, pero
+# GitHub solo impide mergear con un check en rojo si la rama tiene activado
+# "Require status checks to pass before merging" (Settings → Branches → Branch
+# protection rules) con este check seleccionado. Esa es una configuración del
+# repositorio, no algo que un archivo de workflow pueda activar por sí solo —
+# hace falta que Mateo la habilite una vez desde GitHub.

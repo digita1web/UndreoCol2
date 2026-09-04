@@ -145,10 +145,17 @@ estado "Paused".
 
 **Problema que resuelve:** Supabase Free no incluye backups automáticos.
 
-**Estado real: no implementado.** `.github/workflows/backup-diario.yml` **no
-existe todavía** — `tasks.md` T-013 sigue "Pendiente". Lo que sigue es la
-**intención aprobada** en `plan.md §2.4` (decisión D-7), para cuando se
-implemente — no un workflow ya funcionando.
+**Estado real (corregido 2026-09-04 — esta sección estaba desactualizada,
+escrita el 2026-08-31, un día antes de que T-013 se completara):**
+`.github/workflows/backup-diario.yml` **existe y está implementado**
+(commit `87afd9e`, `specs/001-fundacion/tasks.md` T-013, estado "Completado
+2026-09-01"). Lo que sigue **no** es una intención pendiente — es el
+workflow real, con sintaxis YAML verificada. Lo único que sigue
+**NO VERIFICADO** es su **ejecución real en producción**: este entorno
+nunca tuvo los secretos de GitHub (`SUPABASE_DB_URL`,
+`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`) ni el bucket R2 real, así
+que nadie ha confirmado todavía que un `workflow_dispatch` real sube un
+backup a R2 con éxito — ver los pasos exactos en `tasks.md` T-013.
 
 ### Diseño aprobado (D-7)
 
@@ -215,8 +222,10 @@ El primer lunes de cada mes: tomar el backup más reciente, restaurarlo en
 staging, ejecutar la verificación de §7.2, registrar el resultado en
 `CHANGELOG.md`. Si la restauración falla, es prioridad inmediata.
 
-**Estado:** protocolo documentado; no ejecutable todavía — depende de que exista
-el workflow real de backup (§6, T-013 pendiente).
+**Estado:** protocolo documentado, ejecutable en cuanto Mateo complete la
+configuración de secretos/bucket de §6 (el workflow de backup ya existe
+desde el 2026-09-01 — lo pendiente es la verificación en producción, no el
+código).
 
 ---
 

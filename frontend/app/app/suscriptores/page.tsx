@@ -20,7 +20,12 @@ export default function SuscriptoresPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Suscriptores</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Suscriptores</h1>
+        <Link href="/app/suscriptores/importar" className="text-sm text-muted-foreground hover:underline">
+          Importar desde Excel
+        </Link>
+      </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <Card>

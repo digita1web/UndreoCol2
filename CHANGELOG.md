@@ -4,6 +4,319 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-04 — Sesión 019: Semgrep automatizado + plan de auditoría final por LLM
+
+Dos entregables: (1) implementación real de Semgrep en CI, (2) documentación del plan de auditoría
+de seguridad pre-producción. Incluye además la corrección de un error de la Sesión 018 (ver nota
+en esa entrada, abajo).
+
+**T-1 — `.github/workflows/semgrep.yml` (implementación real)**
+Corre en cada `push` y `pull_request` a cualquier rama (sin filtro `branches`). Dos pasos:
+1. Reporte completo con `p/security-audit` + `p/typescript` + `p/react` + `p/secrets`, todas las
+   severidades, subido a GitHub Code Scanning vía SARIF (`github/codeql-action/upload-sarif@v3`) —
+   no bloqueante (`continue-on-error: true`).
+2. Gate real: el mismo ruleset filtrado a `--severity ERROR` con `--error`, sin
+   `continue-on-error` — falla el job (y por lo tanto el check de CI) si hay al menos un hallazgo
+   de severidad ERROR.
+
+Ruleset elegido tras investigar: Semgrep no publica un pack específico de Cloudflare Workers;
+`p/security-audit` (el pedido explícitamente) combinado con `p/typescript` (todo el proyecto),
+`p/react` (frontend/, Next.js usa React — no hay pack "Next.js" propio) y `p/secrets` (relevante
+por CLAUDE.md §12, que prohíbe absolutamente commitear claves/tokens) es la combinación más
+apropiada para este stack.
+
+**Verificado de verdad, no asumido:** este contenedor no puede alcanzar `semgrep.dev` (proxy de
+red restringido). Se instaló Semgrep 1.176.0 en un venv aislado y se clonó
+`github.com/semgrep/semgrep-rules` (la fuente abierta de la que salen los packs del registro) para
+correr el equivalente exacto de `p/typescript` + `p/react` + `p/security-audit` (subconjunto
+javascript/lang/security) + `p/secrets` contra el código real de `backend/src/` y `frontend/`:
+**2 hallazgos reales, ambos severidad WARNING, 0 ERROR** — `backend/src/index.ts:204` (regex de
+slug con posible ReDoS) y `backend/src/queues/cierre-facturacion.ts:298` (HTML sin escapar en un
+template string del correo de factura, XSS potencial si `acueducto.nombre` contuviera markup).
+Ninguno de los dos bloquea el workflow (ninguno es ERROR) — quedan como hallazgos visibles en
+Code Scanning para revisión, no forzados a corregirse en esta sesión (fuera de alcance: la tarea
+pedida era activar Semgrep, no corregir hallazgos).
+
+**Hallazgo real sobre el propio Semgrep, verificado con un caso construido a propósito:** el CLI
+open-source de Semgrep (`semgrep scan`, sin conexión a Semgrp Cloud Platform) **sale con código 0
+sin importar cuántos hallazgos tenga**, incluso con un hallazgo ERROR real forzado deliberadamente
+(`child_process.exec` con input de función, un caso clásico de inyección de comandos) — la
+etiqueta "❰❰ Blocking ❱❱" que se ve en pantalla es solo visual, no afecta el exit code. Hace falta
+el flag `--error` (exit 1 si hay hallazgos) combinado con `--severity ERROR` (para que solo cuenten
+los ERROR) — verificado con el mismo caso construido: exit 1 con el hallazgo ERROR presente, exit
+0 cuando el único hallazgo real del proyecto era WARNING. Sin este detalle, el workflow habría
+"funcionado" (reportado) pero nunca habría bloqueado nada — exactamente el tipo de "debería
+funcionar" que CLAUDE.md §4 prohíbe aceptar sin evidencia real.
+
+**NO VERIFICADO — requiere acción de Mateo:** un archivo de workflow en rojo no bloquea un merge
+por sí solo. GitHub solo lo hace si la rama tiene "Require status checks to pass before merging"
+activado (Settings → Branches) con el check `semgrep` seleccionado — es una configuración del
+repositorio que Mateo tiene que activar una vez, no algo que este workflow pueda activar por sí
+mismo. Documentado explícitamente en el propio archivo del workflow.
+
+**T-2 — `docs/PLAN-PRODUCCION.md` (nuevo)**
+Sección "Auditoría de seguridad pre-producción" con el texto exacto que dio Mateo: auditoría única
+por LLM de mayor capacidad de razonamiento disponible (Claude Opus o DeepSeek Reasoner/Pro), al
+completar el roadmap 001-014, revisando RLS/SECURITY DEFINER/sesiones/rate limiting/hallazgos
+pendientes de Semgrep — complementa, no reemplaza, la verificación feature por feature ya hecha.
+
+### 2026-09-04 — Sesión 018: planificación de costos e infraestructura (documentación, sin código)
+
+> **Corrección posterior (Sesión 019, mismo día):** el punto 2 de abajo describía el backup
+> automático como "PENDIENTE DE IMPLEMENTACIÓN" sin haber verificado primero si ya existía en el
+> repositorio. Era incorrecto — `.github/workflows/backup-diario.yml` ya estaba implementado
+> desde el 2026-09-01 (feature 001, commit `87afd9e`). Corregido en la Sesión 019, ver abajo.
+
+Sesión de solo documentación (Mateo lo pidió explícito: "Solo documentación, no implementación de
+código todavía"). Registra las decisiones de una sesión de investigación de costos, en
+`docs/INFRAESTRUCTURA-Y-COSTOS.md` (documento nuevo).
+
+**Decisiones documentadas**
+1. **Supabase Free alcanza para el primer cliente** (500-600 suscriptores, muy por debajo de los
+   límites de 500 MB de DB / 50.000 MAU de Auth — este último ni aplica de fondo porque el
+   suscriptor no es un usuario de `auth.users`, D-2). El riesgo de pausa por inactividad a 7 días
+   ya estaba resuelto (`keepalive.ts`, `docs/INFRAESTRUCTURA.md §5`) — se verificó en esta sesión
+   que la configuración del cron (`wrangler.keepalive.toml`) y el empaquetado del Worker
+   (`wrangler deploy --dry-run`) siguen intactos, sin tocar código.
+2. **Backups automáticos sin costo vía GitHub Actions** (`supabase db dump` + `SUPABASE_DB_URL`
+   como secret + subida a repo privado o Cloudflare R2 Free + retención de 30 días), reemplazando
+   la idea de backup manual. **Prioridad ALTA, pendiente de implementación.** Se detectó y reportó
+   una contradicción con el diseño ya aprobado como decisión D-7 (`docs/INFRAESTRUCTURA.md §6`,
+   que usa `pg_dump` en contenedor + R2 exclusivamente + nombre de workflow distinto) — ambos
+   diseños resuelven el mismo problema con mecanismos distintos; hay que reconciliarlos antes de
+   implementar, no se implementó ninguno de los dos en esta sesión.
+3. **Cloudflare Workers Free confirmado suficiente**, sin cambios sobre lo ya proyectado en
+   `ARQUITECTURA.md §6`.
+4. **Cambio de decisión de correo:** Resend (3.000/mes, 100/día, gratis) en vez de Cloudflare
+   Email Service — evita que el flujo de correo (D-8, secundario) dependa de que Workers Paid ya
+   esté activo, como asume hoy `ARQUITECTURA.md §6`. **Prioridad MEDIA**, amplía la Feature 006 ya
+   cerrada (`backend/src/lib/email.ts`); requiere además actualizar D-8 en `docs/DECISIONES.md`
+   cuando se implemente, para no dejar el registro de decisiones contradiciendo el código.
+5. **Monitoreo de errores con Sentry** (5.000 errores/mes gratis, backend + frontend). **Prioridad
+   MEDIA** — confirma una intención que ya existía en `docs/ESTRATEGIA-CALIDAD.md` y
+   `docs/INFRAESTRUCTURA.md §2` pero sin implementar ni límites documentados hasta ahora.
+6. **Costo total del primer cliente: USD $0/mes**, con backups 100% automáticos (sin
+   intervención manual periódica, salvo el ritual mensual de verificación de restauración que
+   `docs/INFRAESTRUCTURA.md §7.3` ya definía como deliberadamente manual).
+
+**Pendientes técnicos abiertos** (tabla completa en `docs/INFRAESTRUCTURA-Y-COSTOS.md §7`):
+backup automático (ALTA), migración de correo a Resend (MEDIA), instrumentación de Sentry
+(MEDIA). Ninguno tiene `spec.md` todavía — no se escribe código sin pasar por `/specify`
+(CLAUDE.md §3).
+
+### 2026-09-04 — Sesión 017: 012-importacion-suscriptores-excel completa (T-002 a T-009)
+
+Continuación desde el checkpoint pendiente (T-001, parser/validador puro, ya estaba completo e
+implementado con autorización explícita de Mateo antes de este checkpoint). Esta sesión hizo las
+fases que tocan Supabase real: migración, duplicados contra la base, rutas HTTP, frontend.
+
+**Hecho**
+- **T-002** — Migración `20260912090000_importacion-suscriptores.sql`: tabla
+  `importaciones_suscriptores` (historial, `errores jsonb` solo `{fila, motivo}`, nunca el
+  contenido de la fila) + `importar_suscriptores()` (`SECURITY INVOKER`, sin `SELECT FOR UPDATE`
+  — cada suscriptor nuevo es una fila independiente sin contención — `INSERT` en lote vía
+  `jsonb_to_recordset`, atómico por ser una sola función `plpgsql`). RLS `FORCE` + políticas
+  estándar. Probado funcionalmente contra Postgres real: inserción de lote válido con conteos
+  correctos, y atomicidad real (CA-6) forzando una violación del constraint único
+  `(cliente_id, codigo_suscriptor)` — el lote completo se revierte, cero suscriptores nuevos.
+- **T-003** — Fixture no-op (mismo criterio que 009: los lotes de prueba se arman inline con jsonb
+  dentro de cada transacción) + test de aislamiento (6 pasos): cross-tenant en `importar_suscriptores()`
+  y en el historial, rol `lector` rechazado, atomicidad del lote re-verificada en la suite formal.
+  Regresión completa: se reconstruyó `undreocol_test` desde cero (shim + 11 migraciones + 10
+  fixtures en orden de dependencia real + 10 suites de aislamiento 001-009/012) en una sola pasada
+  limpia — las 10 en verde, confirmando que el fallo de `008_portal_aislamiento.sql` visto en una
+  corrida anterior (mismo hallazgo que en el cierre de la Sesión 016) era estado acumulado de la
+  base de datos de larga duración, no una regresión de 012.
+- **T-004** — `lib/importacion-suscriptores.ts`: `detectarDuplicadosContraBase()` (CA-3 —
+  `numero_documento` no tiene constraint único en la base, es la única barrera real para ese caso,
+  verificado explícitamente con el caso "solo `numero_documento` coincide"), `categoriasSinTarifa()`
+  (advertencia informativa no bloqueante, mismo patrón que `lib/facturacion.ts`) y
+  `confirmarImportacion()` (RPC `importar_suscriptores()`).
+- **T-005** — Rutas `POST /suscriptores/importar/validar` y `POST /suscriptores/importar/confirmar`,
+  con un límite explícito de 2000 filas por archivo (CLAUDE.md §5.5) rechazado antes de procesar.
+- **T-006** — `lib/api.ts` ampliado: `validarImportacion()`/`confirmarImportacion()`.
+- **T-007** — Panel `/app/suscriptores/importar`: carga de `.xlsx`/`.csv` parseado en el navegador
+  con `xlsx`/SheetJS (nunca llega el archivo crudo al Worker), mapeo de columnas configurable
+  (ningún nombre de columna asumido en el código, spec §3.1), resumen de errores, confirmación que
+  solo importa las filas válidas, reporte final con la advertencia de categorías sin tarifa.
+- **T-009** — Cierre: checklist de `spec.md §8` y esta entrada.
+
+**Hallazgo de seguridad en una dependencia nueva (se reporta explícito, CLAUDE.md §8)**
+`xlsx@0.18.5`, la única versión instalable desde el registro de npm en este contenedor, tiene 2
+vulnerabilidades altas confirmadas por `npm audit` **sin parche disponible en npm**: Prototype
+Pollution (`GHSA-4r6h-8v6p-xvw6`) y ReDoS (`GHSA-5pgg-2g8v-p4x9`). SheetJS solo distribuye
+versiones parcheadas desde su propio CDN (`cdn.sheetjs.com`), bloqueado por la lista blanca de red
+de este contenedor — se intentó instalar y falló con `CONNECT 403`. El parseo ocurre enteramente
+en el navegador del admin sobre un archivo que él mismo elige subir (no toca el Worker ni la base
+de otros acueductos), pero es una dependencia nueva con CVEs reales sin parchear. **Acción
+pendiente de Mateo antes de producción:** desde su bench con acceso normal a internet, cambiar
+`"xlsx": "^0.18.5"` en `frontend/package.json` por la URL del tarball parcheado de SheetJS y correr
+`npm install` de nuevo (un cambio de una línea, la API usada es estable entre versiones) — pasos
+exactos en `specs/012-importacion-suscriptores-excel/tasks.md` T-007.
+
+**Brecha de alcance detectada (se reporta, no se oculta)**
+`tasks.md` T-008 menciona "ver el historial de importaciones" como parte del flujo E2E, pero
+`plan.md` §3 (aprobado) solo definió las rutas `validar`/`confirmar` — nunca se planeó una ruta ni
+pantalla para LISTAR `importaciones_suscriptores`. No se improvisó esa ruta fuera de plan (CLAUDE.md
+§3). Si Mateo quiere verlo desde el panel, es una tarea adicional a definir explícitamente.
+
+**Desviación de entorno (igual que 002/003/009, CLAUDE.md §8)**
+Sin Docker en este contenedor. Verificación de esquema/RLS/RPC contra PostgreSQL 16 nativo con el
+shim de compatibilidad ya usado en sesiones previas.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- CA-3/CA-5 con `curl` real contra `wrangler dev` + PostgREST real (sin Docker en este contenedor,
+  la lib de duplicados se verificó a nivel de la consulta SQL equivalente, no vía `supabase-js`).
+- CA-7: flujo completo en navegador con un archivo de prueba real. Pasos exactos en `tasks.md`
+  T-008.
+- Cambiar la fuente de instalación de `xlsx` a la versión parcheada de SheetJS antes de producción
+  (ver hallazgo de seguridad arriba).
+
+### 2026-09-04 — Sesión 016: 009-cortes-y-reconexiones completa (T-001 a T-007)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/009-cortes-y-reconexiones/`): alcance reducido (opción a)
+  aprobado explícitamente por Mateo — el corte y la reconexión son acciones de `admin_acueducto`
+  desde el panel, con confirmación humana siempre explícita (nunca corte desatendido). La "orden de
+  corte ejecutada por el lector desde su celular" que describe
+  `docs/ESPECIFICACION-FUNCIONAL.md §2.11` (opción b) queda documentada como feature futura — el
+  volumen actual del acueducto piloto no la justifica todavía.
+- **T-001** — Migración `20260911090000_cortes-reconexiones.sql`: tabla `cortes_reconexiones`
+  (`motivo`/`responsable` `NOT NULL` a nivel de esquema), `registrar_corte()` y `reconectar()`
+  (`SECURITY INVOKER`, `SELECT FOR UPDATE`, mismo patrón que `anular_pago()` de 007).
+  `reconectar()` reutiliza `siguiente_numero_factura()` (005) sin modificarla e inserta la factura
+  de reconexión con un renglón en `factura_detalles` (`servicio_id`/`tarifa_id` `NULL`), dejando que
+  el trigger de 005 calcule el total.
+- **T-002** — Fixture no-op documentado (agregar una factura vencida al fixture compartido rompería
+  el conteo de filas que 005/007 ya asumen) + test de aislamiento (7 pasos): cross-tenant, rol
+  lector, rechazo de doble corte, rechazo de reconexión sobre activo, bloqueo de reconexión con
+  deuda vencida sin motivo de excepción, factura de reconexión con monto/tipo/prefijo/periodo_id
+  correctos. Regresión CA-3 confirmada por `grep`: el filtro `estado = 'activo'` de
+  `facturacion.ts`/`cierre-facturacion.ts` sigue intacto.
+- **T-003** — `lib/cortes.ts` (candidatos por umbral reutilizando `obtenerCartera()` de 007, RPCs
+  de corte/reconexión, historial) + 4 rutas Hono.
+- **T-004/T-005** — `lib/api.ts` ampliado + panel `/app/cortes` (candidatos, nunca ejecuta nada por
+  sí solo) + tarjetas de corte/reconexión e historial en el detalle del suscriptor.
+  `ReconexionForm` consulta la deuda vencida antes de intentar reconectar, para pedir el motivo de
+  excepción en el propio formulario.
+- **T-007** — Cierre: checklist de `spec.md §8` y esta entrada.
+
+**Desviación de entorno (igual que 002/003, CLAUDE.md §8)**
+Este contenedor no tiene Docker funcional. Verificación de esquema/RLS/funciones contra
+PostgreSQL 16 nativo con el shim de compatibilidad ya usado en sesiones previas (el trabajo de
+004-008 sí se hizo con Supabase local real en Docker, según su propio `tasks.md` — este contenedor
+específico no lo tiene disponible).
+
+**Hallazgo durante el cierre:** la primera corrida de la regresión completa 001-009 mostró
+`008_portal_aislamiento.sql` fallando en su PASO 3 ("A1 bloqueado devolvió ok"). Investigado antes
+de reportarlo: no era una regresión de 009 — era estado acumulado de correr los tests de
+aislamiento repetidamente sobre la misma base a lo largo de la sesión (el fixture de intentos de
+login no es idempotente para corridas repetidas sin reset). Reconstruida la base desde cero
+(`drop`/`create database`, 10 migraciones, 9 fixtures) y corridos los 9 tests de aislamiento en una
+sola pasada limpia: los 9 en verde, incluido 008.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- CA-3/CA-4 de tasks.md (T-003): `curl` real contra `wrangler dev` — sin PostgREST en este
+  contenedor no hay endpoint REST real detrás de `@supabase/supabase-js`.
+- CA-7 (T-006): flujo completo en navegador. Pasos exactos en `tasks.md` T-006.
+- Repetir `supabase db reset` en un entorno con Docker para la verificación oficial completa de
+  T-001/T-002 (incluye PostgREST/GoTrue, que el shim de este contenedor no cubre).
+
+### 2026-09-03 — Sesión 015: 008-portal-suscriptor completa (T-001 a T-007)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/008-portal-suscriptor/`): CA-1 a CA-10 y **D-10** nueva en
+  `docs/DECISIONES.md` (el aislamiento del portal se hace con funciones `SECURITY DEFINER` acotadas
+  invocadas con la clave `anon`; `SUPABASE_SERVICE_ROLE_KEY` nunca se usa en rutas del portal —
+  CLAUDE.md §12 sin excepción).
+- **T-001** — Migración `20260908090000_portal-suscriptor.sql`: columnas de `configuracion`
+  (`portal_umbral_intentos_login` 8 / `portal_bloqueo_minutos` 15), tabla `portal_intentos_login`
+  (fuerza bruta por `(cliente_id, numero_documento)`; RLS FORCE con única política de lectura para
+  la plataforma; la escriben solo las funciones security definer) y las 5 funciones del portal
+  (`portal_validar_credenciales`, `portal_facturas_suscriptor`, `portal_factura_completa`,
+  `portal_saldo_favor_suscriptor`, `portal_consumo_suscriptor`) — cada una revalida
+  `numero_documento`+`codigo_suscriptor` dentro del `cliente_id` recibido. Smoke con rol `anon`:
+  login ok/invalido/bloqueado tras 8 fallos/inactivo (sin contar como intento fallido) y datos sin
+  fixtures → vacíos.
+- **T-002** — Fixture `portal.sql` (dos filas de `portal_intentos_login`: A1 bloqueo vigente, A2
+  bloqueo vencido) + aislamiento `008_portal_aislamiento.sql` (CA-2/CA-9). Regla aprendida en 005/007
+  aplicada: el fixture NO agrega contadores/lecturas de A1 (romperían los conteos de los aislamientos
+  003/004) — el histórico de dos contadores de CA-7 se crea en el aislamiento con ROLLBACK
+  (cerrando temporalmente el periodo actual para respetar `uq_periodo_abierto`). `PORTAL-AISLAMIENTO
+  OK` + regresión 001-007 en verde.
+- **T-003** — `sesion-suscriptor.ts` implementado (JWT propio HS256 con `hono/jwt`, cookie
+  `uc_sesion_suscriptor` HttpOnly+Secure+SameSite=Lax, 30 días, renovación < 7 días; `SesionSuscriptor`
+  lleva `numeroDocumento`+`codigoSuscriptor` por D-10). 10 unit tests; `npm test` 90 en verde.
+  Nota: hono 4 exporta `sign`/`verify` desde `hono/jwt` (no `hono/utils/jwt`). `SESSION_SECRET` en
+  `.dev.vars` (gitignored).
+- **T-004** — `lib/portal.ts` (todas las llamadas con `crearClienteAnon`, D-10) + rutas
+  `POST /portal/:slug/login` (401 genérico / 403 inactivo / 429 bloqueado), `POST /portal/logout`,
+  `GET /portal/facturas`, `GET /portal/facturas/:id/pdf` (404 si no es del suscriptor — **IDOR
+  bloqueado**), `GET /portal/saldo-favor`, `GET /portal/consumo`. **Desviación de implementación
+  documentada**: el login resuelve el slug con la función `SECURITY DEFINER`
+  `portal_cliente_por_slug` (migración nueva `20260909090000_portal-slug.sql`) porque `anon` no puede
+  leer `clientes` (RLS). **Ataques IDOR verificados con curl** (sesiones reales de A1/A2/B1): PDF de
+  factura ajena y de otro acueducto → 404 sin bytes; listados aislados; fuerza bruta → 429; logout →
+  401.
+- **T-005** — Regenerar código (CA-8): `POST /suscriptores/:id/regenerar-codigo` (admin → 200,
+  lector → 403 por membresía + RLS, código duplicado → 409). Login con el código viejo → 401; con el
+  nuevo → 200. Hallazgo con evidencia: por D-10, una sesión previa no recibe 401 pero deja de ver
+  datos (las funciones revalidan el código) — la regeneración invalida de facto la sesión anterior.
+- **T-006** — Frontend del portal (CA-10): `middleware.ts` separa por área con cookies DISTINTAS
+  (`uc_sesion_admin` para `/app/*`, `uc_sesion_suscriptor` para `/portal/:slug/*` salvo el login);
+  páginas `/portal/[slug]/login` y `/portal/[slug]`; botón de regenerar código en el detalle del
+  suscriptor. `next build` 12 páginas OK. **Separación de sesiones verificada con curl**: un admin
+  con su cookie NO ve el portal (307 al login del portal) y un suscriptor NO ve el panel `/app`
+  (307 a `/login`); con ambas cookies cada área responde con la suya.
+- **T-007** — Cierre: checklist `spec.md §8`, CHANGELOG y regresión completa desde cero
+  (`supabase db reset --local`, 9 migraciones, fixtures 001-008, aislamientos 001-008 en verde).
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- CA-10: flujo click-a-click en navegador (`next dev` + `wrangler dev`) con los pasos exactos
+  documentados en tasks.md T-006 (la API y la separación de sesiones ya quedaron verificadas con curl).
+
+### 2026-09-03 — Sesión 014: 007-pagos-y-cartera completa (T-001 a T-006)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/007-pagos-y-cartera/`): CA-1 a CA-8, RPCs atómicas con
+  remanente y reversión recalculada, sin colas (cada pago es una transacción por request).
+- **T-001** — Migración `20260907090000_pagos.sql`: enum `metodo_pago`, tablas `pagos` y
+  `pago_aplicaciones` (checks de integridad: valor > 0, suma de aplicaciones ≤ valor del pago, nunca
+  se abona más del saldo vivo de una factura, no se aplica a facturas anuladas ni de otro
+  suscriptor) + trigger `trg_pago_aplicacion_valida` + RLS `FORCE` + RPCs `SECURITY INVOKER`
+  `registrar_pago`/`anular_pago` (`SELECT FOR UPDATE`, distribución más antigua primero, remanente,
+  reversión recalculada desde los pagos vigentes). Desviación documentada: la distribución de la
+  aplicación la calcula `core/pagos.ts` (CLAUDE §5.3) y se pasa a la RPC como jsonb ya calculado, en
+  vez de distribuirse en SQL.
+- **T-002** — Fixtures `pagos.sql` (abono parcial de 10.000 + pago a favor de 2.000 sobre la factura
+  de 005, sin crear facturas nuevas) y test de aislamiento 007 (RLS + RPCs rechazando al `lector`,
+  facturas de otro cliente, facturas anuladas y anulación sin motivo) con regresión 001-006 en verde.
+- **T-003** — `core/pagos.ts`: `redondearPeso` (regla única del peso), `distribuirPago` (más antigua
+  primero, remanente) y `calcularEstadoTrasPago`. 15 unit tests (`npm test` 80 en verde).
+- **T-004** — `lib/pagos.ts` + rutas Hono (`POST /pagos`, `POST /pagos/:id/anular`, `GET /cartera`,
+  `GET /facturas/:id/pagos`, `GET /suscriptores/:id/pagos`). Verificado con curl real contra
+  `wrangler dev` + Supabase local: pago total/parcial, remanente a favor, anulación con reversión
+  recalculada (no resetea a cero: recalcula desde el pago vigente restante), cartera con `vencida`
+  derivada por fecha e historiales por factura y por suscriptor.
+- **T-005** — Frontend: `api.ts` ampliado + páginas `/app/pagos` (cartera con registrar pago) y
+  `/app/pagos/[suscriptorId]` (historial); detalle de factura con bloque de pagos aplicados,
+  registrar pago y anular pago con motivo. `build`/`lint`/`tsc` limpios.
+- **T-006** — Cierre: `supabase db reset --local` + fixtures 001-007 de cero + los 7 tests de
+  aislamiento en verde, checklist de `spec.md §8` + esta entrada.
+
+**Hallazgo real corregido durante la verificación (CA-4)**
+`obtenerCartera` (`lib/pagos.ts`) excluía por completo del reporte a cualquier suscriptor sin
+facturas con saldo vivo, **aunque tuviera saldo a favor** — un sobrepago dejaba un remanente que no
+aparecía en ningún lado de `/cartera`, contradiciendo el texto exacto de CA-4 ("aparece en la cartera
+como saldo a favor") y la spec §3.5. Corregido: la fila se incluye si hay deuda viva **o** saldo a
+favor > 0; `solo_morosos` sigue exigiendo deuda vencida.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- CA-8: flujo click-a-click en navegador real (registrar pago, ver el sobrante, anular con motivo).
+  Este entorno no tiene Chromium/Playwright; se verificó que las 3 rutas nuevas/editadas renderizan
+  sin error por SSR con la cookie de sesión real, pero no la interacción de cliente. Pasos exactos en
+  `specs/007-pagos-y-cartera/tasks.md` T-005.
+
 ### 2026-09-06 — Sesión 013: 006-impresion-y-correo-factura completa (T-001 a T-006)
 
 **Hecho**

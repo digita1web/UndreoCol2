@@ -244,17 +244,26 @@ si el entorno no permite correr ambos.
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1-8) con evidencia real — CA-1 a CA-7 contra Supabase local + curl/wrangler dev;
-      CA-8 (flujo en navegador) con pasos exactos si el entorno no permite `next dev` + `wrangler dev`.
-- [ ] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios.
-- [ ] Tests en verde: unit de la lógica de pagos de `core/` + test de aislamiento `007_pagos` con
-      regresión de 001-006.
-- [ ] Test de aislamiento de las tablas nuevas (`pagos`, `pago_aplicaciones`) en verde.
-- [ ] `CHANGELOG.md` actualizado en el cierre de la feature.
-- [ ] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase.
-- [ ] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica).
-
-
-
-
+- [x] Todos los CA (1-8) con evidencia real — CA-1 (migración + checks) y CA-2 (aislamiento) contra
+      Supabase local; CA-3 a CA-7 (registrar total/parcial/varias facturas, remanente a favor, anular
+      con reversión recalculada, cartera con `vencida` derivada, historiales) con curl real contra
+      `wrangler dev` + Supabase local (T-004); durante la verificación de CA-4 se encontró y corrigió
+      un bug real (`/cartera` ocultaba el saldo a favor de un suscriptor sin deuda viva). CA-8 (panel):
+      páginas nuevas + edición de detalle de factura con `build`/`lint`/`tsc` limpios; el flujo
+      click-a-click queda NO VERIFICADO (sin Chromium/Playwright en este entorno) con los pasos
+      exactos en `tasks.md` T-005 (la API que consume ya está verificada por curl en T-004).
+- [x] Build (frontend, `next build` 13/13) y `wrangler deploy --dry-run` (backend) limpios — bundle
+      1694.77 KiB / gzip 386.82 KiB (límite 10MB).
+- [x] Tests en verde: unit de `core/pagos.ts` (15, redondeo/distribución FIFO+remanente/estado) →
+      `npm test` 80/80 OK; test de aislamiento `007_pagos` OK con regresión 001-006 OK, ambos
+      re-corridos sobre una base recién reseteada (`supabase db reset --local` + fixtures 001-007 de
+      cero) en el cierre.
+- [x] Test de aislamiento de las tablas nuevas (`pagos`, `pago_aplicaciones`) en verde
+      (`007_pagos_aislamiento.sql` → `PAGOS-AISLAMIENTO OK`).
+- [x] `CHANGELOG.md` actualizado en el cierre de la feature (Sesión 014).
+- [x] Aprobación explícita de Mateo — spec, plan y tasks aprobados antes de cada fase.
+- [x] Un commit por tarea completada y verificada; sin `git push` (Mateo lo aplica / bundle si aplica).
+- Commits de la feature: `fae4457` (spec), `9c0dcce` (plan), `4beab8d` (tasks), `dbf68ca` (T-001),
+  `d707d91` (T-002), `c1f0208` (T-003), `7629995` (T-004), `fba14f1` (T-005), + el commit de cierre
+  (T-006).
 

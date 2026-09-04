@@ -381,9 +381,42 @@ for f in 001_fundacion 002_catalogo 003_suscriptores 004_lecturas_consumo 005_fa
 done
 ```
 **Resultado esperado:** builds/tests/aislamientos en verde sobre el estado final; evidencia pegada.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-03)
 **Evidencia:**
 ```
+$ supabase db reset --local
+  Applying migration 20260831150000_fundacion-tenancy.sql...
+  ...
+  Applying migration 20260907090000_pagos.sql...
+  Finished supabase db reset on branch claude/sleepy-einstein-jehcn4. (001→007 desde cero)
 
+Fixtures 001-007 cargados en orden sobre la base recién reseteada, cada uno con COMMIT:
+  fundacion.sql · catalogo.sql · suscriptores.sql · lecturas.sql · facturacion.sql ·
+  correo-factura.sql · pagos.sql  → 0 errores
+
+Regresión completa de aislamiento (7 archivos, sobre el mismo estado final, en orden):
+  001_fundacion_aislamiento.sql      → FUNDACION-AISLAMIENTO OK
+  002_catalogo_aislamiento.sql       → CATALOGO-AISLAMIENTO OK
+  003_suscriptores_aislamiento.sql   → SUSCRIPTORES-AISLAMIENTO OK
+  004_lecturas_consumo_aislamiento.sql → LECTURAS-CONSUMO-AISLAMIENTO OK
+  005_facturacion_aislamiento.sql    → FACTURACION-AISLAMIENTO OK
+  006_correo_factura_aislamiento.sql → CORREO-FACTURA-AISLAMIENTO OK
+  007_pagos_aislamiento.sql          → PAGOS-AISLAMIENTO OK
+
+Backend:
+$ npx tsc --noEmit                          → sin salida, sin errores
+$ npx eslint .                              → sin salida, sin errores
+$ npm test                                  → 7 files / 80 tests OK
+$ npx wrangler deploy --dry-run -c wrangler.toml
+  Total Upload: 1694.77 KiB / gzip: 386.82 KiB — sin errores
+
+Frontend:
+$ npx tsc --noEmit  → sin salida, sin errores
+$ npm run lint      → sin salida, sin errores
+$ npm run build     → ✓ Compiled successfully · Generating static pages (13/13)
+
+Todo en verde sobre el estado final (base reseteada + fixtures oficiales, sin el estado mutado de
+las pruebas curl de T-004). CHANGELOG.md (Sesión 014) y checklist de spec.md §8 actualizados con
+esta evidencia y los hashes de commit de T-001 a T-005.
 ```
 **Commit:** (tras completar)

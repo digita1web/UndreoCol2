@@ -651,3 +651,191 @@ export function obtenerPagosDeSuscriptor(
 ): Promise<{ pagos: PagoHistorial[]; saldoFavor: number }> {
   return peticion(`/suscriptores/${suscriptorId}/pagos`);
 }
+
+// --- 008: Portal del suscriptor (D-2/D-4/D-10) y regenerar código (CA-8) ------
+
+// La cookie del portal es uc_sesion_suscriptor (distinta de la administrativa
+// uc_sesion_admin): las funciones del portal envían credentials por defecto y
+// el backend resuelve la sesión por su propia cookie — nunca se mezclan.
+
+export interface SesionPortal {
+  tipo: 'suscriptor';
+  usuarioServicioId: string;
+  clienteId: string;
+  numeroDocumento: string;
+  codigoSuscriptor: string;
+  expiraEn: number;
+}
+
+export interface FacturaResumenPortal {
+  id: string;
+  numero: string;
+  tipo: string;
+  total: number;
+  totalPagado: number;
+  saldo: number;
+  fechaEmision: string;
+  fechaVencimiento: string;
+  estado: 'pendiente' | 'pagada' | 'vencida' | 'anulada';
+}
+
+export interface LecturaConsumoPortal {
+  fecha_lectura: string;
+  lectura_anterior: number;
+  lectura_actual: number;
+  consumo_m3: number;
+}
+
+export function loginPortal(
+  slug: string,
+  numeroDocumento: string,
+  codigoSuscriptor: string,
+): Promise<{ sesion: SesionPortal }> {
+  return peticion(`/portal/${slug}/login`, {
+    method: 'POST',
+    body: JSON.stringify({ numero_documento: numeroDocumento, codigo_suscriptor: codigoSuscriptor }),
+  });
+}
+
+export function logoutPortal(): Promise<{ ok: true }> {
+  return peticion<{ ok: true }>('/portal/logout', { method: 'POST' });
+}
+
+export function obtenerFacturasPortal(): Promise<{
+  facturaActual: FacturaResumenPortal | null;
+  historial: FacturaResumenPortal[];
+}> {
+  return peticion('/portal/facturas');
+}
+
+export function obtenerSaldoFavorPortal(): Promise<{ saldoFavor: number }> {
+  return peticion('/portal/saldo-favor');
+}
+
+export function obtenerConsumoPortal(): Promise<{ lecturas: LecturaConsumoPortal[] }> {
+  return peticion('/portal/consumo');
+}
+
+export function urlPdfFacturaPortal(facturaId: string): string {
+  return `${URL_BASE_API}/portal/facturas/${facturaId}/pdf`;
+}
+
+export function regenerarCodigoSuscriptor(
+  suscriptorId: string,
+  codigoNuevo: string,
+): Promise<{ suscriptor: Suscriptor }> {
+  return peticion(`/suscriptores/${suscriptorId}/regenerar-codigo`, {
+    method: 'POST',
+    body: JSON.stringify({ codigo_nuevo: codigoNuevo }),
+  });
+}
+
+// --- Cortes y reconexiones (009-cortes-y-reconexiones) ----------------------
+// Alcance reducido (opción a): acciones de admin_acueducto desde el panel,
+// siempre con confirmación humana explícita — nunca corte desatendido.
+
+export interface CandidatoCorte {
+  usuarioServicioId: string;
+  nombre: string;
+  codigoSuscriptor: string;
+  vencida: number;
+  diasMoraMax: number;
+}
+
+export function listarCandidatosCorte(): Promise<{ candidatos: CandidatoCorte[] }> {
+  return peticion('/cortes/candidatos');
+}
+
+export function cortarSuscriptor(suscriptorId: string, motivo: string): Promise<{ eventoId: string }> {
+  return peticion(`/suscriptores/${suscriptorId}/corte`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo }),
+  });
+}
+
+export function reconectarSuscriptor(
+  suscriptorId: string,
+  motivoExcepcion?: string,
+): Promise<{ eventoId: string; deudaVencida: number }> {
+  return peticion(`/suscriptores/${suscriptorId}/reconexion`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo_excepcion: motivoExcepcion }),
+  });
+}
+
+export interface EventoCorte {
+  id: string;
+  tipo: 'corte' | 'reconexion';
+  fecha: string;
+  motivo: string;
+  responsable: string;
+  deuda_vencida_al_reconectar: number | null;
+  factura_reconexion_id: string | null;
+}
+
+export function historialCortes(suscriptorId: string): Promise<{ historial: EventoCorte[] }> {
+  return peticion(`/suscriptores/${suscriptorId}/historial-cortes`);
+}
+
+// --- Importación masiva de suscriptores (012-importacion-suscriptores-excel) --
+
+export type CampoSuscriptorImportacion =
+  | 'codigo_suscriptor' | 'nombre' | 'numero_documento' | 'direccion' | 'categoria'
+  | 'tipo_documento' | 'telefono' | 'email' | 'sector' | 'notas';
+
+export type MapeoColumnasImportacion = Partial<Record<CampoSuscriptorImportacion, string>>;
+
+export type FilaCrudaImportacion = Record<string, string | number | null | undefined>;
+
+export interface FilaNormalizadaImportacion {
+  codigo_suscriptor: string;
+  nombre: string;
+  numero_documento: string;
+  direccion: string;
+  categoria: string;
+  tipo_documento?: string;
+  telefono?: string;
+  email?: string;
+  sector?: string;
+  notas?: string;
+}
+
+export interface ErrorFilaImportacion {
+  indiceFila: number;
+  motivo: string;
+}
+
+export interface ResultadoValidacionImportacion {
+  validas: Array<{ indiceFila: number; fila: FilaNormalizadaImportacion }>;
+  errores: ErrorFilaImportacion[];
+}
+
+export function validarImportacion(
+  filas: FilaCrudaImportacion[],
+  mapeo: MapeoColumnasImportacion,
+): Promise<ResultadoValidacionImportacion> {
+  return peticion('/suscriptores/importar/validar', {
+    method: 'POST',
+    body: JSON.stringify({ filas, mapeo }),
+  });
+}
+
+export interface ReporteImportacion {
+  id: string;
+  filasIntentadas: number;
+  filasImportadas: number;
+  filasConError: number;
+  errores: ErrorFilaImportacion[];
+  categoriasSinTarifa: string[];
+}
+
+export function confirmarImportacion(
+  filasValidas: Array<{ indiceFila: number; fila: FilaNormalizadaImportacion }>,
+  errores: ErrorFilaImportacion[],
+  nombreArchivo: string,
+): Promise<ReporteImportacion> {
+  return peticion('/suscriptores/importar/confirmar', {
+    method: 'POST',
+    body: JSON.stringify({ filasValidas, errores, nombreArchivo }),
+  });
+}

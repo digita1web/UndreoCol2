@@ -26,6 +26,7 @@ import {
   listarSuscriptores,
   obtenerSuscriptor,
   reemplazarContador,
+  regenerarCodigoSuscriptor,
   validarCamposEditables as validarCamposEditablesSuscriptor,
 } from './lib/suscriptores';
 import {
@@ -51,6 +52,27 @@ import {
   registrarPago,
 } from './lib/pagos';
 import { redondearPeso } from './core/pagos';
+import {
+  cortarSuscriptor,
+  historialCortes,
+  listarCandidatosCorte,
+  reconectarSuscriptor,
+} from './lib/cortes';
+import { validarFilas, type FilaCruda, type MapeoColumnas, type ErrorFila, type FilaNormalizada } from './core/importacion-suscriptores';
+import { confirmarImportacion, detectarDuplicadosContraBase } from './lib/importacion-suscriptores';
+import {
+  obtenerConsumoPortal,
+  obtenerFacturaCompletaPortal,
+  obtenerFacturasPortal,
+  obtenerSaldoFavorPortal,
+  requerirSesionSuscriptor,
+  resolverClientePorSlug,
+  validarCredencialesPortal,
+} from './lib/portal';
+import {
+  cerrarSesionSuscriptor,
+  iniciarSesionSuscriptor,
+} from './lib/sesion-suscriptor';
 import cierreFacturacion from './queues/cierre-facturacion';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -887,6 +909,49 @@ app.get('/facturas/:id/pdf', async (c) => {
   }
 });
 
+// POST /suscriptores/:id/regenerar-codigo — el admin asigna un código de portal
+// nuevo (008, CA-8). El lector recibe 403 por RLS (no solo la interfaz); un
+// código ya existente en el cliente → 409.
+app.post('/suscriptores/:id/regenerar-codigo', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req.json<{ codigo_nuevo?: string }>().catch(() => ({ codigo_nuevo: undefined }));
+  const codigoNuevo = body.codigo_nuevo?.trim() ?? '';
+  if (!codigoNuevo) {
+    return c.json({ error: 'codigo_nuevo es requerido' }, 400);
+  }
+  // CA-8: solo el admin_acueducto regenera códigos (el lector NO, por RLS y
+  // también con una comprobación explícita de membresía → 403 claro).
+  const { data: membresia } = await ctx.supabase
+    .from('membresias')
+    .select('rol')
+    .eq('perfil_id', ctx.perfilId)
+    .eq('cliente_id', ctx.clienteId)
+    .eq('activo', true)
+    .maybeSingle();
+  if (!membresia || membresia.rol !== 'admin_acueducto') {
+    return c.json({ error: 'No autorizado: solo el administrador del acueducto puede regenerar códigos' }, 403);
+  }
+  try {
+    const suscriptor = await regenerarCodigoSuscriptor(
+      ctx.supabase,
+      ctx.clienteId,
+      c.req.param('id'),
+      codigoNuevo,
+    );
+    return c.json({ suscriptor });
+  } catch (e) {
+    const mensaje = e instanceof Error ? e.message : 'No se pudo regenerar el código';
+    // 23505 llega como mensaje 'Ese código ya existe...' → 409. La violación de
+    // RLS (lector) llega como error de la base → 403 (CA-8: no solo la interfaz).
+    if (mensaje.includes('ya existe')) return c.json({ error: mensaje }, 409);
+    if (mensaje.toLowerCase().includes('row-level security') || mensaje.toLowerCase().includes('permission denied')) {
+      return c.json({ error: 'No autorizado: solo el administrador del acueducto puede regenerar códigos' }, 403);
+    }
+    return c.json({ error: mensaje }, 400);
+  }
+});
+
 // --- Pagos y cartera (007-pagos-y-cartera) ------------------------------------
 
 // Métodos de pago permitidos (enum metodo_pago de la base; validación aquí para
@@ -1020,6 +1085,245 @@ app.get('/suscriptores/:id/pagos', async (c) => {
     return c.json({ pagos, saldoFavor });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo leer el historial' }, 400);
+  }
+});
+
+// --- Cortes y reconexiones (009-cortes-y-reconexiones) ----------------------
+// Alcance reducido (opción a, aprobado por Mateo): acciones de admin_acueducto
+// desde el panel, con confirmación humana siempre explícita — nunca corte
+// desatendido. Sin "orden" asignada al lector (queda como feature futura).
+
+// GET /cortes/candidatos — suscriptores activos con deuda vencida por encima
+// del umbral configurado (sugerencia, no ejecución automática).
+app.get('/cortes/candidatos', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const candidatos = await listarCandidatosCorte(ctx.supabase, ctx.clienteId);
+    return c.json({ candidatos });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron listar los candidatos a corte' }, 400);
+  }
+});
+
+// POST /suscriptores/:id/corte — corta el servicio con motivo obligatorio.
+app.post('/suscriptores/:id/corte', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req.json<{ motivo?: string }>().catch(() => ({ motivo: undefined }));
+  const motivo = body.motivo?.trim();
+  if (!motivo) {
+    return c.json({ error: 'El motivo del corte es obligatorio' }, 400);
+  }
+  try {
+    const eventoId = await cortarSuscriptor(ctx.supabase, c.req.param('id'), motivo, ctx.perfilId);
+    return c.json({ eventoId }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo cortar el suscriptor' }, 400);
+  }
+});
+
+// POST /suscriptores/:id/reconexion — bloqueada con deuda vencida salvo
+// motivo_excepcion explícito; genera automáticamente la factura de reconexión.
+app.post('/suscriptores/:id/reconexion', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{ motivo_excepcion?: string }>()
+    .catch(() => ({ motivo_excepcion: undefined }));
+  const motivoExcepcion = body.motivo_excepcion?.trim() || null;
+  try {
+    const resultado = await reconectarSuscriptor(
+      ctx.supabase, ctx.clienteId, c.req.param('id'), motivoExcepcion, ctx.perfilId,
+    );
+    return c.json({ eventoId: resultado.eventoId, deudaVencida: resultado.deudaVencida }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo reconectar el suscriptor' }, 400);
+  }
+});
+
+// GET /suscriptores/:id/historial-cortes — historial de cortes/reconexiones.
+app.get('/suscriptores/:id/historial-cortes', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const historial = await historialCortes(ctx.supabase, c.req.param('id'));
+    return c.json({ historial });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo consultar el historial' }, 400);
+  }
+});
+
+// --- Importación masiva de suscriptores (012-importacion-suscriptores-excel) --
+// Límite explícito de filas por archivo (plan.md §7, CLAUDE.md §5.5): un
+// acueducto piloto tiene unos pocos cientos de suscriptores; un archivo más
+// grande se rechaza antes de procesar nada, nunca un intento silencioso.
+const LIMITE_FILAS_IMPORTACION = 2000;
+
+// POST /suscriptores/importar/validar — corre CA-1/CA-2 (core/, puro) + CA-3
+// (duplicados contra la base, lib/), no escribe nada.
+app.post('/suscriptores/importar/validar', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{ filas?: FilaCruda[]; mapeo?: MapeoColumnas }>()
+    .catch(() => ({ filas: undefined, mapeo: undefined }));
+  const filas = body.filas ?? [];
+  const mapeo = body.mapeo ?? {};
+  if (!Array.isArray(filas) || filas.length === 0) {
+    return c.json({ error: 'El archivo no tiene filas' }, 400);
+  }
+  if (filas.length > LIMITE_FILAS_IMPORTACION) {
+    return c.json({ error: `El archivo supera el límite de ${LIMITE_FILAS_IMPORTACION} filas por importación` }, 400);
+  }
+  try {
+    const resultadoCore = validarFilas(filas, mapeo);
+    const resultado = await detectarDuplicadosContraBase(ctx.supabase, ctx.clienteId, resultadoCore);
+    return c.json(resultado);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo validar el archivo' }, 400);
+  }
+});
+
+// POST /suscriptores/importar/confirmar — recibe las filas ya validadas (de
+// /validar, sin volver a tocarlas) y las errores a registrar en el
+// historial; inserta transaccionalmente (CA-6) vía la RPC importar_suscriptores().
+app.post('/suscriptores/importar/confirmar', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{
+      filasValidas?: Array<{ indiceFila: number; fila: FilaNormalizada }>;
+      errores?: ErrorFila[];
+      nombreArchivo?: string;
+    }>()
+    .catch(() => ({ filasValidas: undefined, errores: undefined, nombreArchivo: undefined }));
+  const filasValidas = body.filasValidas ?? [];
+  const errores = body.errores ?? [];
+  const nombreArchivo = body.nombreArchivo?.trim();
+  if (!nombreArchivo) {
+    return c.json({ error: 'Falta el nombre del archivo importado' }, 400);
+  }
+  if (filasValidas.length === 0) {
+    return c.json({ error: 'No hay filas válidas para importar' }, 400);
+  }
+  try {
+    const reporte = await confirmarImportacion(
+      ctx.supabase, ctx.clienteId, filasValidas, errores, nombreArchivo, ctx.perfilId,
+    );
+    return c.json(reporte, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo confirmar la importación' }, 400);
+  }
+});
+
+// --- Portal del suscriptor (008, D-2/D-4/D-10) -------------------------------
+
+// POST /portal/:slug/login — público. Resuelve el cliente por el slug de la URL
+// y valida numero_documento + codigo_suscriptor contra las funciones SECURITY
+// DEFINER del portal (D-10, sin contraseña). ok → 200 + cookie uc_sesion_suscriptor.
+app.post('/portal/:slug/login', async (c) => {
+  const slug = c.req.param('slug').trim().toLowerCase();
+  const body = await c.req
+    .json<{ numero_documento?: string; codigo_suscriptor?: string }>()
+    .catch(() => ({ numero_documento: undefined, codigo_suscriptor: undefined }));
+  const numeroDocumento = body.numero_documento?.trim() ?? '';
+  const codigoSuscriptor = body.codigo_suscriptor?.trim() ?? '';
+  if (!numeroDocumento || !codigoSuscriptor) {
+    return c.json({ error: 'numero_documento y codigo_suscriptor son requeridos' }, 400);
+  }
+  try {
+    const clienteId = await resolverClientePorSlug(c.env, slug);
+    if (!clienteId) return c.json({ error: 'Acueducto no encontrado' }, 404);
+
+    const credenciales = await validarCredencialesPortal(c.env, clienteId, numeroDocumento, codigoSuscriptor);
+    if (credenciales.estado === 'ok' && credenciales.usuarioServicioId) {
+      const sesion = await iniciarSesionSuscriptor(c, {
+        usuarioServicioId: credenciales.usuarioServicioId,
+        clienteId,
+        numeroDocumento,
+        codigoSuscriptor,
+      });
+      return c.json({ sesion });
+    }
+    if (credenciales.estado === 'inactivo') {
+      return c.json({ error: 'El suscriptor está inactivo. Contacte a su acueducto.' }, 403);
+    }
+    if (credenciales.estado === 'bloqueado') {
+      return c.json({ error: 'Demasiados intentos. Intente más tarde.', reintentar_en: credenciales.reintentarEn }, 429);
+    }
+    // 'invalido': mensaje genérico, nunca revela cuál campo falló (CA-1/CA-9)
+    return c.json({ error: 'Credenciales incorrectas' }, 401);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo iniciar sesión' }, 500);
+  }
+});
+
+// POST /portal/logout — borra la cookie del portal (idempotente).
+app.post('/portal/logout', async (c) => {
+  cerrarSesionSuscriptor(c);
+  return c.json({ ok: true });
+});
+
+// GET /portal/facturas — factura actual + historial del suscriptor autenticado.
+app.get('/portal/facturas', async (c) => {
+  const { ctx, respuesta } = await requerirSesionSuscriptor(c);
+  if (!ctx) return respuesta;
+  try {
+    const { facturaActual, historial } = await obtenerFacturasPortal(c.env, ctx.sesion);
+    return c.json({ facturaActual, historial });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron leer las facturas' }, 500);
+  }
+});
+
+// GET /portal/facturas/:id/pdf — sirve el PDF SOLO de una factura del suscriptor
+// autenticado. Si portal_factura_completa devuelve null (factura inexistente o
+// de OTRO suscriptor/cliente → IDOR) responde 404 sin servir bytes (CA-5).
+app.get('/portal/facturas/:id/pdf', async (c) => {
+  const { ctx, respuesta } = await requerirSesionSuscriptor(c);
+  if (!ctx) return respuesta;
+  const facturaId = c.req.param('id');
+  try {
+    const completa = await obtenerFacturaCompletaPortal(c.env, ctx.sesion, facturaId);
+    if (!completa) {
+      return c.json({ error: 'Factura no encontrada' }, 404);
+    }
+    const { factura, detalles, acueducto } = completa;
+    const pdfBytes = await generarPdfFactura({ factura, detalles, acueducto });
+    return new Response(pdfBytes as BodyInit, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${factura.numero}.pdf"`,
+      },
+    });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo generar el PDF' }, 500);
+  }
+});
+
+// GET /portal/saldo-favor — remanente de pagos vigentes sin aplicar (CA-6).
+app.get('/portal/saldo-favor', async (c) => {
+  const { ctx, respuesta } = await requerirSesionSuscriptor(c);
+  if (!ctx) return respuesta;
+  try {
+    const saldoFavor = await obtenerSaldoFavorPortal(c.env, ctx.sesion);
+    return c.json({ saldoFavor });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo leer el saldo a favor' }, 500);
+  }
+});
+
+// GET /portal/consumo — historial de consumo de TODOS los contadores (CA-7).
+app.get('/portal/consumo', async (c) => {
+  const { ctx, respuesta } = await requerirSesionSuscriptor(c);
+  if (!ctx) return respuesta;
+  try {
+    const lecturas = await obtenerConsumoPortal(c.env, ctx.sesion);
+    return c.json({ lecturas });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo leer el consumo' }, 500);
   }
 });
 

@@ -116,6 +116,34 @@ export async function actualizarSuscriptor(
   return data as Suscriptor;
 }
 
+// Regenera el código del portal (008, CA-8): UPDATE directo sobre
+// usuarios_servicio con el cliente ya autenticado del admin — la política RLS
+// usuarios_servicio_escritura (es_admin_de) cubre exactamente este cambio
+// (plan 008 §5: una RPC nueva sería redundante). El 23505 (unique
+// (cliente_id, codigo_suscriptor)) se traduce en un mensaje claro de 409.
+export async function regenerarCodigoSuscriptor(
+  supabase: SupabaseClient,
+  clienteId: string,
+  usuarioServicioId: string,
+  codigoNuevo: string,
+): Promise<Suscriptor> {
+  const { data, error } = await supabase
+    .from('usuarios_servicio')
+    .update({ codigo_suscriptor: codigoNuevo })
+    .eq('id', usuarioServicioId)
+    .eq('cliente_id', clienteId)
+    .select(COLUMNAS_SUSCRIPTOR)
+    .maybeSingle();
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error('Ese código ya existe en este acueducto');
+    }
+    throw new Error(`No se pudo regenerar el código: ${error.message}`);
+  }
+  if (!data) throw new Error('Suscriptor no encontrado');
+  return data as Suscriptor;
+}
+
 export interface Contador {
   id: string;
   cliente_id: string;
