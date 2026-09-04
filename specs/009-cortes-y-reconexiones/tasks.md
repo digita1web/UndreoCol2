@@ -232,7 +232,7 @@ mostrar la deuda vencida y exigir el motivo de excepción en el formulario mismo
 esperar el rechazo 400 del backend (doble verificación cliente+servidor, mismo criterio que el
 resto del proyecto).
 ```
-**Commit:** (pendiente)
+**Commit:** `b3b16e9`
 
 ## T-006 — Verificación manual end-to-end (CA-7)
 
