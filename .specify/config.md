@@ -36,20 +36,20 @@ En `specs/plantillas/`. Se copian al crear cada feature nueva.
 
 | NNN | Feature | Depende de | Estado |
 |-----|---------|-----------|--------|
-| 001 | fundacion (Pages+Workers+Hono+Supabase, keepalive, backup, monitoreo) | — | Spec aprobado, pendiente /plan |
-| 002 | catalogo-y-tarifas   | 001 | Pendiente |
-| 003 | suscriptores-contadores | 002 | Pendiente |
-| 004 | lecturas-y-consumo   | 003 | Pendiente |
-| 005 | facturacion          | 004 | Pendiente |
-| 006 | impresion-y-correo-factura (D-8, D-9 — reemplaza "pdf-facturas") | 005 | Pendiente |
-| 007 | pagos                | 005 | Pendiente |
-| 008 | portal-suscriptor    | 006 | Pendiente |
+| 001 | fundacion (Pages+Workers+Hono+Supabase, keepalive, backup, monitoreo) | — | Completa (CHANGELOG Sesiones 007-008) |
+| 002 | catalogo-y-tarifas   | 001 | Completa (CHANGELOG Sesión 009) |
+| 003 | suscriptores-contadores | 002 | Completa (CHANGELOG Sesión 010) |
+| 004 | lecturas-y-consumo   | 003 | Completa (CHANGELOG Sesión 011) |
+| 005 | facturacion          | 004 | Completa (CHANGELOG Sesión 012) |
+| 006 | impresion-y-correo-factura (D-8, D-9 — reemplaza "pdf-facturas") | 005 | Completa (CHANGELOG Sesión 013) |
+| 007 | pagos-y-cartera      | 005 | Completa (CHANGELOG Sesión 014) |
+| 008 | portal-suscriptor    | 006 | Completa (CHANGELOG Sesión 015) |
 | 009 | cortes-reconexiones  | 007 | Pendiente |
 | 010 | notificaciones       | 006 | Pendiente |
 | 011 | dashboard            | 007 | Pendiente |
-| 012 | rrhh-incapacidades   | 001 | Pendiente |
-| 013 | exportes-contables   | 007 | Pendiente |
-| 014 | pwa-lector-qr        | 004 | Pendiente |
+| 012 | exportes-contables   | 007 | Pendiente |
+| 013 | rrhh-incapacidades   | 001 | Pendiente |
+| 014 | qr-ocr-lector (identificación de contador por QR + lectura automática por OCR, ver `docs/ESPECIFICACION-FUNCIONAL.md §2.14.1`) | 004 | Pendiente — diferenciador tecnológico principal, requiere máximo rigor de precisión y confiabilidad |
 | 015 | limpieza-automatica  | 009 | Pendiente (Worker de limpieza completo, ver INFRAESTRUCTURA.md §9) |
 
 ## Regla de git
