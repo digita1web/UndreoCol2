@@ -54,78 +54,55 @@ producción es la misma que ya describe ese documento: revisar en el panel de Su
 
 ---
 
-## 2. Backups automáticos sin costo (GitHub Actions) — reemplaza la idea de backup manual
+## 2. Backups automáticos sin costo (GitHub Actions)
 
-**Decisión de esta sesión:** los backups del primer cliente se resuelven con un workflow de
-GitHub Actions programado, sin ningún paso manual periódico. Reutiliza el mismo patrón que ya
-se usó en el proyecto anterior de Frappe para este propósito (backup automático vía cron/CI,
-sin intervención humana recurrente).
+> **CORRECCIÓN (2026-09-04, misma sesión que agregó §5-7 de este documento):** la primera versión
+> de esta sección, escrita más temprano en la sesión de investigación de costos, afirmaba que el
+> backup automático era un pendiente sin implementar y proponía un workflow nuevo
+> (`backup-supabase.yml`) sin haber verificado primero si algo así ya existía en el repositorio.
+> **Eso era incorrecto.** El workflow ya existe, desde antes de esa sesión:
+> `.github/workflows/backup-diario.yml`, implementado el 2026-09-01 como parte del cierre de la
+> feature 001-fundación (commit `87afd9e`, `specs/001-fundacion/tasks.md` T-013, decisión **D-7**
+> de `docs/DECISIONES.md`). El error se detectó y se corrige aquí en la misma sesión de trabajo de
+> Semgrep/auditoría, antes de que Mateo llegara a leer la versión incorrecta como definitiva
+> (CLAUDE.md §8: un error de documentación se reporta y corrige en cuanto se detecta, no se deja
+> pasar). Se conserva un resumen del diseño real abajo — no se documenta un diseño alternativo.
 
-**Estado: PENDIENTE DE IMPLEMENTACIÓN — prioridad ALTA (antes de producción real).** Solo
-documentación en esta sesión, ningún archivo de código ni workflow creado todavía.
+### Estado real
 
-### Diseño
+**Implementado, pendiente de verificación en producción — no es un pendiente de código.**
+`docs/INFRAESTRUCTURA.md §6-7` tiene el detalle completo; resumen aquí para no duplicarlo:
 
-| Aspecto | Decisión |
+| Aspecto | Diseño real (ya implementado) |
 |---|---|
-| Disparador | `schedule` de GitHub Actions, cron cada 12-24h (a fijar el valor exacto al implementar — 24h es el mínimo razonable para no gastar minutos de Actions sin necesidad; 12h si Mateo quiere una ventana de pérdida de datos más corta) |
-| Archivo del workflow | `.github/workflows/backup-supabase.yml` |
-| Comando de dump | `supabase db dump` (CLI de Supabase), usando el secreto de GitHub `SUPABASE_DB_URL` |
-| Compresión | El archivo de salida se comprime (`gzip`) antes de subirlo |
-| Destino de almacenamiento | Dos opciones evaluadas, **decisión final pendiente** (ver nota abajo): (a) un repositorio privado aparte en GitHub, o (b) Cloudflare R2 (tier gratis: 10 GB de almacenamiento, muy por encima de lo que ocupan backups comprimidos de una base de <50 MB) |
-| Retención | Rotación automática: se borran los backups de más de 30 días |
-| Secreto necesario | `SUPABASE_DB_URL` como secret de GitHub Actions (nunca en el repo) |
+| Archivo del workflow | `.github/workflows/backup-diario.yml` |
+| Disparador | `schedule` diario (06:00 UTC) + `workflow_dispatch` (disparo manual) |
+| Herramienta de dump | `pg_dump --format=custom --no-owner`, en un contenedor `postgres:16-alpine` (sin instalar nada en el runner) |
+| Conexión | Secreto `SUPABASE_DB_URL` — **Session Pooler, puerto 6543** (GitHub Actions no soporta IPv6, que la conexión directa 5432 de Supabase requiere) |
+| Compresión | `gzip` |
+| Destino | Cloudflare R2 (`wrangler r2 object put`, sin dependencia estilo AWS) |
+| Retención | Regla *lifecycle* de 30 días del bucket R2 (config. del proveedor, no un paso de borrado en el workflow — D-7 descartó eso deliberadamente por frágil en CI) |
+| Secretos necesarios | `SUPABASE_DB_URL`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (GitHub → Settings → Secrets, nunca en el repo) |
 
-### Nota — decisión de almacenamiento aún abierta
+**Lo único NO VERIFICADO** es la ejecución real: este y los contenedores de sesiones anteriores
+nunca tuvieron los secretos de GitHub ni el bucket R2 real, así que nadie ha confirmado todavía
+que un `workflow_dispatch` real sube un backup a R2 con éxito. Pasos exactos para Mateo, ya
+documentados en `specs/001-fundacion/tasks.md` T-013:
 
-Esta sesión dejó dos opciones válidas sin decidir cuál usar, a diferencia de `docs/DECISIONES.md`
-D-7 (ver reconciliación abajo), que ya había fijado R2 como destino único:
+```bash
+# 1. Configurar en GitHub → Settings → Secrets and variables → Actions:
+#    SUPABASE_DB_URL (Session Pooler, puerto 6543), CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN
+# 2. Crear el bucket R2 `undreocol-backups` con una regla lifecycle de expiración a 30 días.
+# 3. Disparar manualmente: GitHub → Actions → backup-diario → Run workflow.
+# 4. Verificar:
+npx wrangler r2 object list undreocol-backups
+#    → debe mostrar undreocol-backup-<fecha>-<sha>.sql.gz con su tamaño.
+# 5. Restauración de prueba en staging, siguiendo docs/INFRAESTRUCTURA.md §7
+#    ("un backup sin restaurar no es un backup").
+```
 
-- **Repo privado aparte:** cero configuración de credenciales de Cloudflare, pero un repositorio
-  de GitHub no está pensado para almacenamiento binario recurrente (límite práctico de tamaño de
-  repo, sin política de expiración nativa — la rotación de 30 días tendría que hacerla el propio
-  workflow borrando commits/archivos viejos).
-- **Cloudflare R2:** tier gratis de 10 GB, con reglas de *lifecycle* nativas del bucket para la
-  retención de 30 días (sin lógica de borrado dentro del workflow) — es el mecanismo que
-  `docs/INFRAESTRUCTURA.md §6` ya documentaba antes de esta sesión.
-
-**Recomendación técnica (no una decisión de Mateo todavía):** R2 sigue siendo la opción más
-robusta por la regla de *lifecycle* nativa — evita un paso de borrado manual/scripted dentro del
-workflow, que `docs/INFRAESTRUCTURA.md §6` ya había descartado deliberadamente por ser frágil en
-CI. Queda para que Mateo confirme antes de implementar.
-
-### Reconciliación con `docs/DECISIONES.md` D-7 y `docs/INFRAESTRUCTURA.md §6` (contradicción a resolver antes de implementar)
-
-`docs/INFRAESTRUCTURA.md §6` ya documentaba, desde antes de esta sesión, un diseño de backup
-automático aprobado como decisión **D-7** — **no** es correcto describir la idea de backup
-automático como nueva; lo nuevo aquí es un mecanismo distinto para lograrlo. Diferencias
-concretas entre el diseño ya aprobado (D-7) y el de esta sesión:
-
-| Aspecto | D-7 (ya documentado) | Esta sesión |
-|---|---|---|
-| Archivo del workflow | `.github/workflows/backup-diario.yml` | `.github/workflows/backup-supabase.yml` |
-| Herramienta de dump | `pg_dump --format=custom --no-owner` dentro de un contenedor `postgres:16-alpine` | CLI `supabase db dump` |
-| Conexión | Secreto `SUPABASE_DB_URL` con el **Session Pooler, puerto 6543** (D-7 es explícito: GitHub Actions no soporta IPv6 y la conexión directa 5432 lo requiere) | Secreto `SUPABASE_DB_URL`, puerto no especificado en esta sesión |
-| Destino | Cloudflare R2 únicamente, con `wrangler r2 object put` | Repo privado o R2, sin decidir |
-| Retención | Regla *lifecycle* del bucket R2 | "Rotación automática" sin mecanismo especificado |
-
-**Esto se reporta explícitamente, no se oculta (CLAUDE.md §8):** antes de implementar, alguien
-tiene que decidir cuál diseño es el vigente — no pueden coexistir dos workflows de backup con
-nombres y mecanismos distintos apuntando al mismo problema. Mientras no se reconcilien, este
-documento y `docs/INFRAESTRUCTURA.md §6` describen dos versiones del mismo pendiente. La
-recomendación técnica es conservar el detalle ya aprobado de D-7 que esta sesión no contradice
-por una razón técnica concreta (el puerto 6543 del Session Pooler, específicamente necesario
-porque GitHub Actions no soporta IPv6) y renombrar/ajustar solo lo que esta sesión sí cambia
-deliberadamente (usar `supabase db dump` en vez de `pg_dump` en contenedor, si esa simplificación
-es intencional). Cuando se implemente, actualizar `docs/INFRAESTRUCTURA.md §6-7` para que quede
-un solo diseño vigente, y marcar D-7 en `docs/DECISIONES.md` como superseded si el mecanismo
-cambia de fondo.
-
-**Verificación esperada al implementar (CA a definir en el `/specify` correspondiente):**
-`workflow_dispatch` manual disparado, archivo aparece en el destino elegido con el tamaño
-correcto, y — siguiendo el protocolo ya documentado en `docs/INFRAESTRUCTURA.md §7` — una
-restauración de prueba en un proyecto Supabase de staging confirma que el backup es utilizable
-(*"un backup sin restaurar no es un backup"*).
+Esto ya es 100% automático una vez verificado — no hace falta ningún cambio de código ni una
+nueva decisión de diseño. **Prioridad de esta tarea: verificar, no implementar.**
 
 ---
 
@@ -234,22 +211,24 @@ Workers Paid (§4) — con Resend, el primer gasto real sigue siendo exclusivame
 documentado en `ARQUITECTURA.md §6` (Workers Paid, **solo** con el primer cliente pagando), no
 antes.
 
-**Backups: 100% automáticos, sin intervención manual periódica** una vez implementado el pendiente
-de §2 — a diferencia de un backup manual (que dependería de que alguien recuerde ejecutarlo), el
-workflow de GitHub Actions corre solo, con la única intervención humana siendo el ritual mensual
-de *verificación* de restauración que ya describe `docs/INFRAESTRUCTURA.md §7.3` (que es
-deliberadamente manual — confirmar que un backup automático realmente sirve no se puede
-automatizar del todo sin restarle valor a la verificación).
+**Backups: ya son 100% automáticos por código** (`backup-diario.yml`, §2) — a diferencia de un
+backup manual (que dependería de que alguien recuerde ejecutarlo), el workflow corre solo. Lo
+pendiente es solo la verificación en producción (secretos + bucket + `workflow_dispatch` de
+prueba), más el ritual mensual de *verificación de restauración* que ya describe
+`docs/INFRAESTRUCTURA.md §7.3` (deliberadamente manual — confirmar que un backup realmente sirve
+no se puede automatizar del todo sin restarle valor a la verificación).
 
 ---
 
 ## 7. Pendientes técnicos de esta sesión — tabla de seguimiento
 
-| # | Pendiente | Prioridad | Amplía / crea | Archivos principales al implementar |
+| # | Pendiente | Prioridad | Amplía / crea | Archivos principales |
 |---|---|---|---|---|
-| 1 | Backup automático vía GitHub Actions | **ALTA** — antes de producción real | Nuevo (posible feature 016 o ampliación de 001-fundación, a decidir en `/specify`) | `.github/workflows/backup-supabase.yml`, reconciliar con D-7 (§2 arriba) |
+| 1 | Verificar en producción el backup ya implementado (§2) — configurar secretos, bucket R2, disparar `workflow_dispatch`, confirmar con `wrangler r2 object list`, hacer una restauración de prueba | **ALTA** — antes de producción real | Verificación, no código nuevo — `.github/workflows/backup-diario.yml` ya existe | Ninguno de código; `specs/001-fundacion/tasks.md` T-013 tiene los pasos exactos |
 | 2 | Cambiar correo de Cloudflare Email Service a Resend | MEDIA | Amplía Feature 006 (cerrada) | `backend/src/lib/email.ts`, `docs/DECISIONES.md` (D-8/nueva D-11), `ARQUITECTURA.md §6` |
 | 3 | Monitoreo de errores con Sentry | MEDIA | Nuevo (transversal, no atado a una feature del roadmap) | `backend/src/index.ts`, Workers de `cron/`, `frontend/app/` (error boundary) |
 
-Ninguno de los tres tiene `spec.md`/`plan.md`/`tasks.md` todavía — siguiendo `CLAUDE.md §3`, no
-se escribe código sin pasar primero por `/specify` cuando Mateo decida priorizarlos.
+Los pendientes 2 y 3 no tienen `spec.md`/`plan.md`/`tasks.md` todavía — siguiendo `CLAUDE.md §3`,
+no se escribe código sin pasar primero por `/specify` cuando Mateo decida priorizarlos. El
+pendiente 1 no necesita `/specify` — es verificación operativa de código ya escrito, no una
+feature nueva.

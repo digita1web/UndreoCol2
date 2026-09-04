@@ -4,7 +4,68 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-04 — Sesión 019: Semgrep automatizado + plan de auditoría final por LLM
+
+Dos entregables: (1) implementación real de Semgrep en CI, (2) documentación del plan de auditoría
+de seguridad pre-producción. Incluye además la corrección de un error de la Sesión 018 (ver nota
+en esa entrada, abajo).
+
+**T-1 — `.github/workflows/semgrep.yml` (implementación real)**
+Corre en cada `push` y `pull_request` a cualquier rama (sin filtro `branches`). Dos pasos:
+1. Reporte completo con `p/security-audit` + `p/typescript` + `p/react` + `p/secrets`, todas las
+   severidades, subido a GitHub Code Scanning vía SARIF (`github/codeql-action/upload-sarif@v3`) —
+   no bloqueante (`continue-on-error: true`).
+2. Gate real: el mismo ruleset filtrado a `--severity ERROR` con `--error`, sin
+   `continue-on-error` — falla el job (y por lo tanto el check de CI) si hay al menos un hallazgo
+   de severidad ERROR.
+
+Ruleset elegido tras investigar: Semgrep no publica un pack específico de Cloudflare Workers;
+`p/security-audit` (el pedido explícitamente) combinado con `p/typescript` (todo el proyecto),
+`p/react` (frontend/, Next.js usa React — no hay pack "Next.js" propio) y `p/secrets` (relevante
+por CLAUDE.md §12, que prohíbe absolutamente commitear claves/tokens) es la combinación más
+apropiada para este stack.
+
+**Verificado de verdad, no asumido:** este contenedor no puede alcanzar `semgrep.dev` (proxy de
+red restringido). Se instaló Semgrep 1.176.0 en un venv aislado y se clonó
+`github.com/semgrep/semgrep-rules` (la fuente abierta de la que salen los packs del registro) para
+correr el equivalente exacto de `p/typescript` + `p/react` + `p/security-audit` (subconjunto
+javascript/lang/security) + `p/secrets` contra el código real de `backend/src/` y `frontend/`:
+**2 hallazgos reales, ambos severidad WARNING, 0 ERROR** — `backend/src/index.ts:204` (regex de
+slug con posible ReDoS) y `backend/src/queues/cierre-facturacion.ts:298` (HTML sin escapar en un
+template string del correo de factura, XSS potencial si `acueducto.nombre` contuviera markup).
+Ninguno de los dos bloquea el workflow (ninguno es ERROR) — quedan como hallazgos visibles en
+Code Scanning para revisión, no forzados a corregirse en esta sesión (fuera de alcance: la tarea
+pedida era activar Semgrep, no corregir hallazgos).
+
+**Hallazgo real sobre el propio Semgrep, verificado con un caso construido a propósito:** el CLI
+open-source de Semgrep (`semgrep scan`, sin conexión a Semgrp Cloud Platform) **sale con código 0
+sin importar cuántos hallazgos tenga**, incluso con un hallazgo ERROR real forzado deliberadamente
+(`child_process.exec` con input de función, un caso clásico de inyección de comandos) — la
+etiqueta "❰❰ Blocking ❱❱" que se ve en pantalla es solo visual, no afecta el exit code. Hace falta
+el flag `--error` (exit 1 si hay hallazgos) combinado con `--severity ERROR` (para que solo cuenten
+los ERROR) — verificado con el mismo caso construido: exit 1 con el hallazgo ERROR presente, exit
+0 cuando el único hallazgo real del proyecto era WARNING. Sin este detalle, el workflow habría
+"funcionado" (reportado) pero nunca habría bloqueado nada — exactamente el tipo de "debería
+funcionar" que CLAUDE.md §4 prohíbe aceptar sin evidencia real.
+
+**NO VERIFICADO — requiere acción de Mateo:** un archivo de workflow en rojo no bloquea un merge
+por sí solo. GitHub solo lo hace si la rama tiene "Require status checks to pass before merging"
+activado (Settings → Branches) con el check `semgrep` seleccionado — es una configuración del
+repositorio que Mateo tiene que activar una vez, no algo que este workflow pueda activar por sí
+mismo. Documentado explícitamente en el propio archivo del workflow.
+
+**T-2 — `docs/PLAN-PRODUCCION.md` (nuevo)**
+Sección "Auditoría de seguridad pre-producción" con el texto exacto que dio Mateo: auditoría única
+por LLM de mayor capacidad de razonamiento disponible (Claude Opus o DeepSeek Reasoner/Pro), al
+completar el roadmap 001-014, revisando RLS/SECURITY DEFINER/sesiones/rate limiting/hallazgos
+pendientes de Semgrep — complementa, no reemplaza, la verificación feature por feature ya hecha.
+
 ### 2026-09-04 — Sesión 018: planificación de costos e infraestructura (documentación, sin código)
+
+> **Corrección posterior (Sesión 019, mismo día):** el punto 2 de abajo describía el backup
+> automático como "PENDIENTE DE IMPLEMENTACIÓN" sin haber verificado primero si ya existía en el
+> repositorio. Era incorrecto — `.github/workflows/backup-diario.yml` ya estaba implementado
+> desde el 2026-09-01 (feature 001, commit `87afd9e`). Corregido en la Sesión 019, ver abajo.
 
 Sesión de solo documentación (Mateo lo pidió explícito: "Solo documentación, no implementación de
 código todavía"). Registra las decisiones de una sesión de investigación de costos, en
