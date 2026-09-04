@@ -28,6 +28,26 @@ npm run build→ BUILD_EXIT=0 (Next 15.5.25 · 15/15 páginas · /app/suscriptor
 git diff     → solo frontend/package.json (1 línea) y frontend/package-lock.json
 ```
 
+**Hallazgo NUEVO y SEPARADO tras el fix — `postcss` (dependencia transitiva de `next`), NO
+relacionado con la Feature 012. Pendiente de severidad a evaluar en una sesión futura dedicada
+a actualizar Next.js con cuidado; no se toca en esta sesión (commit aparte a propósito).**
+
+El mismo `npm audit` que confirma el fix de xlsx reporta **2 vulnerabilidades (1 moderate + 1
+high)** en `postcss`, la copia ANIDADA que fija `next@15.5.25`
+(`node_modules/next/node_modules/postcss@8.4.31`). El `postcss@8.5.26` del root
+(autoprefixer/tailwind) NO cubre esa copia anidada, por eso `next` figura como dependencia
+vulnerable:
+- `GHSA-qx2v-qp2m-jg93` (XSS por `</style>` sin escapar en el stringify de CSS) — moderate
+- `GHSA-6g55-p6wh-862q` (lectura de archivos / divulgación vía `sourceMappingURL`) — high
+- `GHSA-fxqj-rqcc-2cmp` (fix incompleto del anterior cuando `from` no está definido) — moderate
+- `GHSA-r28c-9q8g-f849` (path traversal → divulgación de archivos `.map`) — high
+
+`npm audit fix --force` la resolvería instalando `next@16.3.4` (cambio de versión mayor,
+breaking) — **NO se ejecutó**, está fuera del alcance de esta tarea. Contexto para la sesión
+futura: la copia afectada la usa Next para procesar CSS del propio proyecto en build-time (no
+procesa CSS de usuarios finales), así que el impacto práctico en runtime se evalúa allí — no se
+asume cero ni se descarta.
+
 ### 2026-09-04 — Sesión 019: Semgrep automatizado + plan de auditoría final por LLM
 
 Dos entregables: (1) implementación real de Semgrep en CI, (2) documentación del plan de auditoría
