@@ -1,6 +1,6 @@
 # SPEC — 009: cortes-y-reconexiones
 
-**Estado:** Borrador para aprobación
+**Estado:** Aprobado (2026-09-04) — alcance reducido (opción a de §5), pendiente de `/plan`
 **Depende de:** 007-pagos-y-cartera (cartera vencida, `obtenerCartera()`); reutiliza infraestructura
 de 001-fundación (`configuracion.dias_umbral_corte`/`valor_reconexion`/`prefijo_reconexion`,
 `estado_suscriptor.cortado`) y 005-facturación (`siguiente_numero_factura()`, `tipo_factura.reconexion`)
@@ -39,11 +39,11 @@ suscriptor efectivamente llegue a `estado = 'cortado'` (y de vuelta a `activo`),
 - **Candidatos a corte por umbral:** un listado que muestra los suscriptores cuya deuda vencida
   supera `configuracion.dias_umbral_corte` días (reutilizando `diasMoraMax` de `obtenerCartera()`,
   007).
-- **Quién ejecuta el corte y desde dónde — alcance reducido respecto a la especificación funcional
-  existente, pendiente de tu confirmación en el checkpoint (ver §5):** esta spec construye el corte
-  como una acción de `admin_acueducto` desde el panel web, no la "orden de corte" ejecutada por el
-  rol `lector` desde su celular que describe `docs/ESPECIFICACION-FUNCIONAL.md §2.11`. Ver §5 para
-  la justificación completa y las dos opciones.
+- **Quién ejecuta el corte y desde dónde — decisión de alcance aprobada por Mateo (2026-09-04, ver
+  §5):** el corte es una acción de `admin_acueducto` desde el panel web (opción a de §5), no la
+  "orden de corte" ejecutada por el rol `lector` desde su celular que describe
+  `docs/ESPECIFICACION-FUNCIONAL.md §2.11`. Esa segunda vía (opción b) queda como feature futura,
+  no se implementa en 009 — el volumen actual del acueducto piloto no la justifica todavía.
 - Un suscriptor ya `cortado` no puede volver a cortarse (la acción es idempotente por rechazo
   explícito, no por éxito silencioso).
 
@@ -77,14 +77,15 @@ suscriptor efectivamente llegue a `estado = 'cortado'` (y de vuelta a `activo`),
   010-notificaciones.
 - **Ejecución física del corte** (cerrar la válvula en campo) — es un proceso operativo del
   acueducto, fuera del sistema. 009 solo refleja el estado administrativo.
-- **Corte automático desatendido** (un Cron Worker que corte sin intervención humana) — ver
-  decisión propuesta en §5.
+- **Corte automático desatendido** (un Cron Worker que corte sin intervención humana) — decisión 1
+  de §5, aprobada: el corte siempre pasa por confirmación humana.
 - **Un sistema genérico de "órdenes" asignadas a un `lector` específico, ejecutadas desde su
   celular** (lo que describe `docs/ESPECIFICACION-FUNCIONAL.md §2.11` y menciona CLAUDE.md §10
   punto 24) — no existe todavía ninguna infraestructura de código para esto (verificado: no hay
   tabla ni concepto de "orden" en `backend/src/` ni en las migraciones, solo el comentario
-  preparatorio de 001 `'lector' -- Fontanero. Lecturas y órdenes asignadas, desde celular`). Ver §5:
-  es una decisión de alcance para el checkpoint, no una omisión silenciosa.
+  preparatorio de 001 `'lector' -- Fontanero. Lecturas y órdenes asignadas, desde celular`).
+  **Decisión 2 de §5, aprobada:** queda documentado como feature futura, no se implementa en 009 —
+  el volumen actual del acueducto piloto no lo justifica todavía.
 - **Reglas de corte distintas por tipo de suscriptor** (comercial vs. residencial, etc.) — no está
   en la especificación funcional (`docs/ESPECIFICACION-FUNCIONAL.md §2.11`); si hace falta, es una
   ampliación futura de `configuracion`.
@@ -101,39 +102,36 @@ De `CLAUDE.md §10`:
   autorizador.
 - **19.** La reconexión genera factura independiente (`tipo = 'reconexion'`).
 
-**Decisión propuesta 1 — corte "automático" es sugerido, no desatendido:** tu instrucción dice
-"manual, o con umbral configurable de días vencidos", que se puede leer como corte 100% automático
-(un Cron Worker que corta sin que nadie lo confirme) o como un umbral que el sistema usa para
-**sugerir** candidatos que un humano confirma. Propongo la segunda lectura por consistencia con el
-resto del proyecto: cortar el servicio de una familia real sin que ningún humano lo confirme es un
-riesgo mayor que el beneficio de automatizarlo del todo (CLAUDE.md §1: "los datos que maneja son
-dinero real de gente real"), y además evita un Worker de Cron nuevo (costo/complejidad adicional no
-justificada todavía, CLAUDE.md §2).
+**Decisión 1 — corte "automático" es sugerido, no desatendido (aprobada por Mateo 2026-09-04):**
+la instrucción original decía "manual, o con umbral configurable de días vencidos", que admitía dos
+lecturas: corte 100% automático (un Cron Worker que corta sin que nadie lo confirme) o un umbral
+que el sistema usa para **sugerir** candidatos que un humano confirma. Se aprobó la segunda
+lectura: cortar el servicio de una familia real sin que ningún humano lo confirme es un riesgo
+mayor que el beneficio de automatizarlo del todo (CLAUDE.md §1: "los datos que maneja son dinero
+real de gente real"), y además evita un Worker de Cron nuevo (costo/complejidad adicional no
+justificada todavía, CLAUDE.md §2). El corte y la reconexión son siempre una acción de
+`admin_acueducto` con confirmación humana explícita, nunca ejecutada sin revisión.
 
-**Decisión propuesta 2 — quién ejecuta el corte (hallazgo al leer `docs/ESPECIFICACION-FUNCIONAL.md
-§2.11`, no anticipado en tu instrucción):** ese documento —ya existente, no escrito para esta
-sesión— describe algo más específico que "un admin corta desde el panel": dice literalmente que el
-sistema genera una **"orden de corte"** automática al superar el umbral, y que "al ejecutar el
-corte (**desde el celular del lector**)" el suscriptor pasa a `cortado`. Eso conecta con CLAUDE.md
-§10 punto 24 ("el lector... ejecuta órdenes asignadas a él"). Verifiqué el código real: **no existe
-ninguna tabla ni concepto de "orden" todavía**, solo un comentario preparatorio en el enum de 001.
-Construir el sistema completo de órdenes-asignadas-a-lector (asignación, vista en la PWA del
-lector, ejecución desde el celular) es una ampliación de alcance real, no un detalle menor — afecta
-tablas, rutas, permisos del rol `lector` y una superficie de frontend que hoy no existe para ese
-rol. Dos opciones:
-  - **(a) Alcance reducido (lo que construye esta spec tal como está escrita):** el corte y la
-    reconexión son acciones de `admin_acueducto` desde el panel web — el sistema sugiere
-    candidatos por umbral, el admin decide y ejecuta. No hay "orden" como entidad separada ni
-    ejecución desde el celular del lector. Más rápido de construir, y sigue cumpliendo el requisito
-    central: nadie corta el servicio sin que un humano lo confirme, con motivo y responsable.
-  - **(b) Alcance completo según §2.11:** agregar el concepto de "orden de corte" (generada por
-    umbral, asignable a un lector), una vista para que el lector la vea y la ejecute desde su
-    celular, y RLS que le permita solo actuar sobre sus órdenes asignadas. Esto es varias veces más
-    grande que (a) y probablemente merece ser su propia feature (o una ampliación explícita de esta
-    con su propio `/plan`).
-
-Recomiendo (a) para 009 y dejar (b) como una feature futura o una fase 2 explícita, pero es tu
-decisión — dilo en el checkpoint y se ajusta el spec/plan antes de seguir.
+**Decisión 2 — quién ejecuta el corte (aprobada por Mateo 2026-09-04, opción a):** hallazgo al leer
+`docs/ESPECIFICACION-FUNCIONAL.md §2.11` (ya existente, no anticipado en la instrucción original de
+esta feature): ese documento describe algo más específico que "un admin corta desde el panel" —
+dice literalmente que el sistema genera una **"orden de corte"** automática al superar el umbral, y
+que "al ejecutar el corte (**desde el celular del lector**)" el suscriptor pasa a `cortado`. Eso
+conecta con CLAUDE.md §10 punto 24 ("el lector... ejecuta órdenes asignadas a él"). Se verificó el
+código real: **no existe ninguna tabla ni concepto de "orden" todavía**, solo un comentario
+preparatorio en el enum de 001. Se presentaron dos opciones:
+  - **(a) Alcance reducido — APROBADA, es lo que construye esta spec:** el corte y la reconexión
+    son acciones de `admin_acueducto` desde el panel web — el sistema sugiere candidatos por
+    umbral, el admin decide y ejecuta. No hay "orden" como entidad separada ni ejecución desde el
+    celular del lector. Cumple el requisito central: nadie corta el servicio sin que un humano lo
+    confirme, con motivo y responsable.
+  - **(b) Alcance completo según §2.11 — diferida, no se implementa ahora:** agregar el concepto de
+    "orden de corte" (generada por umbral, asignable a un lector), una vista para que el lector la
+    vea y la ejecute desde su celular, y RLS que le permita solo actuar sobre sus órdenes
+    asignadas. Queda documentada como feature futura (candidata a un número de roadmap propio
+    cuando se necesite) — el volumen actual del acueducto piloto no la justifica todavía; se
+    reconsidera si el número de suscriptores/lectores crece al punto de que la revisión manual de
+    candidatos desde el panel deje de ser práctica.
 
 De `CLAUDE.md §5.4`: `cortes_reconexiones` lleva `cliente_id` y RLS `FORCE`; test de aislamiento en
 la misma tarea que la crea.
