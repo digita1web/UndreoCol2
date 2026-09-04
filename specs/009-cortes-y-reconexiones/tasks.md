@@ -201,7 +201,7 @@ $ grep -rn "@supabase" frontend/app/ frontend/components/ frontend/lib/
 lib/api.ts:1:// Wrapper fetch hacia la API de Hono (backend/). Nunca importa `@supabase/*`
 1 resultado, mismo falso positivo del comentario de cabecera ya documentado en 002/003.
 ```
-**Commit:** (pendiente)
+**Commit:** `4b3b121`
 
 ## T-005 — Frontend: panel de candidatos + acciones en el detalle del suscriptor (CA-7)
 
