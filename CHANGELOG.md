@@ -4,6 +4,41 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-04 — Sesión 021: fix login admin — cookie `uc_sesion_admin` con `Secure` solo sobre HTTPS
+
+Causa raíz del bug "login de administrador da 401 en el navegador aunque funciona por curl"
+(confirmada por Mateo con evidencia de DevTools): la cookie `uc_sesion_admin` se escribía
+SIEMPRE con `Secure`, también en desarrollo local (HTTP). Los navegadores descartan una cookie
+`Secure` recibida por una conexión no-HTTPS → `POST /auth/login` respondía 200 con `Set-Cookie`,
+pero la cookie nunca se guardaba y la siguiente petición autenticada iba sin cookie → 401 y
+redirect silencioso al login.
+
+**Fix (localizado y acotado):** `backend/src/lib/auth.ts` — el atributo `Secure` ya no es fijo;
+se decide por el protocolo real del request (`new URL(c.req.url).protocol === 'https:'`). El edge
+de Cloudflare (producción y previews) atiende todo por HTTPS → allí la cookie sigue siendo
+`Secure`; en dev local (`wrangler dev`, http://localhost:8787) se omite `Secure` → el navegador
+la guarda.
+
+**Verificado de verdad (evidencia curl real, no asumida):**
+- `wrangler dev` (HTTP local) contra Supabase local: `POST /auth/login` → 200, `Set-Cookie:
+  uc_sesion_admin=…; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax` (SIN `Secure`) → `GET
+  /auth/sesion` con esa cookie → **200** (antes: 401 por cookie descartada en el navegador).
+- `wrangler dev --local-protocol https`: mismo login → `Set-Cookie: … HttpOnly; Secure;
+  SameSite=Lax` (CON `Secure`) → `GET /auth/sesion` → **200**.
+- `npm run build` (tsc) EXIT=0 · `npm run lint` EXIT=0 · `vitest` 9 archivos / 105 tests en
+  verde · `wrangler deploy --dry-run` EXIT=0.
+- Usuario de prueba creado en Supabase local para la verificación: `fix-cookie-dev@test.local`.
+- Limitación de entorno anotada: el flujo SSR vía `next dev` no se pudo validar con curl — el
+  middleware de Next no procesa cookies de peticiones curl directas en este entorno (ni con
+  cookie trivial); la verificación navegador real queda para Mateo (mismo repro que confirmó el
+  bug, ahora debe entrar sin loop).
+
+**Hallazgo relacionado, FUERA del alcance de este fix (decisión de Mateo pendiente):**
+`backend/src/lib/sesion-suscriptor.ts` (cookie del portal `uc_sesion_suscriptor`) tiene el mismo
+patrón `secure: true` fijo y sufriría el mismo bug en dev por navegador. Extenderle el mismo
+criterio condicional toca CLAUDE.md §10-22b (que exige literalmente `Secure` para esa cookie) —
+señalado aquí para que Mateo decida; sin aprobación explícita no se toca.
+
 ### 2026-09-04 — Sesión 020: fix de seguridad — xlsx migrado a SheetJS 0.20.3 (CDN oficial)
 
 Cierre del pendiente de la Sesión 017 (Feature 012). `xlsx@0.18.5` — la única versión que el

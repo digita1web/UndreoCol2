@@ -32,14 +32,26 @@ interface TokenSesion {
 
 const OPCIONES_COOKIE = {
   httpOnly: true,
-  secure: true,
   sameSite: 'Lax' as const,
   path: '/',
   maxAge: DURACION_COOKIE_SESION_SEG,
 };
 
+// El atributo Secure SOLO se envía sobre HTTPS real. El edge de Cloudflare
+// (producción y previews) atiende todo por HTTPS, así que c.req.url es https.
+// En dev local (wrangler dev, http://localhost:8787) un navegador descarta una
+// cookie Secure recibida por HTTP: el login respondía 200 pero la sesión no se
+// guardaba y la siguiente petición daba 401 (bug real confirmado con DevTools
+// por Mateo — CHANGELOG Sesión 021).
+function secureSegunProtocolo(c: Context<{ Bindings: Env }>): boolean {
+  return new URL(c.req.url).protocol === 'https:';
+}
+
 function escribirCookie(c: Context<{ Bindings: Env }>, t: TokenSesion): void {
-  setCookie(c, NOMBRE_COOKIE_SESION, JSON.stringify(t), OPCIONES_COOKIE);
+  setCookie(c, NOMBRE_COOKIE_SESION, JSON.stringify(t), {
+    ...OPCIONES_COOKIE,
+    secure: secureSegunProtocolo(c),
+  });
 }
 
 function leerCookie(c: Context<{ Bindings: Env }>): TokenSesion | null {
