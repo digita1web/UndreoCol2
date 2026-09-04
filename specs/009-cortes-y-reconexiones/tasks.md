@@ -178,7 +178,7 @@ bloqueador que 002/003/007). Pendiente del bench de Mateo — pasos exactos: lev
 sesión de un admin_acueducto real, GET /cortes/candidatos, POST corte con motivo, POST reconexion
 con y sin motivo_excepcion, GET historial-cortes).
 ```
-**Commit:** (pendiente)
+**Commit:** `8680b11`
 
 ## T-004 — Frontend: `lib/api.ts` — funciones de cortes y reconexiones
 
