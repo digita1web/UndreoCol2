@@ -4,6 +4,30 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-04 — Sesión 020: fix de seguridad — xlsx migrado a SheetJS 0.20.3 (CDN oficial)
+
+Cierre del pendiente de la Sesión 017 (Feature 012). `xlsx@0.18.5` — la única versión que el
+registro de npm distribuye, con 2 vulnerabilidades altas sin parche allí
+(GHSA-4r6h-8v6p-xvw6 Prototype Pollution y GHSA-5pgg-2g8v-p4x9 ReDoS) — se reemplaza por
+**0.20.3**, la versión parcheada que SheetJS distribuye solo desde su CDN oficial
+(`cdn.sheetjs.com`; el registro de npm está desactualizado por diseño, verificado contra
+docs.sheetjs.com).
+
+Ejecutado por Mateo en su bench (este contenedor no alcanza `cdn.sheetjs.com`, lista blanca de
+red — ya evidenciado en la Sesión 017). Cambio de una línea en `frontend/package.json`
+(`"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"`) + `npm install` con lockfile
+regenerado. La API que usa `frontend/components/importacion-mapeo.tsx`
+(`XLSX.read` / `XLSX.utils.sheet_to_json`) es estable entre 0.18.5 y 0.20.3 → **cero cambios de
+código** más allá de la dependencia.
+
+**Verificado en este repo (evidencia pegada, CLAUDE.md §4):**
+```text
+npm audit    → ya NO lista GHSA-4r6h-8v6p-xvw6 ni GHSA-5pgg-2g8v-p4x9
+npm run lint → LINT_EXIT=0
+npm run build→ BUILD_EXIT=0 (Next 15.5.25 · 15/15 páginas · /app/suscriptores/importar 124 kB)
+git diff     → solo frontend/package.json (1 línea) y frontend/package-lock.json
+```
+
 ### 2026-09-04 — Sesión 019: Semgrep automatizado + plan de auditoría final por LLM
 
 Dos entregables: (1) implementación real de Semgrep en CI, (2) documentación del plan de auditoría
