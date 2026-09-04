@@ -77,7 +77,7 @@ reconectar(p_usuario_servicio_id uuid, p_deuda_vencida numeric, p_motivo_excepci
 Grants: ambas funciones EXECUTE otorgado a authenticated (revocado de anon/public en el DDL,
   confirmado que no aparecen en information_schema.routine_privileges para esas dos filas).
 ```
-**Commit:** (pendiente)
+**Commit:** `ed98648`
 
 ## T-002 — Fixtures + test de aislamiento (CA-2) + regresión CA-3
 
@@ -136,7 +136,7 @@ grep -n "estado', 'activo'" backend/src/lib/facturacion.ts backend/src/queues/ci
   → 3 coincidencias (líneas 136/152 y 86 respectivamente) — el filtro de CA-3 sigue intacto,
   no se tocó ninguno de los dos archivos en esta tarea.
 ```
-**Commit:** (pendiente)
+**Commit:** `9185ff1`
 
 ## T-003 — Backend: `lib/cortes.ts` + rutas (CA-4)
 
