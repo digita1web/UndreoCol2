@@ -156,10 +156,27 @@ npx vitest run
 **Resultado esperado:** `tsc`/`eslint` sin errores; el Worker sigue empaquetando; la suite completa
 de `vitest` (incluida la de 007/otras) sigue en verde — sin `core/` nuevo en esta tarea, esto
 confirma que no se rompió nada existente.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
-(pendiente)
+$ npx tsc --noEmit → sin salida, sin errores
+$ npx eslint .     → sin salida, sin errores
+$ npx wrangler deploy --dry-run -c wrangler.toml → empaqueta sin errores (incluye bindings de
+  EMAIL/FACTURACION_COLA/FACTURAS_R2 de features previas, sin cambios por esta tarea)
+$ npx vitest run
+  Test Files  9 passed (9)
+       Tests  105 passed (105)
+  (sin regresión: la suite completa de 001-008 — pagos, facturación, portal, etc. — sigue en verde)
+
+Las 4 rutas quedaron exactamente como en plan.md §3: GET /cortes/candidatos,
+POST /suscriptores/:id/corte, POST /suscriptores/:id/reconexion,
+GET /suscriptores/:id/historial-cortes.
+
+NO VERIFICADO: peticiones HTTP reales contra wrangler dev (sin PostgREST en este contenedor, mismo
+bloqueador que 002/003/007). Pendiente del bench de Mateo — pasos exactos: levantar
+`wrangler dev` + Supabase local, y repetir el flujo de curl documentado en 007/008 (cookie de
+sesión de un admin_acueducto real, GET /cortes/candidatos, POST corte con motivo, POST reconexion
+con y sin motivo_excepcion, GET historial-cortes).
 ```
 **Commit:** (pendiente)
 

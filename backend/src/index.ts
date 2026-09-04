@@ -53,6 +53,12 @@ import {
 } from './lib/pagos';
 import { redondearPeso } from './core/pagos';
 import {
+  cortarSuscriptor,
+  historialCortes,
+  listarCandidatosCorte,
+  reconectarSuscriptor,
+} from './lib/cortes';
+import {
   obtenerConsumoPortal,
   obtenerFacturaCompletaPortal,
   obtenerFacturasPortal,
@@ -1077,6 +1083,72 @@ app.get('/suscriptores/:id/pagos', async (c) => {
     return c.json({ pagos, saldoFavor });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo leer el historial' }, 400);
+  }
+});
+
+// --- Cortes y reconexiones (009-cortes-y-reconexiones) ----------------------
+// Alcance reducido (opción a, aprobado por Mateo): acciones de admin_acueducto
+// desde el panel, con confirmación humana siempre explícita — nunca corte
+// desatendido. Sin "orden" asignada al lector (queda como feature futura).
+
+// GET /cortes/candidatos — suscriptores activos con deuda vencida por encima
+// del umbral configurado (sugerencia, no ejecución automática).
+app.get('/cortes/candidatos', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const candidatos = await listarCandidatosCorte(ctx.supabase, ctx.clienteId);
+    return c.json({ candidatos });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron listar los candidatos a corte' }, 400);
+  }
+});
+
+// POST /suscriptores/:id/corte — corta el servicio con motivo obligatorio.
+app.post('/suscriptores/:id/corte', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req.json<{ motivo?: string }>().catch(() => ({ motivo: undefined }));
+  const motivo = body.motivo?.trim();
+  if (!motivo) {
+    return c.json({ error: 'El motivo del corte es obligatorio' }, 400);
+  }
+  try {
+    const eventoId = await cortarSuscriptor(ctx.supabase, c.req.param('id'), motivo, ctx.perfilId);
+    return c.json({ eventoId }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo cortar el suscriptor' }, 400);
+  }
+});
+
+// POST /suscriptores/:id/reconexion — bloqueada con deuda vencida salvo
+// motivo_excepcion explícito; genera automáticamente la factura de reconexión.
+app.post('/suscriptores/:id/reconexion', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const body = await c.req
+    .json<{ motivo_excepcion?: string }>()
+    .catch(() => ({ motivo_excepcion: undefined }));
+  const motivoExcepcion = body.motivo_excepcion?.trim() || null;
+  try {
+    const resultado = await reconectarSuscriptor(
+      ctx.supabase, ctx.clienteId, c.req.param('id'), motivoExcepcion, ctx.perfilId,
+    );
+    return c.json({ eventoId: resultado.eventoId, deudaVencida: resultado.deudaVencida }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo reconectar el suscriptor' }, 400);
+  }
+});
+
+// GET /suscriptores/:id/historial-cortes — historial de cortes/reconexiones.
+app.get('/suscriptores/:id/historial-cortes', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const historial = await historialCortes(ctx.supabase, c.req.param('id'));
+    return c.json({ historial });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo consultar el historial' }, 400);
   }
 });
 
