@@ -729,3 +729,50 @@ export function regenerarCodigoSuscriptor(
     body: JSON.stringify({ codigo_nuevo: codigoNuevo }),
   });
 }
+
+// --- Cortes y reconexiones (009-cortes-y-reconexiones) ----------------------
+// Alcance reducido (opción a): acciones de admin_acueducto desde el panel,
+// siempre con confirmación humana explícita — nunca corte desatendido.
+
+export interface CandidatoCorte {
+  usuarioServicioId: string;
+  nombre: string;
+  codigoSuscriptor: string;
+  vencida: number;
+  diasMoraMax: number;
+}
+
+export function listarCandidatosCorte(): Promise<{ candidatos: CandidatoCorte[] }> {
+  return peticion('/cortes/candidatos');
+}
+
+export function cortarSuscriptor(suscriptorId: string, motivo: string): Promise<{ eventoId: string }> {
+  return peticion(`/suscriptores/${suscriptorId}/corte`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo }),
+  });
+}
+
+export function reconectarSuscriptor(
+  suscriptorId: string,
+  motivoExcepcion?: string,
+): Promise<{ eventoId: string; deudaVencida: number }> {
+  return peticion(`/suscriptores/${suscriptorId}/reconexion`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo_excepcion: motivoExcepcion }),
+  });
+}
+
+export interface EventoCorte {
+  id: string;
+  tipo: 'corte' | 'reconexion';
+  fecha: string;
+  motivo: string;
+  responsable: string;
+  deuda_vencida_al_reconectar: number | null;
+  factura_reconexion_id: string | null;
+}
+
+export function historialCortes(suscriptorId: string): Promise<{ historial: EventoCorte[] }> {
+  return peticion(`/suscriptores/${suscriptorId}/historial-cortes`);
+}
