@@ -4,6 +4,74 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-04 — Sesión 017: 012-importacion-suscriptores-excel completa (T-002 a T-009)
+
+Continuación desde el checkpoint pendiente (T-001, parser/validador puro, ya estaba completo e
+implementado con autorización explícita de Mateo antes de este checkpoint). Esta sesión hizo las
+fases que tocan Supabase real: migración, duplicados contra la base, rutas HTTP, frontend.
+
+**Hecho**
+- **T-002** — Migración `20260912090000_importacion-suscriptores.sql`: tabla
+  `importaciones_suscriptores` (historial, `errores jsonb` solo `{fila, motivo}`, nunca el
+  contenido de la fila) + `importar_suscriptores()` (`SECURITY INVOKER`, sin `SELECT FOR UPDATE`
+  — cada suscriptor nuevo es una fila independiente sin contención — `INSERT` en lote vía
+  `jsonb_to_recordset`, atómico por ser una sola función `plpgsql`). RLS `FORCE` + políticas
+  estándar. Probado funcionalmente contra Postgres real: inserción de lote válido con conteos
+  correctos, y atomicidad real (CA-6) forzando una violación del constraint único
+  `(cliente_id, codigo_suscriptor)` — el lote completo se revierte, cero suscriptores nuevos.
+- **T-003** — Fixture no-op (mismo criterio que 009: los lotes de prueba se arman inline con jsonb
+  dentro de cada transacción) + test de aislamiento (6 pasos): cross-tenant en `importar_suscriptores()`
+  y en el historial, rol `lector` rechazado, atomicidad del lote re-verificada en la suite formal.
+  Regresión completa: se reconstruyó `undreocol_test` desde cero (shim + 11 migraciones + 10
+  fixtures en orden de dependencia real + 10 suites de aislamiento 001-009/012) en una sola pasada
+  limpia — las 10 en verde, confirmando que el fallo de `008_portal_aislamiento.sql` visto en una
+  corrida anterior (mismo hallazgo que en el cierre de la Sesión 016) era estado acumulado de la
+  base de datos de larga duración, no una regresión de 012.
+- **T-004** — `lib/importacion-suscriptores.ts`: `detectarDuplicadosContraBase()` (CA-3 —
+  `numero_documento` no tiene constraint único en la base, es la única barrera real para ese caso,
+  verificado explícitamente con el caso "solo `numero_documento` coincide"), `categoriasSinTarifa()`
+  (advertencia informativa no bloqueante, mismo patrón que `lib/facturacion.ts`) y
+  `confirmarImportacion()` (RPC `importar_suscriptores()`).
+- **T-005** — Rutas `POST /suscriptores/importar/validar` y `POST /suscriptores/importar/confirmar`,
+  con un límite explícito de 2000 filas por archivo (CLAUDE.md §5.5) rechazado antes de procesar.
+- **T-006** — `lib/api.ts` ampliado: `validarImportacion()`/`confirmarImportacion()`.
+- **T-007** — Panel `/app/suscriptores/importar`: carga de `.xlsx`/`.csv` parseado en el navegador
+  con `xlsx`/SheetJS (nunca llega el archivo crudo al Worker), mapeo de columnas configurable
+  (ningún nombre de columna asumido en el código, spec §3.1), resumen de errores, confirmación que
+  solo importa las filas válidas, reporte final con la advertencia de categorías sin tarifa.
+- **T-009** — Cierre: checklist de `spec.md §8` y esta entrada.
+
+**Hallazgo de seguridad en una dependencia nueva (se reporta explícito, CLAUDE.md §8)**
+`xlsx@0.18.5`, la única versión instalable desde el registro de npm en este contenedor, tiene 2
+vulnerabilidades altas confirmadas por `npm audit` **sin parche disponible en npm**: Prototype
+Pollution (`GHSA-4r6h-8v6p-xvw6`) y ReDoS (`GHSA-5pgg-2g8v-p4x9`). SheetJS solo distribuye
+versiones parcheadas desde su propio CDN (`cdn.sheetjs.com`), bloqueado por la lista blanca de red
+de este contenedor — se intentó instalar y falló con `CONNECT 403`. El parseo ocurre enteramente
+en el navegador del admin sobre un archivo que él mismo elige subir (no toca el Worker ni la base
+de otros acueductos), pero es una dependencia nueva con CVEs reales sin parchear. **Acción
+pendiente de Mateo antes de producción:** desde su bench con acceso normal a internet, cambiar
+`"xlsx": "^0.18.5"` en `frontend/package.json` por la URL del tarball parcheado de SheetJS y correr
+`npm install` de nuevo (un cambio de una línea, la API usada es estable entre versiones) — pasos
+exactos en `specs/012-importacion-suscriptores-excel/tasks.md` T-007.
+
+**Brecha de alcance detectada (se reporta, no se oculta)**
+`tasks.md` T-008 menciona "ver el historial de importaciones" como parte del flujo E2E, pero
+`plan.md` §3 (aprobado) solo definió las rutas `validar`/`confirmar` — nunca se planeó una ruta ni
+pantalla para LISTAR `importaciones_suscriptores`. No se improvisó esa ruta fuera de plan (CLAUDE.md
+§3). Si Mateo quiere verlo desde el panel, es una tarea adicional a definir explícitamente.
+
+**Desviación de entorno (igual que 002/003/009, CLAUDE.md §8)**
+Sin Docker en este contenedor. Verificación de esquema/RLS/RPC contra PostgreSQL 16 nativo con el
+shim de compatibilidad ya usado en sesiones previas.
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- CA-3/CA-5 con `curl` real contra `wrangler dev` + PostgREST real (sin Docker en este contenedor,
+  la lib de duplicados se verificó a nivel de la consulta SQL equivalente, no vía `supabase-js`).
+- CA-7: flujo completo en navegador con un archivo de prueba real. Pasos exactos en `tasks.md`
+  T-008.
+- Cambiar la fuente de instalación de `xlsx` a la versión parcheada de SheetJS antes de producción
+  (ver hallazgo de seguridad arriba).
+
 ### 2026-09-04 — Sesión 016: 009-cortes-y-reconexiones completa (T-001 a T-007)
 
 **Hecho**

@@ -131,7 +131,7 @@ limpia: las 10 pasaron, incluyendo 008_portal_aislamiento.sql — confirma que e
 documentó en el cierre de 009 (CHANGELOG Sesión 016), estado acumulado de corridas repetidas del
 fixture de bloqueo de login, no una regresión real. 012 no rompe ninguna suite previa.
 ```
-**Commit:** (pendiente)
+**Commit:** `fe61c99`
 
 ## T-004 — Backend: `lib/importacion-suscriptores.ts` (CA-3, CA-6)
 
@@ -214,8 +214,7 @@ Mateo: `npx wrangler dev` en backend/ + `supabase start` local, luego
 seguido de `curl -X POST .../suscriptores/importar/confirmar -d '{"filasValidas":[...],"errores":[...],"nombreArchivo":"prueba.xlsx"}'`
 y confirmar el reporte + la fila nueva en importaciones_suscriptores.
 ```
-**Commit:** (pendiente)
-**Commit:** (pendiente)
+**Commit:** `5e24c2c`
 
 ## T-006 — Frontend: `lib/api.ts` — funciones de importación
 
@@ -240,7 +239,7 @@ confirmarImportacion(filasValidas, errores, nombreArchivo) → POST
 espejo de core/importacion-suscriptores.ts (backend) con sufijo "Importacion" para no chocar con
 otros tipos del archivo.
 ```
-**Commit:** (pendiente)
+**Commit:** `aa2d9c7`
 
 ## T-007 — Frontend: `/app/suscriptores/importar` — carga, mapeo, resumen, confirmación
 
@@ -299,7 +298,7 @@ Flujo real en navegador con un archivo .xlsx/.csv de prueba: NO VERIFICADO en es
 contenedor no puede levantar `wrangler dev` + `next dev` contra una base real (sin Docker/
 PostgREST). Queda para T-008.
 ```
-**Commit:** (pendiente)
+**Commit:** `923156f`
 
 ## T-008 — Verificación manual end-to-end (CA-7)
 
@@ -313,13 +312,41 @@ cd frontend && npm run dev
 # navegar manualmente el flujo descrito arriba con un archivo de prueba
 ```
 **Resultado esperado:** el flujo completo funciona sin error visible en ningún paso.
-**Estado:** Pendiente
+**Estado:** NO VERIFICADO — requiere validación manual de Mateo
 **Evidencia:**
 ```
-(pendiente — si este contenedor no puede levantar wrangler dev + next dev simultáneos contra una
-base real, se declara "NO VERIFICADO — requiere validación manual de Mateo" con los pasos exactos)
+NO VERIFICADO — requiere validación manual de Mateo. Este contenedor no tiene Docker/Supabase CLI
+para levantar `supabase start` (PostgREST real), condición necesaria para que
+`npx wrangler dev` (backend) sirva peticiones reales que `next dev` (frontend) pueda consumir. Todo
+lo verificable sin ese bench ya se verificó en T-002 a T-007 (esquema/RLS/RPC contra Postgres
+nativo, tsc/eslint/build/lint, vitest, y las consultas SQL reales detrás de CA-3).
+
+Pasos exactos para Mateo:
+  1. `supabase start` (o el bench local que ya usa para 001-009) con las 11 migraciones aplicadas
+     (`supabase db reset` o equivalente).
+  2. `cd backend && npx wrangler dev` — apuntando las variables de entorno al proyecto Supabase
+     local (mismo patrón que el resto del proyecto).
+  3. `cd frontend && npm run dev`.
+  4. Iniciar sesión como admin_acueducto, ir a /app/suscriptores → "Importar desde Excel".
+  5. Subir un .xlsx o .csv de prueba con al menos: una fila válida completa, una fila con un campo
+     requerido vacío, una fila con categoría no reconocida, una fila con codigo_suscriptor
+     duplicado dentro del archivo, y (si ya existe algún suscriptor en la base de prueba) una fila
+     con numero_documento que coincida con uno existente pero codigo_suscriptor distinto (CA-3).
+  6. Mapear las columnas, validar, confirmar solo las filas válidas, revisar el reporte final.
+  7. Confirmar en la base (`select * from importaciones_suscriptores order by created_at desc
+     limit 1;`) que el historial quedó registrado correctamente.
+
+BRECHA DE ALCANCE DETECTADA (se reporta, no se oculta, CLAUDE.md §8): este mismo punto de tasks.md
+dice "→ ver el historial de importaciones", pero ni T-005 (rutas) ni T-007 (frontend) incluyeron
+una ruta ni una pantalla para LISTAR `importaciones_suscriptores` — plan.md §3 solo definió
+`/suscriptores/importar/validar` y `/suscriptores/importar/confirmar`, ninguna de lectura del
+historial. El paso 7 de arriba solo se puede verificar por SQL directo, no desde el panel. Si
+Mateo quiere ver el historial desde la interfaz (spec §3.6 dice "para poder consultarlo después"),
+hace falta una tarea adicional (`GET /suscriptores/importaciones` + una tabla en el frontend) que
+no está en el `tasks.md` actual — no se improvisa aquí (CLAUDE.md §3: "no se improvisa alcance"),
+se deja señalado para que Mateo decida si la agrega.
 ```
-**Commit:** (no aplica si queda NO VERIFICADO — tarea sin cambios de código)
+**Commit:** (no aplica — NO VERIFICADO, tarea sin cambios de código)
 
 ## T-009 — Cierre: CHANGELOG + checklist `spec.md §8`
 
@@ -332,9 +359,23 @@ cd backend && npx tsc --noEmit && npx wrangler deploy --dry-run -c wrangler.toml
 cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** los 5 comandos en verde.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-04)
 **Evidencia:**
 ```
-(pendiente)
+Los 5 comandos en verde:
+  backend: npx tsc --noEmit → sin errores.
+  backend: npx wrangler deploy --dry-run -c wrangler.toml → Total Upload 1738.46 KiB / gzip
+    395.76 KiB, bindings intactos, exit 0.
+  backend: npx vitest run → 9 archivos, 105/105 tests.
+  frontend: npm run build → compila y tipa sin errores/warnings, 15 rutas.
+  frontend: npm run lint → limpio.
+
+CHANGELOG.md: entrada "Sesión 017" agregada (arriba de la Sesión 016), resume T-002 a T-009,
+incluye el hallazgo de seguridad de xlsx@0.18.5 (CVEs sin parche en npm) y la brecha de alcance de
+T-008 (historial de importaciones sin ruta de lectura) de forma explícita, no oculta.
+
+spec.md §8: checklist actualizada — CA-1 a CA-6 con evidencia, CA-7 parcial (build/lint limpios,
+flujo E2E NO VERIFICADO), build/wrangler/tests en verde, CHANGELOG actualizado. "Aprobación de
+Mateo" queda sin marcar — pendiente de su revisión, no se marca terminado sin ella.
 ```
 **Commit:** (pendiente)

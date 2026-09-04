@@ -177,8 +177,13 @@ para correr el frontend contra un backend real — con pasos exactos.
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1–7) con evidencia
-- [ ] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios
-- [ ] Tests en verde (`vitest` de `core/importacion-suscriptores.ts`, test de integración de duplicados contra DB real, test de aislamiento de la tabla de historial)
-- [ ] `CHANGELOG.md` actualizado
+- [x] CA-1 a CA-6 con evidencia (`tasks.md` T-001 a T-005). CA-7 (frontend, flujo real en
+      navegador) parcial: `npm run build`/`npm run lint` limpios, pero el flujo E2E real contra
+      Postgres queda **NO VERIFICADO — requiere validación manual de Mateo** (`tasks.md` T-008,
+      sin Docker/PostgREST en este contenedor)
+- [x] Build (frontend) y `wrangler deploy --dry-run` (backend) limpios
+- [x] Tests en verde (`vitest` de `core/importacion-suscriptores.ts` — 15/15; duplicados contra la
+      base verificados a nivel de la consulta SQL real, no vía `supabase-js`/PostgREST — ver
+      `tasks.md` T-004; test de aislamiento de `importaciones_suscriptores` — 6/6, `tasks.md` T-003)
+- [x] `CHANGELOG.md` actualizado
 - [ ] Aprobación de Mateo
