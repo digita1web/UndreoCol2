@@ -44,13 +44,14 @@ En `specs/plantillas/`. Se copian al crear cada feature nueva.
 | 006 | impresion-y-correo-factura (D-8, D-9 — reemplaza "pdf-facturas") | 005 | Completa (CHANGELOG Sesión 013) |
 | 007 | pagos-y-cartera      | 005 | Completa (CHANGELOG Sesión 014) |
 | 008 | portal-suscriptor    | 006 | Completa (CHANGELOG Sesión 015) |
-| 009 | cortes-reconexiones  | 007 | Pendiente |
+| 009 | cortes-reconexiones  | 007 | En /specify — spec.md en revisión, 2 decisiones de alcance pendientes de aprobación |
 | 010 | notificaciones       | 006 | Pendiente |
 | 011 | dashboard            | 007 | Pendiente |
-| 012 | exportes-contables   | 007 | Pendiente |
-| 013 | rrhh-incapacidades   | 001 | Pendiente |
-| 014 | qr-ocr-lector (identificación de contador por QR + lectura automática por OCR, ver `docs/ESPECIFICACION-FUNCIONAL.md §2.14.1`) | 004 | Pendiente — diferenciador tecnológico principal, requiere máximo rigor de precisión y confiabilidad |
-| 015 | limpieza-automatica  | 009 | Pendiente (Worker de limpieza completo, ver INFRAESTRUCTURA.md §9) |
+| 012 | importacion-suscriptores-excel (carga masiva del acueducto piloto desde Excel/CSV) | 003 | En /specify — spec.md en revisión |
+| 013 | exportes-contables   | 007 | Pendiente |
+| 014 | rrhh-incapacidades   | 001 | Pendiente |
+| 015 | qr-ocr-lector (identificación de contador por QR + lectura automática por OCR, ver `docs/ESPECIFICACION-FUNCIONAL.md §2.14.1`) | 004 | Pendiente — diferenciador tecnológico principal, requiere máximo rigor de precisión y confiabilidad |
+| 016 | limpieza-automatica  | 009 | Pendiente (Worker de limpieza completo, ver INFRAESTRUCTURA.md §9) |
 
 ## Regla de git
 
