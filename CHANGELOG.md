@@ -4,6 +4,45 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-04 — Sesión 018: planificación de costos e infraestructura (documentación, sin código)
+
+Sesión de solo documentación (Mateo lo pidió explícito: "Solo documentación, no implementación de
+código todavía"). Registra las decisiones de una sesión de investigación de costos, en
+`docs/INFRAESTRUCTURA-Y-COSTOS.md` (documento nuevo).
+
+**Decisiones documentadas**
+1. **Supabase Free alcanza para el primer cliente** (500-600 suscriptores, muy por debajo de los
+   límites de 500 MB de DB / 50.000 MAU de Auth — este último ni aplica de fondo porque el
+   suscriptor no es un usuario de `auth.users`, D-2). El riesgo de pausa por inactividad a 7 días
+   ya estaba resuelto (`keepalive.ts`, `docs/INFRAESTRUCTURA.md §5`) — se verificó en esta sesión
+   que la configuración del cron (`wrangler.keepalive.toml`) y el empaquetado del Worker
+   (`wrangler deploy --dry-run`) siguen intactos, sin tocar código.
+2. **Backups automáticos sin costo vía GitHub Actions** (`supabase db dump` + `SUPABASE_DB_URL`
+   como secret + subida a repo privado o Cloudflare R2 Free + retención de 30 días), reemplazando
+   la idea de backup manual. **Prioridad ALTA, pendiente de implementación.** Se detectó y reportó
+   una contradicción con el diseño ya aprobado como decisión D-7 (`docs/INFRAESTRUCTURA.md §6`,
+   que usa `pg_dump` en contenedor + R2 exclusivamente + nombre de workflow distinto) — ambos
+   diseños resuelven el mismo problema con mecanismos distintos; hay que reconciliarlos antes de
+   implementar, no se implementó ninguno de los dos en esta sesión.
+3. **Cloudflare Workers Free confirmado suficiente**, sin cambios sobre lo ya proyectado en
+   `ARQUITECTURA.md §6`.
+4. **Cambio de decisión de correo:** Resend (3.000/mes, 100/día, gratis) en vez de Cloudflare
+   Email Service — evita que el flujo de correo (D-8, secundario) dependa de que Workers Paid ya
+   esté activo, como asume hoy `ARQUITECTURA.md §6`. **Prioridad MEDIA**, amplía la Feature 006 ya
+   cerrada (`backend/src/lib/email.ts`); requiere además actualizar D-8 en `docs/DECISIONES.md`
+   cuando se implemente, para no dejar el registro de decisiones contradiciendo el código.
+5. **Monitoreo de errores con Sentry** (5.000 errores/mes gratis, backend + frontend). **Prioridad
+   MEDIA** — confirma una intención que ya existía en `docs/ESTRATEGIA-CALIDAD.md` y
+   `docs/INFRAESTRUCTURA.md §2` pero sin implementar ni límites documentados hasta ahora.
+6. **Costo total del primer cliente: USD $0/mes**, con backups 100% automáticos (sin
+   intervención manual periódica, salvo el ritual mensual de verificación de restauración que
+   `docs/INFRAESTRUCTURA.md §7.3` ya definía como deliberadamente manual).
+
+**Pendientes técnicos abiertos** (tabla completa en `docs/INFRAESTRUCTURA-Y-COSTOS.md §7`):
+backup automático (ALTA), migración de correo a Resend (MEDIA), instrumentación de Sentry
+(MEDIA). Ninguno tiene `spec.md` todavía — no se escribe código sin pasar por `/specify`
+(CLAUDE.md §3).
+
 ### 2026-09-04 — Sesión 017: 012-importacion-suscriptores-excel completa (T-002 a T-009)
 
 Continuación desde el checkpoint pendiente (T-001, parser/validador puro, ya estaba completo e
