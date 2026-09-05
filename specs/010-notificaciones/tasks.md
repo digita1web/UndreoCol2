@@ -126,32 +126,57 @@ si limpiar las filas de prueba o revisar la idempotencia del test de 008.
 ```
 **Commit:** `9b60964`
 
-## T-002 — Fixtures + test de aislamiento
+## T-002 — Test de aislamiento (sin fixture nuevo — alcance corregido durante /implement)
 
-**Archivos:** `tests/fixtures/notificaciones-generales.sql`, `tests/aislamiento/010_notificaciones_aislamiento.sql`
-**Hace:** Fixture con: una factura `pendiente` de un suscriptor del cliente A con `fecha_vencimiento`
-dentro del umbral de recordatorio, una factura `pendiente` ya vencida del mismo cliente (para el
-aviso de mora), y equivalentes del cliente B (para el aislamiento). Test de aislamiento (SQL puro,
-sin depender de las rutas HTTP que llegan en T-006) cubriendo:
-1. Con `auth.uid()` del admin de A: `SELECT` sobre `notificaciones` no devuelve filas del cliente B.
-2. Con `auth.uid()` del admin de B: simétrico.
-3. Un `INSERT` directo en `notificaciones` con un `cliente_id` ajeno al propio, desde el rol
-   `authenticated` de un admin, es rechazado por RLS.
-4. El `CHECK` de T-001 sigue rechazando un tipo inválido (regresión, no reimplementación).
-5. Regresión completa 001-009/012 sobre el estado final.
+**Alcance corregido respecto al plan original:** el plan asumía un fixture nuevo con facturas por
+vencer/vencidas y un re-test completo de aislamiento RLS de `notificaciones`. Al revisar el código
+real antes de escribir esto (no de memoria) encontré que **`tests/aislamiento/006_correo_factura_aislamiento.sql`
+ya cubre exhaustivamente** el aislamiento multi-tenant de `notificaciones` (admin A no ve/inserta en
+B, lector A solo lee, admin A sí inserta en su propio cliente) — repetirlo aquí sería duplicar
+cobertura, no ampliarla. Además, crear facturas nuevas en un fixture compartido correría el riesgo
+que **009 ya documentó explícitamente** (`tests/fixtures/cortes.sql`): romper los conteos de fila que
+005/007 ya asumen en sus propios tests. Por eso **no se crea `tests/fixtures/notificaciones-generales.sql`**
+— las facturas por vencer/vencidas para el recordatorio/mora se crean dentro de la propia transacción
+de T-007 (con `ROLLBACK`), igual que 009 hizo con sus escenarios temporales.
+
+**Archivos:** `tests/aislamiento/010_notificaciones_aislamiento.sql` (nuevo)
+**Hace:** Test de aislamiento (SQL puro) enfocado en lo que T-001 agregó de verdad — lo demás ya
+tiene cobertura (001 para `configuracion`, 006 para `notificaciones`):
+1. Los 6 tipos del catálogo se pueden insertar (smoke test — probar solo el rechazo de uno inválido,
+   como hice manualmente en T-001, no confirma que los 6 válidos realmente estén en la lista).
+2. Un tipo fuera del catálogo sigue siendo rechazado por el `CHECK` (regresión de T-001).
+3. `configuracion.dias_aviso_vencimiento` existe con default `3` para **ambos** clientes existentes
+   (A y B) — confirma que el `ALTER TABLE ... ADD COLUMN` aplicó a las filas ya existentes, no solo
+   a las nuevas.
+4. Regresión completa de aislamiento existente (001 a 012) sobre el estado final.
 **Verificación:**
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/notificaciones-generales.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/010_notificaciones_aislamiento.sql
 ```
-**Resultado esperado:** ambos scripts en verde, terminan con `NOTIFICACIONES-AISLAMIENTO OK`; la
-regresión 001-009/012 (re-corrida en la misma pasada, mismo patrón que 009 T-002) también en verde.
-**Estado:** Pendiente
+**Resultado esperado:** termina con `NOTIFICACIONES-GENERALES-AISLAMIENTO OK`; la regresión 001-012
+(re-corrida en la misma pasada) también en verde (008 queda como el hallazgo ya reportado en T-001,
+no una regresión nueva).
+**Estado:** Completado (2026-09-05) — verificado contra Supabase local real (Docker)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+$ psql "$DATABASE_URL" -f tests/aislamiento/010_notificaciones_aislamiento.sql
+DO · BEGIN/SET/SET/DO/ROLLBACK (x4 pasos) · NOTIFICACIONES-GENERALES-AISLAMIENTO OK
+
+PASO 1: CHECK notificaciones_tipo_valido existe (pg_constraint) — OK.
+PASO 2: admin de A insertó los 6 tipos del catálogo sobre su propio cliente; el conteo dio 7
+  (6 nuevas + la fila factura_generada que ya dejó el fixture de 006) — confirma que ninguno de
+  los 6 valores del CHECK está mal escrito. ROLLBACK, sin dejar rastro.
+PASO 3: un tipo fuera del catálogo sigue rechazado por notificaciones_tipo_valido — regresión de
+  T-001 OK.
+PASO 4: configuracion.dias_aviso_vencimiento = 3 tanto para el cliente A como para el cliente B —
+  confirma que el ALTER TABLE ... ADD COLUMN aplicó el default a las filas YA existentes, no solo
+  a las nuevas.
+
+Regresión completa sobre el estado final (los 11 scripts de aislamiento existentes + el nuevo):
+001 OK · 002 OK · 003 OK · 004 OK · 005 OK · 006 OK · 007 OK · 008 FALLÓ (mismo hallazgo
+preexistente ya reportado en T-001, no relacionado con esta tarea) · 009 OK · 010 OK · 012 OK.
 ```
-**Commit:** —
+**Commit:** `[pendiente]`
 
 ## T-003 — `core/notificaciones.ts`: contenido por tipo + `computarActualizacionNotificacion` movido
 
