@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularNivel } from '../../src/cron/nivel-monitoreo';
+import { calcularNivel, construirAlertaMonitoreo } from '../../src/cron/nivel-monitoreo';
 
 describe('calcularNivel', () => {
   it('100 MB → ok y 20% del límite', () => {
@@ -30,5 +30,20 @@ describe('calcularNivel', () => {
     const r = calcularNivel(10.91);
     expect(r.porcentaje).toBe(2.18);
     expect(r.nivel).toBe('ok');
+  });
+});
+
+describe('construirAlertaMonitoreo (010, spec §3.8 — alerta operativa, sin pasar por notificaciones)', () => {
+  it('nivel alerta: asunto y cuerpo incluyen el nivel y el porcentaje', () => {
+    const c = construirAlertaMonitoreo(calcularNivel(400));
+    expect(c.asunto).toContain('alerta');
+    expect(c.cuerpoHtml).toContain('alerta');
+    expect(c.cuerpoHtml).toContain('80');
+  });
+
+  it('nivel critico: asunto y cuerpo lo reflejan', () => {
+    const c = construirAlertaMonitoreo(calcularNivel(490));
+    expect(c.asunto).toContain('critico');
+    expect(c.cuerpoHtml).toContain('critico');
   });
 });

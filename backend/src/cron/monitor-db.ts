@@ -1,24 +1,29 @@
 // Worker `undreocol-monitor-db` — cron diario "30 5 * * *" (D-7,
 // INFRAESTRUCTURA.md §8). Consulta tamano_base_mb() (límite del plan Free:
-// 500 MB) y calcula el nivel. En nivel >= alerta dispara la alertaStub: el
-// envío por Cloudflare Email Service se integra en una feature posterior
-// (spec §4.8), pero el cálculo y el log deben funcionar (CA-9).
+// 500 MB) y calcula el nivel. En nivel >= alerta envía un correo real al
+// equipo de UndreoCol (010, spec §3.8) y lo deja en el log (CA-9).
 //
-// NOTA: este módulo SOLO exporta el default (handler). La lógica pura vive en
-// ./nivel-monitoreo.ts para poder testearla con vitest (la entrada de un
-// Worker no puede tener exports nombrados).
+// La alerta NO pasa por la tabla `notificaciones` (010, spec §3.8, decisión
+// de diseño aprobada): esa tabla es multi-tenant con `cliente_id` obligatorio
+// sin excepciones (CLAUDE.md §5.4), y esta alerta es operativa de la
+// plataforma, no de ningún acueducto cliente. Sin reintento con límite tipo
+// `computarActualizacionNotificacion`: el cron corre a diario, así que un
+// fallo de envío de hoy se reintenta naturalmente mañana si la condición
+// persiste (spec §3.8).
+//
+// NOTA: este módulo SOLO exporta el default (handler). La lógica pura
+// (incluido el contenido de la alerta) vive en ./nivel-monitoreo.ts para
+// poder testearla con vitest sin mockear el envío de correo.
 
 import { crearClienteServicio } from '../lib/db';
-import { calcularNivel, LIMITE_BASE_MB, type ResultadoMonitoreo } from './nivel-monitoreo';
-
-function alertaStub(resultado: ResultadoMonitoreo): void {
-  // TODO(feature 010): enviar el correo de alerta vía Cloudflare Email Service.
-  console.error(`monitor-db: ALERTA ${resultado.nivel} — ${resultado.porcentaje}% del límite de 500 MB`);
-}
+import { calcularNivel, construirAlertaMonitoreo, LIMITE_BASE_MB } from './nivel-monitoreo';
+import { enviarCorreo } from '../lib/email';
 
 interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  EMAIL?: { send: (m: unknown) => Promise<{ messageId?: string }> };
+  ALERTA_EMAIL_DESTINO: string;
 }
 
 export default {
@@ -37,7 +42,17 @@ export default {
       `monitor-db: base de ${mb} MB (${resultado.porcentaje}% del límite de ${LIMITE_BASE_MB} MB) — nivel ${resultado.nivel}`,
     );
     if (resultado.nivel === 'alerta' || resultado.nivel === 'critico') {
-      alertaStub(resultado);
+      console.error(`monitor-db: ALERTA ${resultado.nivel} — ${resultado.porcentaje}% del límite de 500 MB`);
+      const contenido = construirAlertaMonitoreo(resultado);
+      const envio = await enviarCorreo(env, {
+        destinatario: env.ALERTA_EMAIL_DESTINO,
+        remitente: 'no-responder@undreocol.app',
+        asunto: contenido.asunto,
+        cuerpoHtml: contenido.cuerpoHtml,
+      });
+      if (!envio.ok) {
+        console.error(`monitor-db: no se pudo enviar el correo de alerta — ${envio.error}`);
+      }
     }
   },
 };

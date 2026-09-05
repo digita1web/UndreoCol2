@@ -20,3 +20,13 @@ export function calcularNivel(tamanoMb: number): ResultadoMonitoreo {
   else if (tamanoMb >= 300) nivel = 'atencion';
   return { porcentaje, nivel };
 }
+
+// Contenido de la alerta operativa (010, spec §3.8): pura, sin I/O, para
+// poder testearla sin mockear el envío de correo. No es una notificación de
+// `notificaciones` (esa tabla es multi-tenant; esta alerta es de plataforma).
+export function construirAlertaMonitoreo(resultado: ResultadoMonitoreo): { asunto: string; cuerpoHtml: string } {
+  return {
+    asunto: `[UndreoCol] Alerta de base de datos: nivel ${resultado.nivel}`,
+    cuerpoHtml: `<p>La base de datos de Supabase está al ${resultado.porcentaje}% del límite de ${LIMITE_BASE_MB} MB (nivel <strong>${resultado.nivel}</strong>).</p>`,
+  };
+}

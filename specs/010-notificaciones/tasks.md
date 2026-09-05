@@ -528,7 +528,9 @@ verificado T-006/T-007 con peticiones HTTP reales en vez de solo revisar el cód
 
 ## T-008 — `cron/monitor-db.ts`: alerta real (CA-8)
 
-**Archivos:** `backend/src/cron/monitor-db.ts` (editado), `backend/wrangler.monitor-db.toml` (editado)
+**Archivos:** `backend/src/cron/monitor-db.ts` (editado), `backend/wrangler.monitor-db.toml` (editado),
+`backend/src/cron/nivel-monitoreo.ts` (ajuste no previsto: `construirAlertaMonitoreo()` movida aquí,
+no a `monitor-db.ts` — ver evidencia), `backend/tests/unit/monitor-db.test.ts` (2 tests nuevos)
 **Hace:** (plan.md §3.8 del spec) `alertaStub()` → llamada real a `enviarCorreo()` (de `lib/email.ts`)
 con destinatario `env.ALERTA_EMAIL_DESTINO`, **sin** pasar por la tabla `notificaciones` (no tiene
 `cliente_id` de un acueducto real). `wrangler.monitor-db.toml` gana `[[send_email]] name = "EMAIL"`
@@ -545,10 +547,45 @@ npx vitest run
 `EMAIL` nuevo; los tests de `nivel-monitoreo.ts` (ya existentes) siguen en verde y un test nuevo
 confirma que, con nivel `alerta`/`critico` simulado, se invoca `enviarCorreo` con el destinatario y
 contenido esperados (stub de envío, sin credenciales reales — igual criterio que CA-3 de 006).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+Ajuste no previsto en el plan original: `monitor-db.ts` tiene la regla explícita (comentario propio
+del archivo desde antes de esta feature) de "SOLO exportar el default" — no se le puede agregar un
+export nombrado para testear la construcción del contenido de la alerta sin violar esa convención.
+Se movió `construirAlertaMonitoreo(resultado)` (pura, sin I/O) a `nivel-monitoreo.ts`, que ya es el
+módulo designado para lógica testeable de este cron (mismo lugar que `calcularNivel`). El envío real
+(`enviarCorreo`) sigue solo en `monitor-db.ts`, sin exportarse — se verifica por integración (abajo),
+mismo criterio que `enviarFacturaPorCorreo`/`enviarNotificacionGenerica` en `cierre-facturacion.ts`
+(tampoco tienen test unitario de la invocación, solo de su contenido/contrato).
+
+$ npx tsc --noEmit / npx eslint . → sin salida, EXIT=0 ambos
+
+$ npx wrangler deploy --dry-run -c wrangler.monitor-db.toml
+Total Upload: 708.43 KiB / gzip: 137.91 KiB
+Binding                                            Resource
+env.EMAIL (unrestricted)                           Send Email
+env.ALERTA_EMAIL_DESTINO ("alertas@undreocol.app")  Environment Variable
+→ el binding EMAIL que antes no existía en este Worker ya está presente.
+
+$ npx vitest run
+ ✓ tests/unit/monitor-db.test.ts (8 tests) — 6 de calcularNivel (sin cambios) + 2 nuevos de
+   construirAlertaMonitoreo: nivel alerta (asunto/cuerpo contienen "alerta" y el porcentaje 80) y
+   nivel critico (asunto/cuerpo contienen "critico")
+ Test Files  10 passed (10)
+      Tests  116 passed (116)
+
+Integración real (wrangler dev -c wrangler.monitor-db.toml --test-scheduled + GET /__scheduled)
+contra Supabase local real: base real de 12.88 MB (2.58% del límite) → nivel "ok" → el log confirma
+que NO se intenta enviar ningún correo (rama `if` correctamente no entra) — no se pudo forzar un
+nivel alerta/critico real sin inflar la base de forma artificial, lo cual no se justifica solo para
+esta prueba; el camino de contenido+envío cuando SÍ hay alerta queda cubierto por los 2 tests
+unitarios de contenido + la reutilización comprobada de `enviarCorreo()` (misma función ya
+verificada end-to-end con envío real simulado en T-006).
+
+Nota: ALERTA_EMAIL_DESTINO = "alertas@undreocol.app" es un valor placeholder — NO VERIFICADO cuál
+debe ser el buzón real de monitoreo de Mateo; queda marcado con un TODO en el wrangler.toml. Mateo
+debe reemplazarlo antes de producción.
 ```
 **Commit:** —
 
