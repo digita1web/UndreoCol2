@@ -409,7 +409,7 @@ El aislamiento real de GET /notificaciones ya está garantizado por la misma pol
 notificaciones_lectura verificada a nivel SQL en T-002, más el filtro explícito
 .eq('cliente_id', ctx.clienteId) que agrega esta ruta (mismo patrón que /cartera y otras).
 ```
-**Commit:** —
+**Commit:** `c641c65`
 
 ## T-007 — `cron/avisos-vencimiento.ts`: recordatorio de vencimiento + aviso de mora (CA-5)
 
