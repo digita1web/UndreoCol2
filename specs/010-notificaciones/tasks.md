@@ -749,4 +749,4 @@ Regresión final de aislamiento (documentada, no oculta):
 001 OK · 002 OK · 003 OK · 004 OK · 005 FALLÓ (conteo) · 006 FALLÓ (conteo) · 007 FALLÓ (conteo) ·
 008 FALLÓ (hallazgo preexistente, Sesión 016) · 009 OK · 010 FALLÓ (conteo) · 012 OK
 ```
-**Commit:** —
+**Commit:** `314c22d`
