@@ -22,8 +22,10 @@ import {
 } from '../core/facturacion';
 import type { Tarifa } from '../core/tarifas';
 import { generarPdfFactura, type DatosAcueductoPdf } from '../lib/factura-pdf';
-import { enviarFacturaPorCorreo } from '../lib/email';
+import { enviarCorreo, enviarFacturaPorCorreo } from '../lib/email';
 import { computarActualizacionNotificacion } from '../core/notificaciones';
+
+const REMITENTE_NOTIFICACIONES = 'no-responder@undreocol.app'; // dominio verificado (producción)
 
 export type MensajeFactura = MensajeFacturaCierre;
 
@@ -294,7 +296,7 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
   const numero = String(factura.numero ?? facturaId);
   const resultado = await enviarFacturaPorCorreo(env, {
     destinatario,
-    remitente: 'no-responder@undreocol.app', // dominio verificado de UndreoCol (producción)
+    remitente: REMITENTE_NOTIFICACIONES,
     asunto: `Factura ${numero} — ${acueducto.nombre}`,
     cuerpoHtml: `<p>Adjuntamos la factura <strong>${numero}</strong> de ${acueducto.nombre}.</p>`,
     pdfBytes,
@@ -326,18 +328,65 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
   return numero;
 }
 
+// ---------------------------------------------------------------------------
+// Envío de una notificación general (010): recordatorio de vencimiento, aviso
+// de mora, confirmación de pago, corte ejecutado o reconexión completada. Sin
+// adjunto, contenido (asunto/cuerpoHtml) ya armado por quien encoló el
+// mensaje (core/notificaciones.ts) — este consumidor no vuelve a construirlo,
+// solo envía y actualiza `notificaciones` (mismo patrón de trazabilidad que
+// enviarCorreoDeFactura, plan.md §5, decisión técnica).
+// ---------------------------------------------------------------------------
+
+export async function enviarNotificacionGenerica(env: Env, mensaje: MensajeFactura): Promise<void> {
+  const supabase = crearClienteServicio(env);
+  const { notificacionId, destinatario, asunto, cuerpoHtml } = mensaje;
+  if (!notificacionId || !destinatario || !asunto || !cuerpoHtml) {
+    throw new Error('Mensaje enviar_notificacion inválido: falta notificacionId/destinatario/asunto/cuerpoHtml');
+  }
+
+  const resultado = await enviarCorreo(env, {
+    destinatario,
+    remitente: REMITENTE_NOTIFICACIONES,
+    asunto,
+    cuerpoHtml,
+  });
+
+  // Trazabilidad del intento SIEMPRE, igual que enviarCorreoDeFactura (006).
+  const { data: notif } = await supabase
+    .from('notificaciones')
+    .select('intentos')
+    .eq('id', notificacionId)
+    .single();
+  const actualizacion = computarActualizacionNotificacion(resultado, Number(notif?.intentos ?? 0));
+  const { error: errNotif } = await supabase
+    .from('notificaciones')
+    .update(actualizacion)
+    .eq('id', notificacionId);
+  if (errNotif) {
+    console.error('cierre-facturacion: no se pudo actualizar la notificación', errNotif.message);
+  }
+
+  if (!resultado.ok) {
+    throw new Error(`Envío fallido: ${resultado.error}`);
+  }
+}
+
 // Handler de cola de Cloudflare Queues (export default del worker consumidor):
-// enruta por `tipo` — 'emitir_factura' (005) o 'enviar_correo_factura' (006).
+// enruta por `tipo` — 'emitir_factura' (005), 'enviar_correo_factura' (006) o
+// 'enviar_notificacion' (010).
 export default {
   async queue(batch: { messages: Array<{ body: MensajeFactura }> }, env: Env): Promise<void> {
     for (const mensaje of batch.messages) {
       try {
         if (mensaje.body.tipo === 'enviar_correo_factura') {
           const numero = await enviarCorreoDeFactura(env, mensaje.body);
-          console.log(`cierre-facturacion: correo de factura ${numero} procesado`);
+          console.info(`cierre-facturacion: correo de factura ${numero} procesado`);
+        } else if (mensaje.body.tipo === 'enviar_notificacion') {
+          await enviarNotificacionGenerica(env, mensaje.body);
+          console.info(`cierre-facturacion: notificación ${mensaje.body.notificacionId} procesada`);
         } else {
           const numero = await emitirFacturaDeMensaje(env, mensaje.body);
-          console.log(`cierre-facturacion: factura ${numero} emitida`);
+          console.info(`cierre-facturacion: factura ${numero} emitida`);
         }
       } catch (e) {
         console.error('cierre-facturacion: error procesando mensaje', e instanceof Error ? e.message : e);

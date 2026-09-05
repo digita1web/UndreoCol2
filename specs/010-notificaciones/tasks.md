@@ -296,10 +296,36 @@ npx vitest run
 ```
 **Resultado esperado:** `tsc`/`eslint` sin errores; el Worker sigue empaquetando (mismos bindings de
 siempre, sin cola nueva); `vitest run` completo en verde.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+Extra no exigido por la tarea, hecho al tocar este archivo: se extrajo el remitente hardcodeado
+('no-responder@undreocol.app', repetido si no) a una única constante REMITENTE_NOTIFICACIONES,
+reutilizada tanto por enviarCorreoDeFactura (006, sin cambiar su comportamiento) como por la rama
+nueva. También se cambiaron los 3 console.log del handler queue() a console.info (CLAUDE.md §7:
+"nada de console.log en código entregado") — eran preexistentes de 005/006, se corrigieron de paso
+por tocar esas mismas líneas para agregar la tercera rama, no como tarea aparte.
+
+Sin test unitario nuevo: cierre-facturacion.ts no tiene (ni tenía) tests unitarios propios —
+enviarCorreoDeFactura/emitirFacturaDeMensaje tampoco los tienen, se verifican por integración
+(curl contra wrangler dev, como hizo 006). enviarNotificacionGenerica sigue el mismo criterio; su
+verificación de integración real llega con T-006 (que es quien primero encola un mensaje real de
+este tipo).
+
+$ npx tsc --noEmit
+(sin salida, EXIT=0)
+
+$ npx eslint .
+(sin salida, EXIT=0)
+
+$ npx wrangler deploy --dry-run -c wrangler.toml
+Total Upload: 1740.27 KiB / gzip: 396.02 KiB — bindings EMAIL/FACTURACION_COLA/FACTURAS_R2 intactos,
+sin cola nueva (reutiliza undreocol-facturacion, plan.md §5)
+
+$ npx vitest run
+Test Files  10 passed (10)
+     Tests  114 passed (114)   (sin cambio respecto a T-004 — esta tarea no agregó tests, solo
+                                 lógica nueva de infraestructura, consistente con el resto del archivo)
 ```
 **Commit:** —
 
