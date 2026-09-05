@@ -42,6 +42,45 @@ interface MensajeEmail {
 }
 type BindingEmail = { send: (m: MensajeEmail) => Promise<{ messageId: string }> };
 
+// Envío genérico (010): adjunto opcional — antes solo existía para la factura
+// con PDF obligatorio. Las 5 notificaciones nuevas de 010 no llevan adjunto.
+export interface EnviarCorreoInput {
+  destinatario: string;
+  remitente: string;
+  asunto: string;
+  cuerpoHtml: string;
+  adjunto?: Attachment;
+}
+
+export async function enviarCorreo(env: Pick<Env, 'EMAIL'>, input: EnviarCorreoInput): Promise<ResultadoEnvio> {
+  const binding = env.EMAIL as unknown as BindingEmail | undefined;
+  if (!binding || typeof binding.send !== 'function') {
+    // Dev local (sin Workers Paid/dominio): NO se lanza (regla 20); el error
+    // queda registrado en notificaciones para que el reintento lo intente.
+    return { ok: false, error: 'env.EMAIL no está configurado (requiere Workers Paid + dominio verificado)' };
+  }
+
+  const mensaje: MensajeEmail = {
+    to: input.destinatario,
+    from: input.remitente,
+    subject: input.asunto,
+    html: input.cuerpoHtml,
+    attachments: input.adjunto ? [input.adjunto] : undefined,
+  };
+
+  try {
+    const resultado = await binding.send(mensaje);
+    return { ok: true, messageId: resultado?.messageId };
+  } catch (e) {
+    // Los errores de Cloudflare llevan `code` (E_SENDER_NOT_VERIFIED, etc.).
+    const error = e instanceof Error ? e.message : String(e);
+    return { ok: false, error };
+  }
+}
+
+// Envoltorio delgado sobre enviarCorreo() — misma firma pública que 006 usa
+// desde siempre (queues/cierre-facturacion.ts). Ningún llamador de 006 cambia
+// una línea (plan.md §5, decisión técnica: menor riesgo de regresión).
 export async function enviarFacturaPorCorreo(
   env: Pick<Env, 'EMAIL'>,
   input: {
@@ -53,13 +92,6 @@ export async function enviarFacturaPorCorreo(
     pdfNombre: string;
   },
 ): Promise<ResultadoEnvio> {
-  const binding = env.EMAIL as unknown as BindingEmail | undefined;
-  if (!binding || typeof binding.send !== 'function') {
-    // Dev local (sin Workers Paid/dominio): NO se lanza (regla 20); el error
-    // queda registrado en notificaciones para que el reintento lo intente.
-    return { ok: false, error: 'env.EMAIL no está configurado (requiere Workers Paid + dominio verificado)' };
-  }
-
   const adjunto: Attachment = {
     content: input.pdfBytes.buffer.slice(
       input.pdfBytes.byteOffset,
@@ -68,21 +100,11 @@ export async function enviarFacturaPorCorreo(
     filename: input.pdfNombre,
     type: 'application/pdf',
   };
-
-  const mensaje: MensajeEmail = {
-    to: input.destinatario,
-    from: input.remitente,
-    subject: input.asunto,
-    html: input.cuerpoHtml,
-    attachments: [adjunto],
-  };
-
-  try {
-    const resultado = await binding.send(mensaje);
-    return { ok: true, messageId: resultado?.messageId };
-  } catch (e) {
-    // Los errores de Cloudflare llevan `code` (E_SENDER_NOT_VERIFIED, etc.).
-    const error = e instanceof Error ? e.message : String(e);
-    return { ok: false, error };
-  }
+  return enviarCorreo(env, {
+    destinatario: input.destinatario,
+    remitente: input.remitente,
+    asunto: input.asunto,
+    cuerpoHtml: input.cuerpoHtml,
+    adjunto,
+  });
 }

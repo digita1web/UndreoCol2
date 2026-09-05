@@ -232,7 +232,11 @@ Total Upload: 1738.67 KiB / gzip: 395.84 KiB — bindings EMAIL/FACTURACION_COLA
 ## T-004 — `lib/email.ts`: `enviarCorreo()` genérico + `lib/notificaciones.ts`: `encolarNotificacion()`
 
 **Archivos:** `backend/src/lib/email.ts` (editado), `backend/src/lib/notificaciones.ts` (nuevo),
-`backend/src/lib/db.ts` (editado: `TipoMensajeFacturaCierre` + `MensajeFacturaCierre`)
+`backend/src/lib/db.ts` (editado: `TipoMensajeFacturaCierre` + `MensajeFacturaCierre`),
+`backend/src/core/notificaciones.ts` (ajuste mínimo no previsto: faltaba exportar
+`TipoNotificacionNueva`, ya contemplado en el contrato de plan.md §4 pero omitido en T-003),
+`backend/tests/unit/email.test.ts` (2 tests nuevos para el camino sin adjunto, no exigidos por la
+tarea pero cubren código nuevo real)
 **Hace:** (plan.md §4) `enviarCorreo()` generaliza el envío (adjunto opcional); `enviarFacturaPorCorreo`
 pasa a ser un envoltorio delgado sobre `enviarCorreo()` con la misma firma pública de siempre (sin
 romper 006). `encolarNotificacion()`: inserta la fila en `notificaciones` (o no inserta nada si
@@ -249,10 +253,27 @@ npx vitest run
 **Resultado esperado:** `tsc`/`eslint` sin errores; `vitest run` completo en verde — en particular los
 tests existentes de `enviarFacturaPorCorreo` (006) pasan sin ninguna modificación, confirmando que el
 envoltorio preserva el contrato.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+$ npx tsc --noEmit
+(sin salida, EXIT=0 — tras dos rondas de ajuste en los tests nuevos: el mock de env.EMAIL.send debe
+tipar su parámetro como `unknown`, igual que la firma real en lib/db.ts, y castear adentro — un mock
+con un parámetro más estrecho no es asignable por contravarianza; y el acceso encadenado
+`attachments?.[0].filename` necesitaba una variable intermedia bajo strict mode)
+
+$ npx eslint .
+(sin salida, EXIT=0)
+
+$ npx vitest run
+ ✓ tests/unit/email.test.ts (5 tests) — 3 originales de enviarFacturaPorCorreo sin modificar +
+   2 nuevos: enviarCorreo sin adjunto (no incluye attachments) y enviarFacturaPorCorreo confirmando
+   que sigue armando el adjunto igual que antes de generalizarse
+ Test Files  10 passed (10)
+      Tests  114 passed (114)   (112 de T-003 + 2 nuevos de email.test.ts)
+
+$ npx wrangler deploy --dry-run -c wrangler.toml
+Total Upload: 1738.95 KiB / gzip: 395.88 KiB — bindings EMAIL/FACTURACION_COLA/FACTURAS_R2 intactos
 ```
 **Commit:** —
 

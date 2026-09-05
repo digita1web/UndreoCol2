@@ -19,11 +19,17 @@ export interface Env {
   FACTURAS_R2?: R2Bucket;
 }
 
-// Mensaje de la cola de facturación: UNA factura por mensaje (CLAUDE.md §5.5).
-// El consumidor (src/queues/cierre-facturacion.ts) enruta por `tipo`:
+// Mensaje de la cola de facturación: UNA factura (o notificación) por mensaje
+// (CLAUDE.md §5.5). El consumidor (src/queues/cierre-facturacion.ts) enruta
+// por `tipo`:
 //   'emitir_factura'        → emite la factura de ciclo de un suscriptor (005)
 //   'enviar_correo_factura' → genera el PDF, sube a R2 y lo envía por correo (006)
-export type TipoMensajeFacturaCierre = 'emitir_factura' | 'enviar_correo_factura';
+//   'enviar_notificacion'   → envía cualquiera de los 5 tipos nuevos de 010
+//                             (recordatorio/mora/pago/corte/reconexión); el
+//                             contenido ya viene armado por quien encoló el
+//                             mensaje (core/notificaciones.ts), no se re-arma
+//                             en el consumidor (plan.md §5, decisión técnica)
+export type TipoMensajeFacturaCierre = 'emitir_factura' | 'enviar_correo_factura' | 'enviar_notificacion';
 
 export interface MensajeFacturaCierre {
   tipo: TipoMensajeFacturaCierre;
@@ -31,7 +37,10 @@ export interface MensajeFacturaCierre {
   periodoId?: string;          // para 'emitir_factura'
   usuarioServicioId?: string;  // para 'emitir_factura'
   facturaId?: string;          // para 'enviar_correo_factura'
-  notificacionId?: string;     // para 'enviar_correo_factura' (fila a actualizar)
+  notificacionId?: string;     // para 'enviar_correo_factura' | 'enviar_notificacion' (fila a actualizar)
+  destinatario?: string;       // para 'enviar_notificacion' (010)
+  asunto?: string;             // para 'enviar_notificacion' (010)
+  cuerpoHtml?: string;         // para 'enviar_notificacion' (010)
 }
 
 // Cliente anónimo: solo para rutas públicas (p. ej. GET /salud). Sin JWT de

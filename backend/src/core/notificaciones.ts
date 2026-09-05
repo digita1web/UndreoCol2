@@ -13,6 +13,15 @@
 //    correo de factura — lib/email.ts es infraestructura de envío, no el dueño
 //    del cálculo de reintentos (plan.md §5, decisión técnica).
 
+// 'factura_generada' NO está aquí: su contenido lo sigue armando
+// enviarCorreoDeFactura() en queues/cierre-facturacion.ts (006, sin cambios).
+export type TipoNotificacionNueva =
+  | 'recordatorio_vencimiento'
+  | 'aviso_mora'
+  | 'confirmacion_pago'
+  | 'corte_ejecutado'
+  | 'reconexion_completada';
+
 export interface ContenidoNotificacion {
   asunto: string;
   cuerpoHtml: string;

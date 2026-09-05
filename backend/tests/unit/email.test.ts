@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enviarFacturaPorCorreo } from '../../src/lib/email';
+import { enviarCorreo, enviarFacturaPorCorreo } from '../../src/lib/email';
 
 const inputBase = {
   destinatario: 'suscriptor-a1@test.local',
@@ -46,3 +46,46 @@ describe('enviarFacturaPorCorreo (D-9, regla 20)', () => {
 
 // computarActualizacionNotificacion se movió a core/notificaciones.ts (010) —
 // sus tests viven ahora en tests/unit/notificaciones.test.ts, sin modificarse.
+
+interface MensajeEnviadoCapturado {
+  attachments?: Array<{ filename: string; type: string }>;
+}
+
+describe('enviarCorreo (010, generalización sin adjunto obligatorio)', () => {
+  it('sin adjunto (notificación sin PDF) envía igual y no incluye attachments', async () => {
+    let mensajeEnviado: MensajeEnviadoCapturado | undefined;
+    const env = {
+      EMAIL: {
+        send: async (m: unknown) => {
+          mensajeEnviado = m as MensajeEnviadoCapturado;
+          return { messageId: 'sin-adjunto-1' };
+        },
+      },
+    };
+    const r = await enviarCorreo(env, {
+      destinatario: 'suscriptor-a1@test.local',
+      remitente: 'no-responder@undreocol.app',
+      asunto: 'Confirmación de pago',
+      cuerpoHtml: '<p>Recibimos tu pago</p>',
+    });
+    expect(r.ok).toBe(true);
+    expect(mensajeEnviado?.attachments).toBeUndefined();
+  });
+
+  it('enviarFacturaPorCorreo (006) sigue armando el adjunto vía enviarCorreo, sin cambiar su contrato', async () => {
+    let mensajeEnviado: MensajeEnviadoCapturado | undefined;
+    const env = {
+      EMAIL: {
+        send: async (m: unknown) => {
+          mensajeEnviado = m as MensajeEnviadoCapturado;
+          return { messageId: 'con-adjunto-1' };
+        },
+      },
+    };
+    await enviarFacturaPorCorreo(env, inputBase);
+    const adjunto = mensajeEnviado?.attachments?.[0];
+    expect(mensajeEnviado?.attachments).toHaveLength(1);
+    expect(adjunto?.filename).toBe('FAC-2026-00001.pdf');
+    expect(adjunto?.type).toBe('application/pdf');
+  });
+});
