@@ -176,7 +176,7 @@ Regresión completa sobre el estado final (los 11 scripts de aislamiento existen
 001 OK · 002 OK · 003 OK · 004 OK · 005 OK · 006 OK · 007 OK · 008 FALLÓ (mismo hallazgo
 preexistente ya reportado en T-001, no relacionado con esta tarea) · 009 OK · 010 OK · 012 OK.
 ```
-**Commit:** `[pendiente]`
+**Commit:** `e2937ef`
 
 ## T-003 — `core/notificaciones.ts`: contenido por tipo + `computarActualizacionNotificacion` movido
 
