@@ -5,6 +5,16 @@ import { redirect } from 'next/navigation';
 // administrativa (uc_sesion_admin) — un fetch de servidor no incluye
 // automáticamente las cookies del navegador, a diferencia de lib/api.ts
 // (client-only, usa credentials: 'include').
+//
+// `cookies().get().value` de next/headers ya viene decodificado con
+// decodeURIComponent (next/dist/compiled/@edge-runtime/cookies). El backend
+// escribe la cookie con hono/cookie, que la codifica con encodeURIComponent
+// porque el valor es un JSON con `{`, `"` y `:` (caracteres inválidos en un
+// cookie-value crudo). Sin volver a codificar aquí, el header Cookie sale
+// malformado, hono/cookie no puede decodificarlo, la sesión no se reconoce,
+// /dashboard responde 401 y esta página redirige a /login pese a que el login
+// fue exitoso y la cookie del navegador es válida (bug real, confirmado con
+// curl: mismo valor crudo → 200, mismo valor ya decodificado → 401).
 const URL_BASE_API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
 const NOMBRE_COOKIE_SESION = 'uc_sesion_admin';
 
@@ -26,7 +36,7 @@ async function obtenerDashboard(): Promise<RespuestaDashboard> {
   if (!cookieSesion) redirect('/login');
 
   const respuesta = await fetch(`${URL_BASE_API}/dashboard`, {
-    headers: { Cookie: `${NOMBRE_COOKIE_SESION}=${cookieSesion.value}` },
+    headers: { Cookie: `${NOMBRE_COOKIE_SESION}=${encodeURIComponent(cookieSesion.value)}` },
     cache: 'no-store',
   });
 

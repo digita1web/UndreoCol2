@@ -4,6 +4,104 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-05 — Sesión 023: fix login admin — cookie mal codificada al reenviarla desde el server component del dashboard
+
+Con el fix de la Sesión 022 aplicado, el login dejó de hacer el submit nativo, pero apareció
+un tercer síntoma en el mismo flujo (reportado con evidencia real de DevTools): `POST
+/auth/login` respondía 200 y la cookie `uc_sesion_admin` sí quedaba guardada en el navegador,
+pero tras el `router.push('/app/dashboard')` el usuario terminaba de vuelta en `/login`
+visualmente, sin ningún error visible en la UI.
+
+**Causa raíz (confirmada con curl, no supuesta):** `frontend/app/app/dashboard/page.tsx` es un
+server component que reenvía la cookie de sesión al backend a mano (un `fetch` de servidor no
+adjunta automáticamente las cookies del navegador):
+
+```ts
+headers: { Cookie: `${NOMBRE_COOKIE_SESION}=${cookieSesion.value}` }
+```
+
+`backend/src/lib/auth.ts` escribe la cookie con `hono/cookie` `setCookie`, que la codifica con
+`encodeURIComponent` porque el valor es un JSON (`{"at":…,"rt":…,"exp":…}`) y `{`, `"`, `:` no
+son válidos en un cookie-value crudo. Pero `cookies().get(name).value` de `next/headers` **ya
+devuelve el valor decodificado** — `next/dist/compiled/@edge-runtime/cookies` llama
+`decodeURIComponent` internamente al leerlo. El código de `dashboard/page.tsx` reenviaba ese
+valor ya decodificado como si fuera el crudo, produciendo un header `Cookie` inválido
+(caracteres `{ } " : ,` sin escapar). El backend no podía volver a decodificarlo,
+`verificarSesionAdministrativa` fallaba, `/dashboard` respondía 401, y la página hacía
+`redirect('/login')` — el rebote silencioso observado.
+
+Verificado el mecanismo exacto con curl, aislando cada paso:
+```text
+$ # 1. login real, capturar el Set-Cookie crudo (percent-encoded) tal como lo ve el navegador
+$ curl -s -i -X POST http://localhost:8787/auth/login -H "Content-Type: application/json" \
+    -H "Origin: http://localhost:3000" -d '{"email":"admin-a@test.local","password":"mateo-admin-123"}'
+Set-Cookie: uc_sesion_admin=%7B%22at%22%3A%22eyJhbGci...  (percent-encoded)
+
+$ # 2. reenviar el valor CRUDO (lo que hace un fetch de navegador, o el fix correcto) → 200
+$ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8787/dashboard \
+    -H "Cookie: uc_sesion_admin=%7B%22at%22..."
+200
+
+$ # 3. reenviar el valor ya DECODIFICADO tal cual lo entrega next/headers (el bug) → 401
+$ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8787/dashboard \
+    -H 'Cookie: uc_sesion_admin={"at":"eyJhbGci...'
+401
+```
+
+**Fix (una línea, un solo archivo):** `frontend/app/app/dashboard/page.tsx` — volver a codificar
+el valor antes de reenviarlo, restaurando el round-trip `encodeURIComponent` (backend) ↔
+`decodeURIComponent` (backend al leerlo) que `next/headers` rompe en el medio:
+
+```ts
+headers: { Cookie: `${NOMBRE_COOKIE_SESION}=${encodeURIComponent(cookieSesion.value)}` },
+```
+
+Único archivo afectado: se revisaron todos los usos de `cookies()` en `frontend/app/` (`grep -rln
+"cookies()" app/`) — solo dos: `app/page.tsx` (solo verifica presencia con `.has()`, no reenvía
+el valor, no afectado) y `app/app/dashboard/page.tsx` (el corregido).
+
+**Verificado de verdad, extremo a extremo, con Playwright contra `wrangler dev` + `next dev`
+reales (Chromium real, no simulado, instalado ad hoc en un directorio aislado — no se agregó
+Playwright como dependencia del proyecto):**
+```text
+Antes del fix — rastro de red completo tras submit exitoso:
+  POST http://localhost:8787/auth/login → 200
+  GET  http://localhost:3000/app/dashboard?_rsc=... [next-url=/login] → 200
+  GET  http://localhost:3000/login?_rsc=...          [next-url=/app/dashboard] → 200  (rebote)
+  URL final: http://localhost:3000/login   ← bug confirmado
+
+Después del fix — mismo flujo, mismas credenciales:
+  POST http://localhost:8787/auth/login → 200
+  GET  http://localhost:3000/app/dashboard?_rsc=... → 200
+  GET  http://localhost:3000/app/dashboard?_rsc=... → 200  (sin rebote a /login)
+  URL final: http://localhost:3000/app/dashboard
+
+  Contenido real renderizado (fetched del backend, no mock):
+    h1: "Acueducto A"
+    dl: Usuario=Admin A · Rol=admin_acueducto · Usuarios de servicio=2
+```
+
+```text
+$ npm run build   (frontend)
+   ✓ Generating static pages (15/15)
+   Route (app) ... ƒ /app/dashboard  131 B  103 kB   ← build limpio, sin errores/warnings TS
+
+$ npm run lint    (frontend)
+> eslint .
+(sin salida = sin errores ni warnings)
+```
+
+Nota de proceso: la hipótesis inicial de esta sesión (cookie cross-origin entre `localhost:3000`
+y `localhost:8787` por ser puertos distintos) se descartó con evidencia — las cookies HTTP no
+distinguen por puerto, solo por host (`localhost` en ambos). El navegador sí enviaba la cookie a
+ambos orígenes; el problema estaba enteramente en cómo el server component la volvía a serializar
+para el `fetch` de servidor.
+
+**Pendiente de validación manual de Mateo (no verificable en este entorno):** confirmar el mismo
+flujo en un navegador real (no headless) para descartar cualquier interacción con extensiones del
+navegador, y repetir el login end-to-end una segunda vez tras cerrar sesión, para confirmar que
+el fix es estable en logins sucesivos.
+
 ### 2026-09-04 — Sesión 022: fix login — submit nativo durante la hidratación de React
 
 Causa raíz (diagnosticada por Mateo con Playwright): carrera de hidratación de React. Si el
