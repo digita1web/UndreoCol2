@@ -637,7 +637,7 @@ palabra "Corte ejecutado" como una de sus opciones. Corregido apuntando la aserc
 elementos de fila reales antes de dar el resultado por bueno — CLAUDE.md §4, no se acepta la
 primera lectura sin verificar que realmente prueba lo que dice probar.)
 ```
-**Commit:** —
+**Commit:** `352f604`
 
 ## T-010 — Verificación manual end-to-end (navegador real)
 
