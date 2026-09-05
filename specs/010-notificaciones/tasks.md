@@ -227,7 +227,7 @@ $ npx wrangler deploy --dry-run -c wrangler.toml
 Total Upload: 1738.67 KiB / gzip: 395.84 KiB — bindings EMAIL/FACTURACION_COLA/FACTURAS_R2 intactos
 (verificación extra no exigida por esta tarea, hecha por tocar un archivo de cola)
 ```
-**Commit:** —
+**Commit:** `fc017c3`
 
 ## T-004 — `lib/email.ts`: `enviarCorreo()` genérico + `lib/notificaciones.ts`: `encolarNotificacion()`
 
