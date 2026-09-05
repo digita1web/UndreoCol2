@@ -1,6 +1,7 @@
 # SPEC — 010: notificaciones
 
-**Estado:** Borrador para aprobación
+**Estado:** Aprobado (2026-09-05) — incluye las decisiones de §0 (Resend fuera de alcance) y §3.8
+(alerta de `monitor-db.ts` fuera de la tabla `notificaciones`); pendiente de `/plan`.
 **Depende de:** 006-impresion-y-correo-factura (crea la tabla `notificaciones`, `backend/src/lib/email.ts`
 y `computarActualizacionNotificacion()` — 010 los generaliza, no los duplica); 007-pagos-y-cartera
 (fuente del evento `confirmacion_pago`, diferido explícitamente aquí en su spec §4); 009-cortes-y-
@@ -71,9 +72,8 @@ generalizada para aceptar cualquier asunto/cuerpo, no solo el de una factura con
 Mateo prioriza el cambio a Resend después, es un `/specify` propio que reemplaza el interior de esa
 capa sin tocar el resto de 010.
 
-**Esto queda pendiente de aprobación explícita de Mateo en el checkpoint de esta spec** — si Mateo
-prefiere adelantar Resend dentro de 010 pese a lo anterior, es su decisión y se documenta aquí antes
-de pasar a `/plan`.
+**Aprobado por Mateo (2026-09-05):** Resend queda fuera de esta feature. 010 se construye sobre
+Cloudflare Email Service.
 
 ---
 
@@ -164,8 +164,8 @@ Un Worker con cron diario (mismo patrón que `keepalive.ts`/`monitor-db.ts`, `IN
 revisa, para cada cliente activo:
 
 - **Recordatorio de vencimiento:** facturas `pendiente` cuya `fecha_vencimiento` cae dentro de
-  `configuracion.dias_aviso_vencimiento` días desde hoy (campo nuevo propuesto, default sugerido: 3
-  días — **a confirmar por Mateo en el checkpoint**, no hay un valor "correcto" universal).
+  `configuracion.dias_aviso_vencimiento` días desde hoy (campo nuevo propuesto, default **aprobado:
+  3 días**).
 - **Aviso de mora:** facturas que **hoy** cumplen por primera vez `pendiente` + `fecha_vencimiento <
   hoy` (el mismo criterio de "vencida" que ya deriva 007 en `obtenerCartera()`, sin persistir un
   estado nuevo).
@@ -218,9 +218,8 @@ reintento con límite tipo `computarActualizacionNotificacion` — el cron corre
 fallo de envío de hoy se reintenta naturalmente mañana si la condición persiste (no hace falta
 mecanismo de reintento adicional).
 
-**Esto también queda pendiente de aprobación de Mateo en el checkpoint** — si prefiere forzar esta
-alerta a convivir en `notificaciones` con algún `cliente_id` especial (p. ej. un cliente "sistema"),
-es una alternativa a discutir, pero no es la recomendada.
+**Aprobado por Mateo (2026-09-05):** la alerta se envía directo, sin pasar por la tabla
+`notificaciones`.
 
 ## 4. Fuera de alcance
 
@@ -345,7 +344,7 @@ cuenta de Cloudflare de Mateo**, con pasos exactos.
 - [ ] Tests unitarios en verde (contenido por tipo, reutilización de `computarActualizacionNotificacion`)
 - [ ] Test de aislamiento nuevo (`010_notificaciones_aislamiento.sql`) en verde, con regresión 001-009
 - [ ] `CHANGELOG.md` actualizado al cierre
-- [ ] Aprobación explícita de Mateo de: (a) esta spec completa, (b) la decisión de §0 (Resend fuera de
-  alcance), (c) la decisión de §3.8 (alerta de `monitor-db.ts` fuera de la tabla `notificaciones`), y
-  (d) el valor default de `configuracion.dias_aviso_vencimiento` (§3.5)
+- [x] Aprobación explícita de Mateo (2026-09-05) de: (a) esta spec completa, (b) la decisión de §0
+  (Resend fuera de alcance), (c) la decisión de §3.8 (alerta de `monitor-db.ts` fuera de la tabla
+  `notificaciones`), y (d) el valor default de `configuracion.dias_aviso_vencimiento` = 3 días (§3.5)
 - [ ] Un commit por tarea completada y verificada; sin `git push`
