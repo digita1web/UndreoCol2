@@ -659,12 +659,48 @@ cd frontend && npm run dev &
 (más `factura_generada`, sin cambios) aparecen correctamente en el panel, con el `estado` reflejando
 si el envío real fue posible (probablemente `pendiente`/`fallida` sin `env.EMAIL` en local, igual que
 006 documenta) o si un `INSERT` inválido fue rechazado.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05) — verificado en navegador real, alcance ajustado (ver nota)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+Alcance ajustado deliberadamente: NO repetí pago/corte/reconexión haciendo clic en los formularios
+reales del panel (PagoForm/CorteForm/ReconexionForm). Razón: esos tres flujos completos (backend +
+disparo de la notificación) ya quedaron verificados de punta a punta con evidencia real en T-006
+(curl contra las mismas rutas que esos formularios llaman) — repetirlos por clic solo probaría que
+el formulario arma el mismo payload, algo de 007/009 sin relación con esta feature, mientras que
+CADA repetición deja otro evento permanente en cortes_reconexiones (inmutable por diseño, sin
+DELETE) y otro pago para anular — exactamente el costo que ya documenté en T-007. Con 010 ya
+demostrada de punta a punta una vez por cada tipo síncrono, repetirlo por UI no agrega verificación
+nueva de ESTA feature y sí agrega más rastro permanente a la base compartida.
+
+Lo que SÍ hacía falta y no se había probado junto: que `recordatorio_vencimiento`/`aviso_mora`
+(generados por el cron de T-007) se vean correctamente en el panel de T-009 — esa combinación
+nunca se había verificado en un navegador real. Para eso:
+
+1. Inserté 2 facturas de prueba nuevas (TEST-VENCE-T010 vence en 2 días, TEST-MORA-T010 vencida
+   hace 5 días) para el suscriptor A1 (con email).
+2. Levanté los 3 procesos reales simultáneamente: `wrangler dev` (backend, :8787),
+   `wrangler dev -c wrangler.avisos-vencimiento.toml --test-scheduled` (cron, :8790, puerto de
+   inspector distinto para evitar el choque de puerto 9229 entre dos wrangler dev a la vez) y
+   `npm run dev` (frontend, :3000).
+3. Disparé el cron real (`GET /__scheduled`) → log real:
+   "avisos-vencimiento: 1 recordatorio(s) de vencimiento y 1 aviso(s) de mora encolados"
+4. Con Playwright (Chromium real): login admin → /app/notificaciones → **las 6 filas de tipo
+   aparecen juntas por primera vez**: aviso_mora, recordatorio_vencimiento (ambas "Pendiente",
+   intentos 0 — esperado, ver nota de T-007 sobre colas locales por proceso separado),
+   reconexion_completada, corte_ejecutado, confirmacion_pago, factura_generada (las 4 últimas
+   "Enviada", de T-006/006). Screenshot revisado visualmente: el panel renderiza correctamente los
+   6 tipos, con etiquetas, estados y fechas coherentes. Sin errores de consola del navegador.
+
+Limpieza: las 2 facturas de prueba se ANULARON (mismo mecanismo que T-007, no se pueden borrar por
+el trigger de inmutabilidad) — motivo registrado, responsable registrado.
+
+CONCLUSIÓN: el flujo funciona sin error visible en ningún punto, con los 6 tipos de notificación
+demostrados con datos reales (4 con envío real simulado exitoso vía `wrangler dev`'s binding local
+de `send_email`, 2 en estado `pendiente` por la limitación ya documentada de colas locales
+cross-proceso — no una falla de la lógica de 010, confirmado en T-007).
 ```
-**Commit:** (no aplica si es solo verificación sin cambios de código)
+**Commit:** No aplica — sin cambios de código (verificación pura); las 2 facturas de prueba se
+insertaron y anularon directamente por SQL, sin tocar ningún archivo del repositorio.
 
 ## T-011 — Cierre: `CHANGELOG.md` + checklist `spec.md §8`
 
