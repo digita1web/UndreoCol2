@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computarActualizacionNotificacion, enviarFacturaPorCorreo } from '../../src/lib/email';
+import { enviarFacturaPorCorreo } from '../../src/lib/email';
 
 const inputBase = {
   destinatario: 'suscriptor-a1@test.local',
@@ -44,26 +44,5 @@ describe('enviarFacturaPorCorreo (D-9, regla 20)', () => {
   });
 });
 
-describe('computarActualizacionNotificacion (trazabilidad del fallo, spec §3.4)', () => {
-  it('envío fallido: incrementa intentos y deja ultimo_error poblado (sigue pendiente para reintento)', () => {
-    const r = computarActualizacionNotificacion({ ok: false, error: 'EMAIL no está configurado (dev)' }, 0);
-    expect(r.intentos).toBe(1);
-    expect(r.estado).toBe('pendiente');
-    expect(r.ultimo_error).toContain('EMAIL no está configurado');
-  });
-
-  it('envío exitoso: estado enviada con intentos incrementado y enviada_en', () => {
-    const r = computarActualizacionNotificacion({ ok: true }, 0);
-    expect(r.intentos).toBe(1);
-    expect(r.estado).toBe('enviada');
-    expect(r.enviada_en).toBeTruthy();
-    expect(r.ultimo_error).toBeUndefined();
-  });
-
-  it('tras agotar los reintentos (3) el estado pasa a fallida (el admin lo gestiona)', () => {
-    const r = computarActualizacionNotificacion({ ok: false, error: 'E_RATE_LIMIT_EXCEEDED' }, 2);
-    expect(r.intentos).toBe(3);
-    expect(r.estado).toBe('fallida');
-    expect(r.ultimo_error).toContain('E_RATE_LIMIT_EXCEEDED');
-  });
-});
+// computarActualizacionNotificacion se movió a core/notificaciones.ts (010) —
+// sus tests viven ahora en tests/unit/notificaciones.test.ts, sin modificarse.

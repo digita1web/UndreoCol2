@@ -183,7 +183,7 @@ preexistente ya reportado en T-001, no relacionado con esta tarea) · 009 OK · 
 **Archivos:** `backend/src/core/notificaciones.ts` (nuevo), `backend/tests/unit/notificaciones.test.ts`
 (nuevo), `backend/src/lib/email.ts` (se retiran `computarActualizacionNotificacion`/
 `MAX_INTENTOS_ENVIO`), `backend/tests/unit/email.test.ts` (se retiran los tests movidos, sin tocar los
-que quedan)
+que quedan), `backend/src/queues/cierre-facturacion.ts` (ajuste mínimo no previsto — ver evidencia)
 **Hace:** (plan.md §4) 5 funciones puras `contenido*` (una por tipo nuevo) que arman
 `{asunto, cuerpoHtml}`; `computarActualizacionNotificacion()`/`MAX_INTENTOS_ENVIO` migran tal cual
 desde `lib/email.ts` (sin cambiar su lógica — solo la ubicación). Los tests existentes de esa función
@@ -199,10 +199,33 @@ npx vitest run
 tests movidos de `computarActualizacionNotificacion` (deben pasar exactamente igual que antes de
 moverse — confirma que el movimiento no cambió comportamiento) y 5+ tests nuevos de contenido (uno
 por tipo, verificando que el asunto/cuerpo incluye los datos correctos del evento).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+Ajuste no previsto en el plan, necesario para no dejar el build roto (CLAUDE.md §9): al retirar
+computarActualizacionNotificacion de lib/email.ts, backend/src/queues/cierre-facturacion.ts (que la
+importa desde ahí desde 006) dejaba de compilar. Actualicé SOLO esa línea de import para que apunte
+a core/notificaciones — no adelanté el resto del trabajo de T-005 (la tercera rama del consumidor
+sigue sin existir).
+
+$ npx tsc --noEmit
+(sin salida, EXIT=0)
+
+$ npx eslint .
+(sin salida, EXIT=0)
+
+$ npx vitest run
+ ✓ tests/unit/notificaciones.test.ts (10 tests) — 3 movidos de computarActualizacionNotificacion
+   (idénticos, sin cambios) + 7 nuevos de contenido (uno por escenario, incluyendo los dos casos
+   límite: pago sin facturas aplicadas y reconexión sin número de factura disponible)
+ ✓ tests/unit/email.test.ts (3 tests) — solo quedan los de enviarFacturaPorCorreo, sin cambios
+ Test Files  10 passed (10)
+      Tests  112 passed (112)   (antes de esta tarea: 105 según el cierre de 009 — 105 - 3 movidos
+                                  + 10 en el archivo nuevo = 112, cuadra exacto)
+
+$ npx wrangler deploy --dry-run -c wrangler.toml
+Total Upload: 1738.67 KiB / gzip: 395.84 KiB — bindings EMAIL/FACTURACION_COLA/FACTURAS_R2 intactos
+(verificación extra no exigida por esta tarea, hecha por tocar un archivo de cola)
 ```
 **Commit:** —
 

@@ -22,7 +22,8 @@ import {
 } from '../core/facturacion';
 import type { Tarifa } from '../core/tarifas';
 import { generarPdfFactura, type DatosAcueductoPdf } from '../lib/factura-pdf';
-import { computarActualizacionNotificacion, enviarFacturaPorCorreo } from '../lib/email';
+import { enviarFacturaPorCorreo } from '../lib/email';
+import { computarActualizacionNotificacion } from '../core/notificaciones';
 
 export type MensajeFactura = MensajeFacturaCierre;
 

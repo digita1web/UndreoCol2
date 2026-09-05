@@ -10,6 +10,11 @@
 // el flujo completo (cola → notificaciones → intentos/ultimo_error) se pruebe en
 // local y el error quede trazable para el reintento (spec 006 §3.4, T-003).
 // El envío real requiere la cuenta de Mateo (Workers Paid + dominio verificado).
+//
+// computarActualizacionNotificacion()/MAX_INTENTOS_ENVIO se mudaron a
+// core/notificaciones.ts (010, plan.md §5): son lógica pura sin dependencias
+// de Hono/Cloudflare/Supabase, y ahora las usan los 6 tipos de notificación,
+// no solo el correo de factura.
 
 import type { Env } from './db';
 
@@ -17,28 +22,6 @@ export interface ResultadoEnvio {
   ok: boolean;
   error?: string;
   messageId?: string;
-}
-
-// Intento máximo antes de marcar la notificación como 'fallida' (reintento del
-// worker; después lo gestiona el admin desde el panel).
-export const MAX_INTENTOS_ENVIO = 3;
-
-// Decisión pura del estado de la notificación tras un intento de envío
-// (spec 006 §3.4 y T-003): SIEMPRE incrementa intentos y, si falla, deja
-// ultimo_error poblado para que el fallo quede trazable y reintentable.
-export function computarActualizacionNotificacion(
-  resultado: { ok: boolean; error?: string },
-  intentosActuales: number,
-): { estado: 'pendiente' | 'enviada' | 'fallida'; intentos: number; ultimo_error?: string; enviada_en?: string } {
-  const intentos = intentosActuales + 1;
-  if (resultado.ok) {
-    return { estado: 'enviada', intentos, enviada_en: new Date().toISOString() };
-  }
-  return {
-    estado: intentos >= MAX_INTENTOS_ENVIO ? 'fallida' : 'pendiente',
-    intentos,
-    ultimo_error: resultado.error ?? 'Error de envío',
-  };
 }
 
 interface Attachment {
