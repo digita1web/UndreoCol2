@@ -66,12 +66,65 @@ default 3`; el `INSERT` de prueba falla con `violates check constraint "notifica
 (no con un error de FK — se puede usar un `cliente_id` inexistente a propósito solo para confirmar
 que el rechazo ocurre por el `CHECK`, no llegar a la FK; si Postgres valida la FK primero, ajustar
 el `INSERT` con un `cliente_id` real del fixture de 001).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05) — verificado contra Supabase local real (Docker)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+Esta base local (supabase_db_UndreoCol2, la misma usada en la sesión del bug de login de esta
+conversación) YA estaba migrada hasta 008 (portal-suscriptor/portal-slug) — no re-corrí 001-008
+para no arriesgar los datos de prueba reales que ya tiene (admin-a@test.local, etc.), solo apliqué
+lo que faltaba:
+
+$ psql "$DATABASE_URL" -c "select table_name from information_schema.tables where table_schema='public' and table_name in ('cortes_reconexiones','importaciones_suscriptores');"
+ table_name
+------------
+(0 rows)   -- 009 y 012 nunca se habían aplicado a ESTA base (sí se verificaron en su momento contra
+              otros entornos — 009 con un shim de PostgreSQL sin Docker, según su propio tasks.md).
+
+Apliqué 009 y 012 (ya existían en el repo, sin tocarlos) para tener una base real y completa contra
+la cual verificar 010, y poder correr una regresión de verdad:
+
+$ psql "$DATABASE_URL" -f supabase/migrations/20260911090000_cortes-reconexiones.sql → EXIT=0
+$ psql "$DATABASE_URL" -f supabase/migrations/20260912090000_importacion-suscriptores.sql → EXIT=0
+
+Luego apliqué la migración de esta tarea:
+
+$ psql "$DATABASE_URL" -f supabase/migrations/20260913090000_notificaciones-generales.sql
+ALTER TABLE
+COMMENT
+ALTER TABLE
+COMMENT
+EXIT=0
+
+$ psql "$DATABASE_URL" -c "\d notificaciones" | grep -A1 "Check constraints"
+Check constraints:
+    "notificaciones_tipo_valido" CHECK (tipo = ANY (ARRAY['factura_generada'::text,
+    'recordatorio_vencimiento'::text, 'aviso_mora'::text, 'confirmacion_pago'::text,
+    'corte_ejecutado'::text, 'reconexion_completada'::text]))
+
+$ psql "$DATABASE_URL" -c "\d configuracion" | grep dias_aviso_vencimiento
+ dias_aviso_vencimiento | integer | not null | 3
+
+$ psql "$DATABASE_URL" -c "insert into notificaciones (cliente_id, tipo) values ('a0000000-0000-0000-0000-000000000001','tipo_invalido');"
+ERROR:  new row for relation "notificaciones" violates check constraint "notificaciones_tipo_valido"
+
+$ psql "$DATABASE_URL" -c "select tipo, count(*) from notificaciones group by tipo;"
+       tipo        | count
+-------------------+-------
+ factura_generada  |     1   -- el insert inválido no persistió; el dato existente de 006 intacto.
+
+Regresión completa de aislamiento sobre el estado final (001 a 012, los 11 scripts existentes):
+001 OK · 002 OK · 003 OK · 004 OK · 005 OK · 006 OK · 007 OK · 009 OK · 012 OK.
+
+HALLAZGO COLATERAL (no causado por esta migración, reportado íntegro por CLAUDE.md §8): 008 FALLA
+en PASO 3 ("A1 bloqueado devolvió ok") — investigado antes de reportarlo: portal_intentos_login
+tiene filas residuales de corridas manuales anteriores (numero_documento 1000000001/1000000002,
+count=1 cada una) que alteran el conteo de intentos que ese test asume desde cero. No es una
+regresión de 010 (mi migración no toca portal_intentos_login/portal_umbral_intentos_login ni nada
+relacionado con el login del portal) — es un estado sucio preexistente de esta base persistente.
+NO VERIFICADO / NO CORREGIDO aquí — fuera del alcance de T-001 de 010; queda para que Mateo decida
+si limpiar las filas de prueba o revisar la idempotencia del test de 008.
 ```
-**Commit:** —
+**Commit:** `[pendiente de este mensaje]`
 
 ## T-002 — Fixtures + test de aislamiento
 

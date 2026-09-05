@@ -166,6 +166,8 @@ create table configuracion (
   prefijo_reconexion   text not null default 'REC',   -- reconexiones
   consecutivo_factura  integer not null default 0,    -- reinicia cada año
   anio_consecutivo     smallint not null default extract(year from current_date)::smallint,
+  -- Notificaciones (010)
+  dias_aviso_vencimiento integer not null default 3,  -- recordatorio antes de fecha_vencimiento
   updated_at           timestamptz not null default now()
 );
 
@@ -546,7 +548,7 @@ create table notificaciones (
   cliente_id          uuid not null references clientes(id) on delete cascade,
   usuario_servicio_id uuid references usuarios_servicio(id) on delete cascade,
   factura_id          uuid references facturas(id) on delete cascade,
-  tipo                text not null,             -- factura_generada, recordatorio, mora, pago
+  tipo                text not null,             -- catálogo cerrado, ver CHECK abajo (010)
   canal               text not null default 'email',
   destinatario        text,
   asunto              text,
@@ -554,7 +556,13 @@ create table notificaciones (
   intentos            smallint not null default 0,
   ultimo_error        text,
   enviada_en          timestamptz,
-  created_at          timestamptz not null default now()
+  created_at          timestamptz not null default now(),
+  constraint notificaciones_tipo_valido check (
+    tipo in (
+      'factura_generada', 'recordatorio_vencimiento', 'aviso_mora',
+      'confirmacion_pago', 'corte_ejecutado', 'reconexion_completada'
+    )
+  )
 );
 
 create index on notificaciones (estado, created_at) where estado = 'pendiente';
