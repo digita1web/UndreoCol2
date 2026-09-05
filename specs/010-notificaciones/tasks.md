@@ -124,7 +124,7 @@ relacionado con el login del portal) — es un estado sucio preexistente de esta
 NO VERIFICADO / NO CORREGIDO aquí — fuera del alcance de T-001 de 010; queda para que Mateo decida
 si limpiar las filas de prueba o revisar la idempotencia del test de 008.
 ```
-**Commit:** `[pendiente de este mensaje]`
+**Commit:** `9b60964`
 
 ## T-002 — Fixtures + test de aislamiento
 
