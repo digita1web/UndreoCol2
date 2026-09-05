@@ -275,7 +275,7 @@ $ npx vitest run
 $ npx wrangler deploy --dry-run -c wrangler.toml
 Total Upload: 1738.95 KiB / gzip: 395.88 KiB — bindings EMAIL/FACTURACION_COLA/FACTURAS_R2 intactos
 ```
-**Commit:** —
+**Commit:** `51e0081`
 
 ## T-005 — `queues/cierre-facturacion.ts`: tercera rama del consumidor (`enviar_notificacion`)
 
