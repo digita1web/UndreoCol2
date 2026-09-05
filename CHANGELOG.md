@@ -4,6 +4,96 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-05 — Sesión 024: 010-notificaciones completa (T-001 a T-010)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/010-notificaciones/`), reconstruida desde cero porque el
+  trabajo previo se perdió en un contenedor remoto anterior. Decisión señalada y aprobada por
+  Mateo antes de escribir código: el canal sigue siendo Cloudflare Email Service — migrar a Resend
+  (`docs/INFRAESTRUCTURA-Y-COSTOS.md §4`) queda como tarea separada con su propio `/specify`, no
+  parte de esta feature (D-8 vigente, no hay D-11 todavía).
+- **T-001** — Migración `20260913090000_notificaciones-generales.sql`: catálogo cerrado de los 6
+  tipos con un `CHECK` (no un `enum`, para poder agregar un séptimo tipo sin migrar datos) y
+  `configuracion.dias_aviso_vencimiento` (default 3, aprobado por Mateo). Verificado contra
+  Supabase local real; de paso se detectó que esta base nunca había recibido las migraciones 009/012
+  (se aplicaron, sin tocarlas, para poder correr una regresión real).
+- **T-002** — Sin fixture nuevo (alcance corregido en /implement: el aislamiento general de
+  `notificaciones` ya lo cubre 006, duplicarlo no sumaba nada). Test nuevo enfocado en lo que 010
+  agrega: los 6 tipos son insertables, un tipo inválido sigue rechazado, `dias_aviso_vencimiento`
+  aplicó a los clientes ya existentes.
+- **T-003** — `core/notificaciones.ts`: 5 funciones puras de contenido por tipo +
+  `computarActualizacionNotificacion()`/`MAX_INTENTOS_ENVIO` movidas desde `lib/email.ts` (006) sin
+  cambiar su lógica.
+- **T-004** — `lib/email.ts` generaliza `enviarCorreo()` (adjunto opcional);
+  `enviarFacturaPorCorreo` (006) queda como envoltorio, mismo contrato de siempre. `lib/notificaciones.ts`
+  nuevo: `encolarNotificacion()`.
+- **T-005** — Tercera rama del consumidor de la cola (`enviar_notificacion`), reutilizando
+  `undreocol-facturacion` (sin cola nueva).
+- **T-006** — Enganches best-effort en `POST /pagos` (007), `POST /suscriptores/:id/corte` y
+  `.../reconexion` (009): ninguna de las tres rutas cambia su contrato de respuesta. `GET
+  /notificaciones` nueva. Verificado de punta a punta con `curl` real: pago/corte/reconexión reales
+  contra `wrangler dev` + Supabase local, con el contenido real de los 3 correos confirmado
+  (incluyendo el número real de la factura de reconexión resuelto de la base).
+- **T-007** — Worker `undreocol-avisos-vencimiento` (cron diario, recordatorio + mora, idempotencia
+  por `(factura_id, tipo)`). **Bug real encontrado y corregido durante la verificación** (no
+  "debería funcionar"): `encolarNotificacion()` (T-004) nunca guardaba `factura_id`, así que la
+  idempotencia nunca podía funcionar — confirmado insertando 2 facturas de prueba y disparando el
+  cron dos veces (4 filas antes del fix, 1 fila por `(factura_id, tipo)` después).
+- **T-008** — Alerta real de `monitor-db.ts`: envía correo a `ALERTA_EMAIL_DESTINO` (placeholder,
+  Mateo debe poner el buzón real) sin pasar por `notificaciones` (esa tabla exige `cliente_id` sin
+  excepción; la alerta es de plataforma, no de un cliente). `construirAlertaMonitoreo()` se movió a
+  `nivel-monitoreo.ts` para no romper la regla existente de "`monitor-db.ts` solo exporta el
+  default".
+- **T-009** — Panel `/app/notificaciones` (solo lectura, filtros por tipo/estado). Verificado en
+  Chromium real con Playwright, no solo build/lint.
+- **T-010** — Verificación end-to-end: los 6 tipos de notificación confirmados juntos en el panel
+  real por primera vez (recordatorio/mora del cron + los 4 síncronos). Deliberadamente NO se repitió
+  pago/corte/reconexión por clic en los formularios — ya probados de punta a punta en T-006, y cada
+  repetición deja otro evento permanente e imborrable en `cortes_reconexiones`.
+
+**Hallazgo colateral importante (no es un bug de 010, hay que saberlo antes de tocar esta base
+local otra vez):** las pruebas de integración reales de T-006/T-007/T-010 (pago, corte, reconexión,
+más varias facturas de prueba) dejaron rastro permanente en la base de Supabase local persistente
+de este entorno. Lo anulable (pago, facturas) se anuló vía los endpoints propios de la app; los
+eventos de `cortes_reconexiones` son inmutables por diseño explícito (sin `DELETE` expuesto, mismo
+comentario de la migración de 009) y no se pueden deshacer. Esto rompe las asunciones de conteo fijo
+de filas que `005_facturacion_aislamiento.sql`, `006_correo_factura_aislamiento.sql`,
+`007_pagos_aislamiento.sql` (preexistentes) y el propio `010_notificaciones_aislamiento.sql`
+hardcodean — **verificado que NO es una fuga de aislamiento** (RLS sigue correcto, `cliente_id`
+siempre del cliente dueño de la prueba). Al cierre de esta sesión, la regresión completa da:
+```
+001 OK · 002 OK · 003 OK · 004 OK · 005 FALLÓ (conteo) · 006 FALLÓ (conteo) · 007 FALLÓ (conteo) ·
+008 FALLÓ (hallazgo preexistente, no de 010 — ver Sesión 016 y esta sesión) · 009 OK ·
+010 FALLÓ (conteo) · 012 OK
+```
+Un `supabase db reset --local` real (reaplicando las 12 migraciones + todos los fixtures)
+restauraría el estado limpio, pero es una decisión de Mateo: también borraría el usuario
+`admin-a@test.local` de Supabase Auth usado en toda esta conversación para pruebas manuales.
+
+**Verificado (evidencia real, no supuesta)**
+```
+Backend: npx tsc --noEmit / npx eslint . → EXIT=0 ambos
+Backend: npx wrangler deploy --dry-run -c wrangler.toml → 1747.70 KiB / gzip 397.34 KiB
+Backend: npx wrangler deploy --dry-run -c wrangler.avisos-vencimiento.toml → 711.00 KiB / gzip 138.42 KiB
+Backend: npx wrangler deploy --dry-run -c wrangler.monitor-db.toml → 708.43 KiB / gzip 137.91 KiB
+Backend: npx vitest run → 10 test files, 116 tests OK
+Frontend: npm run build → 19 rutas incluida /app/notificaciones, sin errores/warnings
+Frontend: npm run lint → limpio
+```
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+- Envío real a un buzón real de cualquiera de los 6 tipos: requiere Workers Paid + dominio
+  verificado de la cuenta de Cloudflare de Mateo (igual límite que 006).
+- `ALERTA_EMAIL_DESTINO` es un placeholder (`alertas@undreocol.app`) — Mateo debe reemplazarlo por
+  el buzón real de monitoreo antes de producción.
+- Decisión sobre el hallazgo colateral: si Mateo quiere un `supabase db reset --local` para limpiar
+  esta base local, o prefiere dejarla así y que 005/006/007/010 se re-verifiquen en un entorno
+  fresco la próxima vez.
+
+Commits: `9b60964`…`3ad5f6f` (T-001), `fc017c3`…`744697f` (T-003), `51e0081`…`8411895` (T-004),
+`3323b1a`…`df7c256` (T-005), `c641c65`…`9fadaeb` (T-006), `5cc8f44`…`63961f4` (T-007),
+`9869eba`…`3b4aa91` (T-008), `352f604`…`6e167fe` (T-009), `69cd559` (T-010).
+
 ### 2026-09-05 — Sesión 023: fix login admin — cookie mal codificada al reenviarla desde el server component del dashboard
 
 Con el fix de la Sesión 022 aplicado, el login dejó de hacer el submit nativo, pero apareció

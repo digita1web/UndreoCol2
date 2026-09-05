@@ -339,12 +339,24 @@ cuenta de Cloudflare de Mateo**, con pasos exactos.
 
 ## 8. Definición de terminado
 
-- [ ] Todos los CA (1-8) con evidencia real ejecutada y pegada
-- [ ] Build (frontend, `npm run build`) y `npx wrangler deploy --dry-run` (backend) limpios
-- [ ] Tests unitarios en verde (contenido por tipo, reutilización de `computarActualizacionNotificacion`)
-- [ ] Test de aislamiento nuevo (`010_notificaciones_aislamiento.sql`) en verde, con regresión 001-009
-- [ ] `CHANGELOG.md` actualizado al cierre
+- [x] Todos los CA (1-8) con evidencia real ejecutada y pegada — ver `tasks.md` T-001 a T-010.
+  CA-3/CA-4/CA-5/CA-7 verificados de punta a punta con `curl`/Playwright reales contra `wrangler
+  dev` + Supabase local (no solo revisión de código). Único NO VERIFICADO: envío real a un buzón
+  real (requiere Workers Paid + dominio verificado, mismo límite que 006).
+- [x] Build (frontend, `npm run build`) y `npx wrangler deploy --dry-run` (backend, los 3 wrangler
+  `.toml` de esta feature: principal, `avisos-vencimiento`, `monitor-db`) limpios
+- [x] Tests unitarios en verde: 116 tests (`npx vitest run`), incluyendo contenido por tipo
+  (`notificaciones.test.ts`) y `computarActualizacionNotificacion` movida sin cambiar su
+  comportamiento (mismos 3 tests, ahora en `notificaciones.test.ts`)
+- [x] Test de aislamiento nuevo (`010_notificaciones_aislamiento.sql`) verificado en verde contra
+  Supabase local real. Regresión 001-009/012: **hallazgo colateral** — 005/006/007 y el propio test
+  de 010 vuelven a fallar por conteo de filas (no por RLS) tras las pruebas de integración reales de
+  T-006/T-007/T-010, que dejaron rastro permanente (pagos/facturas anulables, eventos de
+  `cortes_reconexiones` inmutables por diseño). Detalle completo y verificación de que no es una
+  fuga real en `tasks.md` T-007 y en `CHANGELOG.md` Sesión 024.
+- [x] `CHANGELOG.md` actualizado al cierre (Sesión 024)
 - [x] Aprobación explícita de Mateo (2026-09-05) de: (a) esta spec completa, (b) la decisión de §0
   (Resend fuera de alcance), (c) la decisión de §3.8 (alerta de `monitor-db.ts` fuera de la tabla
   `notificaciones`), y (d) el valor default de `configuracion.dias_aviso_vencimiento` = 3 días (§3.5)
-- [ ] Un commit por tarea completada y verificada; sin `git push`
+- [x] Un commit por tarea completada y verificada; sin `git push` — ver hashes listados en
+  `CHANGELOG.md` Sesión 024

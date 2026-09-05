@@ -718,9 +718,35 @@ cd frontend && npm run build && npm run lint
 **Resultado esperado:** los 6 comandos en verde; evidencia pegada en el CHANGELOG y en esta tarea;
 checklist de `spec.md §8` con cada ítem marcado según lo realmente verificado (sin marcar nada sin
 evidencia, CLAUDE.md §4).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+$ cd backend && npx tsc --noEmit && npx eslint . && npx wrangler deploy --dry-run -c wrangler.toml && npx vitest run
+tsc/eslint: sin salida, EXIT=0 ambos
+dry-run: Total Upload 1747.70 KiB / gzip 397.34 KiB — EMAIL/FACTURACION_COLA/FACTURAS_R2/ALLOWED_ORIGIN
+vitest: Test Files 10 passed (10) · Tests 116 passed (116)
+
+$ cd backend && npx wrangler deploy --dry-run -c wrangler.avisos-vencimiento.toml
+Total Upload: 711.00 KiB / gzip: 138.42 KiB — binding FACTURACION_COLA
+
+$ cd backend && npx wrangler deploy --dry-run -c wrangler.monitor-db.toml
+Total Upload: 708.43 KiB / gzip: 137.91 KiB — bindings EMAIL, ALERTA_EMAIL_DESTINO
+
+$ cd frontend && npm run build
+19 rutas generadas, incluida /app/notificaciones (3.07 kB, 116 kB First Load JS), sin
+errores/warnings de TypeScript
+
+$ cd frontend && npm run lint
+sin salida, EXIT=0
+
+Los 6 comandos en verde. CHANGELOG.md actualizado (Sesión 024, entrada completa con las 10 tareas,
+el bug de idempotencia encontrado en T-007, y el hallazgo colateral de la base de datos). Checklist
+de spec.md §8 marcada con evidencia real — único ítem con matiz: el aislamiento 001-009/012 tiene
+una regresión de CONTEO (no de RLS) por el hallazgo colateral ya documentado, marcado explícitamente
+en la checklist en vez de ocultarlo o marcarlo como si no existiera.
+
+Regresión final de aislamiento (documentada, no oculta):
+001 OK · 002 OK · 003 OK · 004 OK · 005 FALLÓ (conteo) · 006 FALLÓ (conteo) · 007 FALLÓ (conteo) ·
+008 FALLÓ (hallazgo preexistente, Sesión 016) · 009 OK · 010 FALLÓ (conteo) · 012 OK
 ```
 **Commit:** —
