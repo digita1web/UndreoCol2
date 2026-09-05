@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useHidratado } from '@/lib/use-hidratado';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +18,7 @@ export function CorteForm({ suscriptorId, onCortado }: CorteFormProps) {
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const hidratado = useHidratado();
 
   async function alEnviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -40,7 +42,7 @@ export function CorteForm({ suscriptorId, onCortado }: CorteFormProps) {
         <Input id="motivo_corte" required value={motivo} onChange={(e) => setMotivo(e.target.value)} />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button type="submit" variant="outline" disabled={cargando}>
+      <Button type="submit" variant="outline" disabled={!hidratado || cargando}>
         {cargando ? 'Cortando…' : 'Cortar servicio'}
       </Button>
     </form>

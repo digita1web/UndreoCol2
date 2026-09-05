@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useHidratado } from '@/lib/use-hidratado';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,6 +27,7 @@ export function TarifaForm({ servicioId, onCreada }: TarifaFormProps) {
   const [precioNoBasico, setPrecioNoBasico] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const hidratado = useHidratado();
 
   async function alEnviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -88,7 +90,7 @@ export function TarifaForm({ servicioId, onCreada }: TarifaFormProps) {
         <Input id="precio_no_basico_m3" type="number" step="0.0001" required value={precioNoBasico} onChange={(e) => setPrecioNoBasico(e.target.value)} />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button type="submit" disabled={cargando}>
+      <Button type="submit" disabled={!hidratado || cargando}>
         {cargando ? 'Guardando…' : 'Crear nueva versión de tarifa'}
       </Button>
     </form>

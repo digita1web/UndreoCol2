@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
+import { useHidratado } from '@/lib/use-hidratado';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,6 +21,7 @@ export function ReconexionForm({ suscriptorId, onReconectado }: ReconexionFormPr
   const [motivoExcepcion, setMotivoExcepcion] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const hidratado = useHidratado();
 
   useEffect(() => {
     obtenerCartera({ suscriptorId })
@@ -68,7 +70,7 @@ export function ReconexionForm({ suscriptorId, onReconectado }: ReconexionFormPr
         </div>
       )}
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button type="submit" disabled={cargando || deudaVencida === null}>
+      <Button type="submit" disabled={!hidratado || cargando || deudaVencida === null}>
         {cargando ? 'Reconectando…' : 'Reconectar'}
       </Button>
     </form>

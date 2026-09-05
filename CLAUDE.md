@@ -219,6 +219,12 @@ factura por mensaje en Cloudflare Queues → un consumidor procesa en batches.
   español**, coherentes con el dominio.
 - Sin archivos de más: nada de READMEs por carpeta, ejemplos ni `utils.ts`
   genéricos. Si no está en `plan.md`, no se crea.
+- **Todo `<form onSubmit>` de la UI** debe deshabilitar el botón de submit hasta
+  que `useHidratado()` (`frontend/lib/use-hidratado.ts`) retorne `true`:
+  `disabled={!hidratado || cargando}`. Previene el submit nativo de HTML durante
+  la hidratación de React (carrera: el usuario envía antes de que el `onSubmit`
+  se adjunte y el navegador hace un GET con el formulario como query string,
+  ignorando el `preventDefault()`). Regla obligatoria al crear o editar un form.
 
 ---
 

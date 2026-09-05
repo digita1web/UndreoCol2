@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useHidratado } from '@/lib/use-hidratado';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +24,7 @@ export function SuscriptorForm({ onCreado }: SuscriptorFormProps) {
   const [categoria, setCategoria] = useState<string>('estrato_3');
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const hidratado = useHidratado();
 
   async function alEnviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -81,7 +83,7 @@ export function SuscriptorForm({ onCreado }: SuscriptorFormProps) {
         </select>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button type="submit" disabled={cargando}>
+      <Button type="submit" disabled={!hidratado || cargando}>
         {cargando ? 'Creando…' : 'Crear suscriptor'}
       </Button>
     </form>

@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useState } from 'react';
+import { useHidratado } from '@/lib/use-hidratado';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { loginPortal } from '@/lib/api';
@@ -16,6 +17,7 @@ export default function PortalLoginPage({ params }: PageProps) {
   const [codigoSuscriptor, setCodigoSuscriptor] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
+  const hidratado = useHidratado();
 
   async function alEntrar(e: React.FormEvent) {
     e.preventDefault();
@@ -65,7 +67,7 @@ export default function PortalLoginPage({ params }: PageProps) {
             {error && <p className="text-sm text-red-600">{error}</p>}
             <button
               className="h-9 w-full rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              disabled={trabajando}
+              disabled={!hidratado || trabajando}
             >
               {trabajando ? 'Ingresando…' : 'Ingresar'}
             </button>

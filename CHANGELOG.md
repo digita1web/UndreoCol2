@@ -4,6 +4,40 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-04 — Sesión 022: fix login — submit nativo durante la hidratación de React
+
+Causa raíz (diagnosticada por Mateo con Playwright): carrera de hidratación de React. Si el
+usuario envía el formulario de login antes de que React termine de hidratar el HTML SSR y
+adjunte el `onSubmit`, el navegador ejecuta el submit nativo de HTML (GET con los campos como
+query string en la URL), ignorando el `preventDefault()` porque el listener de React aún no
+existe. Se reproducía de forma consistente con CPU/red throttled y clic inmediato tras
+`domcontentloaded`.
+
+**Fix:**
+- Nuevo `frontend/lib/use-hidratado.ts`: hook `useHidratado()` que retorna `false` hasta que el
+  componente monta en el cliente (`useEffect` + `useState`) y `true` después — patrón estándar.
+- Aplicado a los **11 `<form onSubmit>`** del proyecto (login admin, login portal,
+  onboarding, suscriptor, contador, reemplazo de contador, pago, servicio, tarifa, corte,
+  reconexión): el botón de submit queda `disabled` hasta que el hook retorne `true`
+  (`disabled={!hidratado || cargando}`), eliminando la ventana de carrera.
+- Regla permanente documentada en CLAUDE.md §7: todo formulario nuevo/existente debe usar el hook.
+
+**Verificado:**
+```text
+npm run build → BUILD_EXIT=0 (Next 15.5.25 · 15/15 páginas)
+npm run lint  → LINT_EXIT=0
+grep useHidratado → presente en los 11 formularios
+grep disabled={cargando} (sin hidratado) → solo la del botón type="button" (Cancelar)
+                                            de importacion-resumen.tsx, que es correcto
+```
+
+**NO VERIFICADO — requiere validación manual de Mateo (Playwright):** en este contenedor no hay
+Playwright (`npx playwright` y `@playwright` ausentes). Pasos exactos:
+1. Con `next dev` + Playwright, abrir `/login`, aplicar CPU/red throttled y hacer clic en
+   "Ingresar" inmediatamente tras `domcontentloaded`. En la URL se verá el GET con la query
+   string (bug) ANTES del fix; tras el fix no se reproduce.
+2. Confirmar que en el HTML SSR el botón de submit aparece `disabled` hasta la hidratación.
+
 ### 2026-09-04 — Sesión 021: fix login admin — cookie `uc_sesion_admin` con `Secure` solo sobre HTTPS
 
 Causa raíz del bug "login de administrador da 401 en el navegador aunque funciona por curl"

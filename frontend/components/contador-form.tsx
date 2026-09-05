@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useHidratado } from '@/lib/use-hidratado';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +20,7 @@ export function ContadorForm({ usuarioServicioId, onCreado }: ContadorFormProps)
   const [fechaInstalacion, setFechaInstalacion] = useState(() => new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const hidratado = useHidratado();
 
   async function alEnviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -54,7 +56,7 @@ export function ContadorForm({ usuarioServicioId, onCreado }: ContadorFormProps)
         <Input id="fecha_instalacion" type="date" required value={fechaInstalacion} onChange={(e) => setFechaInstalacion(e.target.value)} />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button type="submit" disabled={cargando}>
+      <Button type="submit" disabled={!hidratado || cargando}>
         {cargando ? 'Creando…' : 'Instalar contador'}
       </Button>
     </form>

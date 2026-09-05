@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useHidratado } from '@/lib/use-hidratado';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +17,7 @@ export function ServicioForm({ onCreado }: ServicioFormProps) {
   const [tipoCalculo, setTipoCalculo] = useState<TipoCalculo>('por_consumo');
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const hidratado = useHidratado();
 
   async function alEnviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -58,7 +60,7 @@ export function ServicioForm({ onCreado }: ServicioFormProps) {
         </select>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button type="submit" disabled={cargando}>
+      <Button type="submit" disabled={!hidratado || cargando}>
         {cargando ? 'Creando…' : 'Crear servicio'}
       </Button>
     </form>

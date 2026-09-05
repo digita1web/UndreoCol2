@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useHidratado } from '@/lib/use-hidratado';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,6 +33,7 @@ export function PagoForm({ usuarioServicioId, facturaId, onRegistrado, onCancela
   const [observaciones, setObservaciones] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const hidratado = useHidratado();
 
   async function alEnviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -93,7 +95,7 @@ export function PagoForm({ usuarioServicioId, facturaId, onRegistrado, onCancela
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div className="flex gap-3">
-        <Button type="submit" disabled={cargando}>
+        <Button type="submit" disabled={!hidratado || cargando}>
           {cargando ? 'Registrando…' : 'Registrar pago'}
         </Button>
         {onCancelar && (

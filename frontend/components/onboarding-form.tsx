@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useHidratado } from '@/lib/use-hidratado';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,7 @@ export function OnboardingForm() {
   const [slugTocado, setSlugTocado] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const hidratado = useHidratado();
 
   function alCambiarNombre(valor: string) {
     setNombre(valor);
@@ -79,7 +81,7 @@ export function OnboardingForm() {
         />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <Button type="submit" disabled={cargando}>
+      <Button type="submit" disabled={!hidratado || cargando}>
         {cargando ? 'Creando…' : 'Crear acueducto'}
       </Button>
     </form>
