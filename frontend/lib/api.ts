@@ -777,6 +777,41 @@ export function historialCortes(suscriptorId: string): Promise<{ historial: Even
   return peticion(`/suscriptores/${suscriptorId}/historial-cortes`);
 }
 
+// --- Notificaciones generales (010-notificaciones) --------------------------
+
+export type TipoNotificacion =
+  | 'factura_generada'
+  | 'recordatorio_vencimiento'
+  | 'aviso_mora'
+  | 'confirmacion_pago'
+  | 'corte_ejecutado'
+  | 'reconexion_completada';
+
+export type EstadoNotificacion = 'pendiente' | 'enviada' | 'fallida' | 'cancelada';
+
+export interface Notificacion {
+  id: string;
+  tipo: TipoNotificacion;
+  canal: string;
+  destinatario: string | null;
+  asunto: string | null;
+  estado: EstadoNotificacion;
+  intentos: number;
+  ultimo_error: string | null;
+  enviada_en: string | null;
+  created_at: string;
+}
+
+export function listarNotificaciones(
+  filtros: { tipo?: TipoNotificacion; estado?: EstadoNotificacion } = {},
+): Promise<{ notificaciones: Notificacion[] }> {
+  const params = new URLSearchParams();
+  if (filtros.tipo) params.set('tipo', filtros.tipo);
+  if (filtros.estado) params.set('estado', filtros.estado);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return peticion<{ notificaciones: Notificacion[] }>(`/notificaciones${query}`);
+}
+
 // --- Importación masiva de suscriptores (012-importacion-suscriptores-excel) --
 
 export type CampoSuscriptorImportacion =

@@ -607,10 +607,35 @@ grep -rn "@supabase" app/ components/ lib/
 **Resultado esperado:** `tsc`/build/lint sin errores ni warnings; el `grep` de `@supabase` no
 encuentra ningún `import` real (mismo falso positivo del comentario de cabecera de `lib/api.ts` ya
 documentado en 002/003/009).
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05) — verificado con build/lint y en navegador real (Playwright)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+$ npx tsc --noEmit → sin salida, EXIT=0
+$ npm run build
+ ○ /app/notificaciones   3.07 kB   116 kB  ← registrada correctamente, sin errores/warnings
+$ npm run lint → sin salida, EXIT=0
+$ grep -rn "@supabase" app/ components/ lib/
+lib/api.ts:1:// Wrapper fetch hacia la API de Hono (backend/). Nunca importa `@supabase/*`
+→ único match, el comentario de cabecera (mismo falso positivo ya documentado en 002/003/009).
+
+Verificación real en navegador (Playwright, Chromium real, contra wrangler dev + next dev +
+Supabase local reales — no build/lint únicamente):
+1. Login admin real → /app/dashboard → navegación a /app/notificaciones.
+2. Sin filtro: 4 filas reales (reconexion_completada, corte_ejecutado, confirmacion_pago,
+   factura_generada — los datos reales de T-006/006), cada una con destinatario, canal, asunto,
+   estado en verde "Enviada", intentos y fecha de envío correctamente formateados. Screenshot
+   revisado visualmente: consistente con el estilo del resto del panel (/app/pagos, /app/cortes).
+3. Filtro ?tipo=confirmacion_pago → la petición real a GET /notificaciones?tipo=confirmacion_pago
+   se confirmó en la red, y la lista se reduce a exactamente 1 fila ("Confirmación de pago").
+4. Filtro ?estado=fallida → 0 resultados, muestra "Sin notificaciones para los filtros
+   seleccionados" (no hay ninguna fallida en los datos reales).
+5. Sin errores de consola del navegador en ningún paso.
+
+(Nota de proceso: la primera pasada de este mismo test tuvo un falso positivo — comprobaba texto
+de toda la página en vez de solo las filas visibles, y el propio <select> de Tipo contiene la
+palabra "Corte ejecutado" como una de sus opciones. Corregido apuntando la aserción a los
+elementos de fila reales antes de dar el resultado por bueno — CLAUDE.md §4, no se acepta la
+primera lectura sin verificar que realmente prueba lo que dice probar.)
 ```
 **Commit:** —
 
