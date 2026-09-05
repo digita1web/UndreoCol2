@@ -1,8 +1,7 @@
 # PLAN — 010: notificaciones
 
 **Spec aprobado:** 2026-09-05 (spec.md, commits `4a63727` borrador + `e98c566` aprobación)
-**Estado:** PROPUESTO — pendiente de aprobación explícita de Mateo. No se escribe `tasks.md` ni
-código hasta esa aprobación.
+**Estado:** Aprobado (2026-09-05, commit `8ce13a6`) — pendiente de `/tasks`.
 
 ---
 
