@@ -587,7 +587,7 @@ Nota: ALERTA_EMAIL_DESTINO = "alertas@undreocol.app" es un valor placeholder —
 debe ser el buzón real de monitoreo de Mateo; queda marcado con un TODO en el wrangler.toml. Mateo
 debe reemplazarlo antes de producción.
 ```
-**Commit:** —
+**Commit:** `9869eba`
 
 ## T-009 — Frontend: `lib/api.ts` + panel `/app/notificaciones`
 
