@@ -524,7 +524,7 @@ específica, hasta que se haga un `supabase db reset --local` real (reaplicando 
 todos los fixtures desde cero). No es una regresión de 010 sobre esos tests — es el costo de haber
 verificado T-006/T-007 con peticiones HTTP reales en vez de solo revisar el código.
 ```
-**Commit:** —
+**Commit:** `5cc8f44`
 
 ## T-008 — `cron/monitor-db.ts`: alerta real (CA-8)
 
