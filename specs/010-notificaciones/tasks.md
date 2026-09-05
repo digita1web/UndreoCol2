@@ -363,10 +363,51 @@ curl -s -i http://localhost:8787/notificaciones -b cookiejar.txt
 **Resultado esperado:** `tsc`/`eslint`/`dry-run`/`vitest` limpios; `POST /pagos` sigue respondiendo
 201 con el mismo cuerpo de siempre; si el suscriptor tiene email, `GET /notificaciones` muestra la
 fila nueva; si no tiene email, no aparece ninguna fila y el pago igual queda registrado.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05) — verificado end-to-end contra wrangler dev + Supabase local reales
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+$ npx tsc --noEmit / npx eslint . → sin salida, EXIT=0 ambos
+$ npx wrangler deploy --dry-run -c wrangler.toml
+Total Upload: 1747.66 KiB / gzip: 397.34 KiB — bindings EMAIL/FACTURACION_COLA/FACTURAS_R2 intactos
+$ npx vitest run → Test Files 10 passed, Tests 114 passed (sin cambio, tarea de rutas)
+
+Integración real (wrangler dev + Supabase local, admin-a@test.local, suscriptor A1 con email):
+
+1) Login → 200, cookie de sesión real.
+
+2) POST /pagos {usuario_servicio_id: A1, valor: 10000, metodo: efectivo} → 201, MISMO cuerpo de
+   siempre (pago+aplicaciones+remanente+facturas, sin ningún campo nuevo de notificación).
+   Log real del Worker:
+     send_email binding called: To: suscriptor-a1@test.local
+     Subject: Confirmación de pago — Acueducto A
+   GET /notificaciones?tipo=confirmacion_pago → 1 fila, estado=enviada, intentos=1.
+   Contenido real del correo (leído del archivo HTML que miniflare escribe):
+     "Recibimos tu pago de $10000 el 2026-09-05, aplicado a la(s) factura(s): FAC-2026-00001."
+
+3) POST /suscriptores/{A1}/corte {motivo:"Mora de prueba T-006"} → 201, mismo cuerpo de siempre
+   ({eventoId}). GET /notificaciones?tipo=corte_ejecutado → 1 fila, estado=enviada.
+
+4) POST /suscriptores/{A1}/reconexion {} → 201, mismo cuerpo de siempre ({eventoId, deudaVencida}).
+   GET /notificaciones?tipo=reconexion_completada → 1 fila, estado=enviada (llega en ~1s, la cola es
+   asíncrona). Contenido real del correo:
+     "Tu servicio con Acueducto A fue reconectado el 2026-09-05. Se generó la factura de reconexión
+     REC-2026-00001." → confirma que el lookup de factura_reconexion_id → numero funciona de punta
+     a punta con datos reales, no solo con el tipo.
+
+5) GET /notificaciones (sin filtro) → las 4 filas (factura_generada de 006 + las 3 nuevas).
+   GET /notificaciones?estado=pendiente → [] (las 3 ya habían terminado de procesarse) — confirma
+   que el filtro por estado funciona, no solo por tipo.
+
+HALLAZGO (documentado, no un bug de esta tarea): env.EMAIL SÍ se simula en wrangler dev local para
+correos SIN adjunto binario — 006 documentó "env.EMAIL no existe en local" de forma más amplia de lo
+real; la limitación exacta es solo con adjuntos binarios (el PDF de factura_generada), confirmado al
+ver el binding responder normalmente para los 3 tipos nuevos de 010 (ninguno lleva adjunto).
+
+NO VERIFICADO por esta vía específica: aislamiento HTTP con un segundo admin (admin-b@test.local no
+está provisionado en Supabase Auth en este entorno, login devolvió 401 — no es un fallo de la ruta).
+El aislamiento real de GET /notificaciones ya está garantizado por la misma política RLS
+notificaciones_lectura verificada a nivel SQL en T-002, más el filtro explícito
+.eq('cliente_id', ctx.clienteId) que agrega esta ruta (mismo patrón que /cartera y otras).
 ```
 **Commit:** —
 

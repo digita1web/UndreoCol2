@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { crearClienteAnon, crearClienteSuscriptor, type Env } from './lib/db';
 import {
   cerrarSesion,
@@ -74,6 +75,12 @@ import {
   iniciarSesionSuscriptor,
 } from './lib/sesion-suscriptor';
 import cierreFacturacion from './queues/cierre-facturacion';
+import { encolarNotificacion } from './lib/notificaciones';
+import {
+  contenidoConfirmacionPago,
+  contenidoCorteEjecutado,
+  contenidoReconexionCompletada,
+} from './core/notificaciones';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -1001,6 +1008,7 @@ app.post('/pagos', async (c) => {
       observaciones: body.observaciones,
       factura_ids: body.factura_ids,
     });
+    await notificarConfirmacionPago(ctx.supabase, c.env.FACTURACION_COLA, ctx.clienteId, body.usuario_servicio_id, resultado);
     return c.json(resultado, 201);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo registrar el pago' }, 400);
@@ -1117,6 +1125,7 @@ app.post('/suscriptores/:id/corte', async (c) => {
   }
   try {
     const eventoId = await cortarSuscriptor(ctx.supabase, c.req.param('id'), motivo, ctx.perfilId);
+    await notificarCorteEjecutado(ctx.supabase, c.env.FACTURACION_COLA, ctx.clienteId, c.req.param('id'), motivo);
     return c.json({ eventoId }, 201);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo cortar el suscriptor' }, 400);
@@ -1136,6 +1145,7 @@ app.post('/suscriptores/:id/reconexion', async (c) => {
     const resultado = await reconectarSuscriptor(
       ctx.supabase, ctx.clienteId, c.req.param('id'), motivoExcepcion, ctx.perfilId,
     );
+    await notificarReconexionCompletada(ctx.supabase, c.env.FACTURACION_COLA, ctx.clienteId, c.req.param('id'), resultado.eventoId);
     return c.json({ eventoId: resultado.eventoId, deudaVencida: resultado.deudaVencida }, 201);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo reconectar el suscriptor' }, 400);
@@ -1151,6 +1161,153 @@ app.get('/suscriptores/:id/historial-cortes', async (c) => {
     return c.json({ historial });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo consultar el historial' }, 400);
+  }
+});
+
+// --- Notificaciones generales (010-notificaciones) --------------------------
+// Los 3 helpers de abajo son efectos secundarios best-effort de rutas de 007/
+// 009 que YA existen: encolarNotificacion() nunca lanza, pero cada helper
+// igual queda envuelto en su propio try/catch — un error de red o de tipo en
+// las consultas de contenido (nombre del acueducto, número de factura, etc.)
+// TAMPOCO debe poder aparecer en la respuesta de un pago/corte/reconexión ya
+// confirmado (plan.md §5, decisión técnica: el contrato de esas rutas no
+// cambia).
+
+async function notificarConfirmacionPago(
+  supabase: SupabaseClient,
+  cola: Env['FACTURACION_COLA'],
+  clienteId: string,
+  usuarioServicioId: string,
+  resultado: { pago: Record<string, unknown>; aplicaciones: Array<{ factura_id: string; valor: number }> },
+): Promise<void> {
+  try {
+    const { data: suscriptor } = await supabase
+      .from('usuarios_servicio')
+      .select('email')
+      .eq('id', usuarioServicioId)
+      .single();
+    const email = (suscriptor?.email ?? '').trim() || null;
+    if (!email) return;
+
+    const { data: acueducto } = await supabase.from('clientes').select('nombre').eq('id', clienteId).single();
+
+    const idsFacturas = resultado.aplicaciones.map((a) => a.factura_id);
+    let facturasAplicadas: string[] = [];
+    if (idsFacturas.length) {
+      const { data: facturasNumeros } = await supabase.from('facturas').select('numero').in('id', idsFacturas);
+      facturasAplicadas = (facturasNumeros ?? []).map((f) => String(f.numero));
+    }
+
+    const contenido = contenidoConfirmacionPago({
+      nombreAcueducto: acueducto?.nombre ?? '',
+      valor: Number(resultado.pago.valor ?? 0),
+      fechaPago: String(resultado.pago.fecha_pago ?? ''),
+      facturasAplicadas,
+    });
+    await encolarNotificacion(supabase, cola, {
+      clienteId, usuarioServicioId, tipo: 'confirmacion_pago', destinatarioEmail: email, contenido,
+    });
+  } catch (e) {
+    console.error('notificarConfirmacionPago: no se pudo encolar (no bloquea el pago)', e instanceof Error ? e.message : e);
+  }
+}
+
+async function notificarCorteEjecutado(
+  supabase: SupabaseClient,
+  cola: Env['FACTURACION_COLA'],
+  clienteId: string,
+  usuarioServicioId: string,
+  motivo: string,
+): Promise<void> {
+  try {
+    const { data: suscriptor } = await supabase
+      .from('usuarios_servicio')
+      .select('email')
+      .eq('id', usuarioServicioId)
+      .single();
+    const email = (suscriptor?.email ?? '').trim() || null;
+    if (!email) return;
+
+    const { data: acueducto } = await supabase.from('clientes').select('nombre').eq('id', clienteId).single();
+
+    const contenido = contenidoCorteEjecutado({
+      nombreAcueducto: acueducto?.nombre ?? '',
+      motivo,
+      fecha: new Date().toISOString().slice(0, 10),
+    });
+    await encolarNotificacion(supabase, cola, {
+      clienteId, usuarioServicioId, tipo: 'corte_ejecutado', destinatarioEmail: email, contenido,
+    });
+  } catch (e) {
+    console.error('notificarCorteEjecutado: no se pudo encolar (no bloquea el corte)', e instanceof Error ? e.message : e);
+  }
+}
+
+async function notificarReconexionCompletada(
+  supabase: SupabaseClient,
+  cola: Env['FACTURACION_COLA'],
+  clienteId: string,
+  usuarioServicioId: string,
+  eventoId: string,
+): Promise<void> {
+  try {
+    const { data: suscriptor } = await supabase
+      .from('usuarios_servicio')
+      .select('email')
+      .eq('id', usuarioServicioId)
+      .single();
+    const email = (suscriptor?.email ?? '').trim() || null;
+    if (!email) return;
+
+    const { data: acueducto } = await supabase.from('clientes').select('nombre').eq('id', clienteId).single();
+
+    const { data: evento } = await supabase
+      .from('cortes_reconexiones')
+      .select('factura_reconexion_id')
+      .eq('id', eventoId)
+      .maybeSingle();
+    let facturaReconexionNumero: string | null = null;
+    if (evento?.factura_reconexion_id) {
+      const { data: factura } = await supabase
+        .from('facturas')
+        .select('numero')
+        .eq('id', evento.factura_reconexion_id)
+        .maybeSingle();
+      facturaReconexionNumero = factura?.numero ? String(factura.numero) : null;
+    }
+
+    const contenido = contenidoReconexionCompletada({
+      nombreAcueducto: acueducto?.nombre ?? '',
+      fecha: new Date().toISOString().slice(0, 10),
+      facturaReconexionNumero,
+    });
+    await encolarNotificacion(supabase, cola, {
+      clienteId, usuarioServicioId, tipo: 'reconexion_completada', destinatarioEmail: email, contenido,
+    });
+  } catch (e) {
+    console.error('notificarReconexionCompletada: no se pudo encolar (no bloquea la reconexión)', e instanceof Error ? e.message : e);
+  }
+}
+
+// GET /notificaciones — historial del cliente activo, filtrable por tipo/estado.
+app.get('/notificaciones', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    let query = ctx.supabase
+      .from('notificaciones')
+      .select('id, tipo, canal, destinatario, asunto, estado, intentos, ultimo_error, enviada_en, created_at')
+      .eq('cliente_id', ctx.clienteId)
+      .order('created_at', { ascending: false });
+    const tipo = c.req.query('tipo');
+    const estado = c.req.query('estado');
+    if (tipo) query = query.eq('tipo', tipo);
+    if (estado) query = query.eq('estado', estado);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return c.json({ notificaciones: data ?? [] });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron listar las notificaciones' }, 400);
   }
 });
 
