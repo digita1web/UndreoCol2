@@ -327,7 +327,7 @@ Test Files  10 passed (10)
      Tests  114 passed (114)   (sin cambio respecto a T-004 — esta tarea no agregó tests, solo
                                  lógica nueva de infraestructura, consistente con el resto del archivo)
 ```
-**Commit:** —
+**Commit:** `3323b1a`
 
 ## T-006 — Backend: enganches síncronos (pago/corte/reconexión) + `GET /notificaciones`
 
