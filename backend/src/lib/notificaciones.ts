@@ -19,6 +19,10 @@ export interface EncolarNotificacionInput {
   tipo: TipoNotificacionNueva;
   destinatarioEmail: string | null;
   contenido: ContenidoNotificacion;
+  // Solo para 'recordatorio_vencimiento'/'aviso_mora' (010): el cron la usa
+  // para la idempotencia por (factura_id, tipo) — spec §3.5. Sin esto, dos
+  // corridas del cron no podrían distinguir una notificación ya enviada.
+  facturaId?: string;
 }
 
 export interface ResultadoEncolarNotificacion {
@@ -40,6 +44,7 @@ export async function encolarNotificacion(
     .insert({
       cliente_id: input.clienteId,
       usuario_servicio_id: input.usuarioServicioId,
+      factura_id: input.facturaId ?? null,
       tipo: input.tipo,
       canal: 'email',
       destinatario: input.destinatarioEmail,

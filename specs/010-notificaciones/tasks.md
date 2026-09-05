@@ -413,7 +413,8 @@ notificaciones_lectura verificada a nivel SQL en T-002, más el filtro explícit
 
 ## T-007 — `cron/avisos-vencimiento.ts`: recordatorio de vencimiento + aviso de mora (CA-5)
 
-**Archivos:** `backend/src/cron/avisos-vencimiento.ts` (nuevo), `backend/wrangler.avisos-vencimiento.toml` (nuevo)
+**Archivos:** `backend/src/cron/avisos-vencimiento.ts` (nuevo), `backend/wrangler.avisos-vencimiento.toml` (nuevo),
+`backend/src/lib/notificaciones.ts` (fix real encontrado por esta tarea — ver evidencia)
 **Hace:** (plan.md §7) Worker con cron diario: para cada cliente activo, busca facturas `pendiente`
 con `fecha_vencimiento` dentro de `configuracion.dias_aviso_vencimiento` días (recordatorio) y
 facturas que hoy cumplen por primera vez `pendiente` + `fecha_vencimiento < hoy` (mora). Antes de
@@ -432,10 +433,96 @@ psql "$DATABASE_URL" -c "select factura_id, tipo, count(*) from notificaciones w
 ```
 **Resultado esperado:** `tsc`/`eslint`/`dry-run` limpios; la consulta de duplicados **no devuelve
 ninguna fila** tras ejecutar el handler dos veces seguidas.
-**Estado:** Pendiente
+**Estado:** Completado (2026-09-05) — con un bug real encontrado y corregido, y un hallazgo
+colateral importante sobre el estado de la base de datos local (ver abajo)
 **Evidencia:**
 ```
-<se pega la salida real aquí al ejecutar>
+BUG REAL ENCONTRADO Y CORREGIDO (no "debería funcionar" — se descubrió al verificar de verdad):
+encolarNotificacion() (lib/notificaciones.ts, T-004) nunca guardaba factura_id en el INSERT —
+EncolarNotificacionInput no tenía ese campo. Sin factura_id, la verificación de idempotencia
+(que filtra por factura_id) nunca podía encontrar una fila previa: la primera prueba real (dos
+disparos del cron con dos facturas de prueba insertadas a mano, fecha_vencimiento hoy+2 y hoy-3)
+insertó 4 filas en vez de 2 (2 por corrida). Corregido: EncolarNotificacionInput gana
+facturaId?: string (opcional, solo lo usan recordatorio_vencimiento/aviso_mora); el cron lo pasa.
+
+Verificado tras el fix, con las MISMAS dos facturas de prueba (TEST-VENCE-T007 vence en 2 días,
+TEST-MORA-T007 vencida hace 3 días, suscriptor A1 con email), usando
+`wrangler dev -c wrangler.avisos-vencimiento.toml --test-scheduled` y GET /__scheduled dos veces:
+
+Corrida 1: "avisos-vencimiento: 1 recordatorio(s) de vencimiento y 1 aviso(s) de mora encolados"
+Corrida 2: "avisos-vencimiento: 0 recordatorio(s) de vencimiento y 0 aviso(s) de mora encolados"
+
+$ psql "$DATABASE_URL" -c "select factura_id, tipo, count(*) from notificaciones where factura_id
+  in (...) group by 1,2;"
+ 11110000-...0001 | recordatorio_vencimiento | 1
+ 11110000-...0002 | aviso_mora               | 1
+→ exactamente UNA fila por (factura_id, tipo) tras dos corridas — CA-5 verificado de verdad.
+
+Contenido real de los correos (asunto guardado en la fila, correcto):
+  "Recordatorio: la factura TEST-VENCE-T007 vence el 2026-09-07"
+  "Factura TEST-MORA-T007 vencida — Acueducto A"
+
+$ npx tsc --noEmit / npx eslint . → sin salida, EXIT=0 (tras el fix)
+$ npx wrangler deploy --dry-run -c wrangler.avisos-vencimiento.toml
+Total Upload: 710.93 KiB / gzip: 138.40 KiB — binding FACTURACION_COLA (mismo, sin cola nueva)
+$ npx vitest run → 114 tests OK (sin regresión; esta tarea no agregó tests unitarios propios —
+  mismo criterio que T-005: el consumo de la cola ya está probado, esta tarea solo necesitaba
+  probar la idempotencia y el contenido, ambos verificados con datos reales de PostgreSQL)
+
+Limpieza tras la prueba (correcta, no un borrado a la fuerza): facturas.motivo_anulacion no permite
+DELETE (trigger bloquear_factura_inmutable, por diseño) — las dos facturas de prueba se ANULARON
+(estado='anulada', motivo registrado) en vez de borrarse, respetando la misma regla que protege
+datos reales.
+
+--- HALLAZGO COLATERAL IMPORTANTE (no es un bug de código, es un efecto de haber hecho pruebas de
+integración reales contra la base compartida) ---
+
+Al correr la regresión completa de aislamiento (001-012) DESPUÉS de las pruebas end-to-end de
+T-006 (pago/corte/reconexión reales vía curl) y T-007, aparecieron 4 fallas NUEVAS que no estaban
+antes de T-006 (005, 006, 007 y el propio 010_notificaciones_aislamiento.sql de T-002):
+  005: "admin A ve 4 facturas (esperaba 1)"
+  006: "admin A ve 4 notificaciones (esperaba 1)"
+  007: "admin A ve 3 pagos (esperaba 2 del fixture)"
+  010: "se insertaron/encontraron 10 filas (esperaba 7)"
+
+Investigado antes de reportarlo (CLAUDE.md §8): NO es una fuga de aislamiento — verificado
+leyendo 006_correo_factura_aislamiento.sql PASO 2: el primer chequeo (conteo total, hardcodeado a
+1) es el que falla; el segundo chequeo real de esa misma prueba (`where cliente_id = B` debe dar 0)
+nunca se alcanza porque el primero ya lanzó la excepción, pero confirmé a mano que todas las filas
+nuevas tienen `cliente_id` de A, nunca de B. Es decir: RLS sigue funcionando correctamente: lo que
+se rompió es la ASUNCIÓN de un conteo fijo de filas que estos tests (005/006/007, preexistentes,
+no de esta feature) hardcodean asumiendo una base recién resembrada.
+
+Causa exacta: el pago, el corte y la reconexión reales que ejecuté en T-006 contra `wrangler dev` +
+esta misma base de Supabase local (persistente, no efímera) dejaron rastro PERMANENTE:
+- El pago: ANULADO ahora vía POST /pagos/:id/anular (el mecanismo propio de la app) — pero anular
+  NO borra la fila, solo cambia su estado; `select count(*) from pagos` la sigue contando.
+- La factura de reconexión generada automáticamente (REC-2026-00001): ANULADA vía
+  POST /facturas/:id/anular — mismo caso, la fila sigue existiendo.
+- Los eventos en `cortes_reconexiones` (1 corte + 1 reconexión): **no se pueden deshacer**. El
+  propio comentario de la migración de 009 dice explícitamente "Sin DELETE expuesto por ninguna
+  ruta" — son un historial permanente por diseño, no hay anulación posible ni debería haberla.
+- Las 3 filas de `notificaciones` de confirmacion_pago/corte_ejecutado/reconexion_completada:
+  tampoco tienen mecanismo de anulación (no lo necesitan, son solo un registro de intentos de
+  envío) — siguen existiendo.
+
+Es exactamente el mismo riesgo que 009 documentó explícitamente para fixtures compartidos
+("agregar una factura nueva rompería los conteos que 005/007 ya asumen") — aquí se materializó vía
+pruebas de integración en vivo (curl), no vía un archivo de fixture, un camino que no estaba
+señalado antes.
+
+Lo que NO hice, deliberadamente: un `supabase db reset --local` real restauraría esta base a un
+estado limpio, pero es una acción destructiva y de alcance mayor al de esta tarea — entre otras
+cosas, borraría también el usuario `admin-a@test.local` de Supabase Auth que se ha usado en TODA
+esta conversación (incluida la sesión del bug de login) para pruebas manuales. Esa decisión le
+corresponde a Mateo, no la tomo por mi cuenta.
+
+CONCLUSIÓN para Mateo: el código de 010 (idempotencia, contenido, RLS) está verificado y correcto.
+Los tests de aislamiento de 005/006/007 (no de esta feature) y el propio de 010 (010_notificaciones_
+aislamiento.sql, T-002) van a seguir fallando por conteo si se re-corren contra ESTA base local
+específica, hasta que se haga un `supabase db reset --local` real (reaplicando las 12 migraciones +
+todos los fixtures desde cero). No es una regresión de 010 sobre esos tests — es el costo de haber
+verificado T-006/T-007 con peticiones HTTP reales en vez de solo revisar el código.
 ```
 **Commit:** —
 

@@ -1,0 +1,18 @@
+name = "undreocol-avisos-vencimiento"
+main = "src/cron/avisos-vencimiento.ts"
+# Fecha máxima que soporta el runtime local (wrangler 4.86.0).
+compatibility_date = "2026-05-03"
+
+[triggers]
+crons = ["0 6 * * *"]
+
+# SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY se inyectan por entorno:
+# local → backend/.dev.vars; producción → secrets de Mateo.
+
+# Productor hacia la MISMA cola que usa el Worker principal (wrangler.toml) —
+# sin cola nueva (plan.md §5, decisión técnica). El consumidor
+# (queues/cierre-facturacion.ts) ya sabe procesar mensajes tipo
+# 'enviar_notificacion' sin importar de qué Worker vinieron.
+[[queues.producers]]
+binding = "FACTURACION_COLA"
+queue = "undreocol-facturacion"
