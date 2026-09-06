@@ -4,7 +4,13 @@ main = "src/cron/limpieza.ts"
 compatibility_date = "2026-05-03"
 
 [triggers]
-crons = ["0 6 * * 0"]
+# Domingo 6:00 AM. El campo "día de la semana" de Cron Triggers de Cloudflare
+# usa 1-7 con 1=domingo (NO 0-6 con 0=domingo como el cron POSIX estándar) —
+# "0" está fuera de rango y produce "invalid cron string [code: 10100]" al
+# desplegar. Se usa la abreviatura de 3 letras ("sun") porque la propia
+# documentación de Cloudflare la recomienda para evitar esta ambigüedad:
+# https://developers.cloudflare.com/workers/configuration/cron-triggers/
+crons = ["0 6 * * sun"]
 
 # SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY se inyectan por entorno:
 # local → backend/.dev.vars; producción → secrets de Mateo.
