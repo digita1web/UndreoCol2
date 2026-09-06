@@ -52,6 +52,7 @@ import {
   obtenerPagosDeSuscriptor,
   registrarPago,
 } from './lib/pagos';
+import { obtenerIndicadores } from './lib/dashboard';
 import { redondearPeso } from './core/pagos';
 import {
   cortarSuscriptor,
@@ -261,9 +262,11 @@ app.get('/dashboard', async (c) => {
 
 // Resuelve sesión + cliente activo. `respuesta` viene poblado con el error
 // correspondiente (401/400) cuando `ctx` es null; el caller solo necesita
-// `if (!r.ctx) return r.respuesta;`.
+// `if (!r.ctx) return r.respuesta;`. `rol` es el rol del miembro en el acueducto
+// activo (aditivo, retrocompatible — los callers previos lo ignoran); lo usa el
+// endpoint de indicadores (011) para exigir `admin_acueducto` (403 explícito).
 type ResultadoClienteActivo =
-  | { ctx: { supabase: ReturnType<typeof crearClienteSuscriptor>; clienteId: string; perfilId: string }; respuesta?: undefined }
+  | { ctx: { supabase: ReturnType<typeof crearClienteSuscriptor>; clienteId: string; perfilId: string; rol: string }; respuesta?: undefined }
   | { ctx: null; respuesta: Response };
 
 async function requerirClienteActivo(c: Context<{ Bindings: Env }>): Promise<ResultadoClienteActivo> {
@@ -277,8 +280,29 @@ async function requerirClienteActivo(c: Context<{ Bindings: Env }>): Promise<Res
   if (!activo) {
     return { ctx: null, respuesta: c.json({ error: 'Sin acueducto', clientes: lista }, 400) };
   }
-  return { ctx: { supabase, clienteId: activo.clienteId, perfilId: sesion.perfilId } };
+  return { ctx: { supabase, clienteId: activo.clienteId, perfilId: sesion.perfilId, rol: activo.rol } };
 }
+
+// GET /dashboard/indicadores — indicadores operativos del acueducto (011).
+// Solo `admin_acueducto`: cualquier otro rol autenticado recibe 403 EXPLÍCITO
+// (decisión del spec §0.4); nunca datos vacíos ni un 200 parcial. Los datos se
+// agregan con el JWT del usuario (RLS FORCE); nunca service_role.
+app.get('/dashboard/indicadores', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json(
+      { error: 'Solo el administrador del acueducto puede ver los indicadores' },
+      403,
+    );
+  }
+  try {
+    const indicadores = await obtenerIndicadores(ctx.supabase, ctx.clienteId);
+    return c.json({ indicadores });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron obtener los indicadores' }, 400);
+  }
+});
 
 app.get('/catalogo/servicios', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
