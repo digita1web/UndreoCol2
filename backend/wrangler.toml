@@ -6,8 +6,14 @@ compatibility_date = "2026-05-03"
 
 # SUPABASE_URL y SUPABASE_ANON_KEY se inyectan por entorno: en local viven en
 # .dev.vars (gitignored); en producción son [vars]/secrets de Mateo.
+#
+# ALLOWED_ORIGIN admite una lista separada por comas (ver el CORS de
+# index.ts: c.env.ALLOWED_ORIGIN.split(',')) — se mantiene localhost:3000
+# para que wrangler dev local siga funcionando, y se agrega la URL real del
+# frontend en Cloudflare Workers (undreocol-frontend, desplegado con
+# OpenNext) para que el navegador real no sea rechazado por CORS.
 [vars]
-ALLOWED_ORIGIN = "http://localhost:3000"
+ALLOWED_ORIGIN = "http://localhost:3000,https://undreocol-frontend.undreocol.workers.dev"
 
 # --- Cierre de facturación (005): producer + consumer de la misma cola -------
 # El worker principal es a la vez HTTP (fetch) y consumidor de la cola; así el
