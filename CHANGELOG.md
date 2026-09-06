@@ -4,6 +4,42 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-06 — Sesión 026: reset de la base local + regresión limpia (cierra el pendiente de la Sesión 024)
+
+**Por qué:** desde la Sesión 024, la base local persistente acumuló rastro de pruebas reales
+(pagos/facturas de prueba, eventos inmutables de `cortes_reconexiones`, y luego las filas DASH del
+fixture de 011) que rompía por **conteo** —no por RLS— las suites de aislamiento 001/003/004 (nuevas,
+por el rastro 011) y 005/006/007/008/010 (preexistentes). Mateo autorizó el reset para limpiarlo.
+
+**Ejecutado (evidencia real, sin cambios de código):**
+- `supabase db reset --local` → EXIT=0, las **12 migraciones** aplican limpias de cero
+  (fundacion-tenancy … notificaciones-generales), sin `seed.sql`.
+- Fixtures aplicados en orden canónico (uno por feature, EXIT=0 todos): `fundacion`, `catalogo`,
+  `suscriptores`, `lecturas`, `facturacion`, `correo-factura`, `pagos`, `portal`, `cortes`,
+  `importacion` (012) y `dashboard` (011).
+- Regresión de aislamiento sobre la base limpia — **todas en verde**, sin ruido de conteos:
+
+```
+001 FUNDACION-AISLAMIENTO OK · 002 CATALOGO-AISLAMIENTO OK · 003 SUSCRIPTORES-AISLAMIENTO OK
+004 LECTURAS-CONSUMO-AISLAMIENTO OK · 005 FACTURACION-AISLAMIENTO OK · 006 CORREO-FACTURA-AISLAMIENTO OK
+007 PAGOS-AISLAMIENTO OK · 008 PORTAL-AISLAMIENTO OK · 009 CORTES-AISLAMIENTO OK
+010 NOTIFICACIONES-GENERALES-AISLAMIENTO OK · 011 DASHBOARD-AISLAMIENTO OK · 012 IMPORTACION-AISLAMIENTO OK
+```
+  (Método canónico: cada suite corre en el punto en que está diseñada — 001-010 y 012 sobre los
+  fixtures base 001-012 sin `dashboard.sql`; `dashboard.sql` (011) se aplica al final y la suite 011
+  corre sobre ella. Las suites de conteo previas no se re-corren después de `dashboard.sql` porque
+  ese fixture agrega deliberadamente filas DASH que alteran sus conteos — es la misma razón por la que
+  el rastro rompía los conteos antes del reset.)
+- Usuarios de login recreados con id canónico y contraseña `mateo-admin-123`:
+  `admin-a@test.local` (id `…a1`) y `lector-a@test.local` (id `…a2`). Verificado con login real:
+  `POST /auth/login` 200 para ambos; `GET /dashboard/indicadores` → admin 200 con indicadores y
+  lector 403 con el error exacto.
+
+**Estado:** el pendiente arrastrado desde la Sesión 024 (regresión formal con base reseteada) queda
+cerrado. La base local vuelve a ser un entorno predecible para las próximas features.
+
+---
+
 ### 2026-09-06 — Sesión 025: 011-dashboard-de-indicadores completa (T-001 a T-006)
 
 **Hecho**
