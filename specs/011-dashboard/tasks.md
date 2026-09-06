@@ -5,6 +5,11 @@
 
 Una tarea = un commit. Sin evidencia no hay commit (CLAUDE.md §4 y §9). Nunca `git push`.
 
+**Estado al cierre (2026-09-06):** T-001…T-005 completados con evidencia y commit propio (ver
+Bitácora al final); T-006 (este documento + CHANGELOG) es el cierre. Los bloques de cada tarea más
+abajo conservan su plantilla de verificación; el resultado real, la evidencia y el hash de cada una
+están consolidados en la Bitácora de cierre (final del archivo) y en el CHANGELOG Sesión 025.
+
 ---
 
 ## Notas de entorno y prerrequisitos
@@ -200,4 +205,18 @@ por tarea verificada. Se entrega el comando de push a Mateo (nunca se ejecuta aq
 <se pega la salida real aquí>
 ```
 **Commit:** `<hash tras completar>`
+
+
+---
+
+## Bitácora de cierre — /implement de 011-dashboard (2026-09-06)
+
+| Tarea | Estado | Verificación real (resumen) | Commit |
+|---|---|---|---|
+| T-001 — `lib/dashboard.ts` + unit tests | Completado | `npx vitest run tests/unit/dashboard.test.ts` 13/13; suite completa 129 passed; `tsc` y `eslint` EXIT=0 | `e7d6c19` |
+| T-002 — Ruta `GET /dashboard/indicadores` (403) | Completado | curl real contra `wrangler dev`: sin cookie 401, admin A 200 (payload completo), lector A 403 exacto; suite 129 passed; build/lint/dry-run EXIT=0 | `307174c` |
+| T-003 — Fixture `dashboard.sql` + CA-1…CA-6 | Completado | Fixture EXIT=0; endpoint A == contraste SQL (recaudo 352000, cartera 178600/290000, morosos 2, consumo 30.0, estados 3/1/1/1, 12 buckets); B/anulado/fuera-de-eje excluidos; lector 403. HTTP admin-B **NO VERIFICADO** (bootstrap GoTrue local) | `277318d` |
+| T-004 — `011_dashboard_aislamiento.sql` + regresión | Completado | `DASHBOARD-AISLAMIENTO OK`; regresión 001-012: 002/009/011/012 OK, resto falla por conteo (rastro DASH nuevo en 001/003/004 y preexistente Sesión 024 en 005/006/007/008/010), sin fugas de RLS | `c4439e4` |
+| T-005 — Frontend (componente + página + No autorizado) | Completado | `npm run build`/`npm run lint` EXIT=0; render real de servidor con curl a `next dev`: admin ve KPIs ("30 m³", gráfico), lector ve "No autorizado" sin KPIs. Playwright click-a-click **NO VERIFICADO** (paquete ausente en el entorno) | `f51f115` |
+| T-006 — CHANGELOG + checklist spec §8 + esta bitácora | En este commit | Suite/builds re-corrridos al cierre (ver abajo) | commit de cierre |
 

@@ -4,6 +4,79 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-06 — Sesión 025: 011-dashboard-de-indicadores completa (T-001 a T-006)
+
+**Hecho**
+- **Spec/plan/tasks aprobados** (`specs/011-dashboard/`). Tres decisiones de alcance aprobadas por
+  Mateo antes de escribir código: recaudo del mes = caja por `fecha_pago` (no por periodo de
+  facturación), consumo promedio sobre `facturas.consumo_m3` de ciclo (no `lecturas`, evita doble
+  conteo por reemplazo de contador) y endpoint de indicadores **solo `admin_acueducto` con 403
+  explícito** para el `lector` (estado "No autorizado" en la UI, no degradación silenciosa).
+- **T-001** — `backend/src/lib/dashboard.ts` (read-model de solo lectura + helpers puros
+  `hoyUtc`/`limitesConsultaTendencia`/`armarEjeTendencia`/`armarTendencia`/`resumirCartera`) y sus
+  unit tests. Reutiliza `obtenerCartera()` de 007 tal cual (nunca duplica la lógica de cartera).
+  Reloj UTC compartido con 007 (D-1). Verificado: `npx vitest run` 129 passed (13 nuevas); `tsc` y
+  `eslint` EXIT=0.
+- **T-002** — Ruta `GET /dashboard/indicadores` + `ctx.rol` en `requerirClienteActivo()` (campo
+  aditivo). Verificado con curl real contra `wrangler dev` + Supabase local: sin cookie 401, admin de
+  A 200 con el payload completo (12 buckets, 4 estados), lector de A **403** con el error exacto;
+  suite 129 passed, tsc/lint/dry-run EXIT=0.
+- **T-003** — Fixture `tests/fixtures/dashboard.sql` (pagos con fechas relativas a `current_date` —
+  D-6 — y periodos cerrados 2099 para el consumo promedio sin colisiones) + integración CA-1…CA-6
+  con contraste SQL: recaudoMes 352000, cartera 178600/290000, morosos 2, consumo promedio 30.0
+  (la factura anulada de 100 queda excluida), estados 3/1/1/1, tendencia de 12 meses con cero-fill;
+  pago de B (700000), anulado (9999999) y fuera-del-eje (999999) excluidos de A; lector 403.
+  **NO VERIFICADO:** el chequeo HTTP de admin de B (login del auth user inyectado por SQL falla en
+  GoTrue local con "Database error querying schema") — CA-6 queda formalmente cubierto por el test
+  de aislamiento de T-004 y por el contraste SQL de A; pasos para Mateo al final.
+- **T-004** — `tests/aislamiento/011_dashboard_aislamiento.sql` → `DASHBOARD-AISLAMIENTO OK`:
+  admin de A ve solo los marcadores DASH de A (pagos/facturas/periodos/suscriptores) y nada de B;
+  admin de B ve solo lo suyo; promedio 2099-02 = 30 con la sesión de A; lector de A lee pero no
+  inserta. **Regresión 001-012:** 002/009/011/012 OK; 001/003/004 ahora fallan por **conteo** (rastro
+  DASH en la base local persistente — 6 suscriptores vs 2, 3 periodos vs 1 — no es fuga de RLS,
+  todos los pasos de aislamiento cruzado anteriores al conteo pasan); 005/006/007/010 siguen fallando
+  por conteo preexistente (Sesión 024) y 008 por su hallazgo preexistente.
+- **T-005** — Frontend: componente presentacional `DashboardIndicadores` (tarjetas, gráfico de 12
+  barras en CSS puro — D-5, sin dependencia —, conteos por estado y vínculos a `/app/pagos` y
+  `/app/suscriptores`) y página `/app/dashboard` que solo llama al endpoint si el rol es
+  `admin_acueducto`; el `lector` ve el estado "No autorizado" con enlace a `/app/lecturas`.
+  Verificado: `npm run build` y `npm run lint` EXIT=0 y **render real de servidor** con curl a
+  `next dev` + `wrangler dev` (admin: KPIs con "30 m³" y gráfico; lector: "No autorizado" sin
+  KPIs). **NO VERIFICADO (requiere validación manual de Mateo):** click-a-click con Playwright —
+  el paquete no está en este entorno (solo el Chromium cacheado); pasos exactos al final.
+- **T-006** — Cierre: este CHANGELOG, checklist del spec §8 y bitácora en `tasks.md`.
+
+**Verificado (evidencia real, no supuesta)**
+```
+Backend: npx vitest run → 129 passed; npm run build (tsc) EXIT=0; npm run lint EXIT=0
+Backend: npx wrangler deploy --dry-run -c wrangler.toml → EXIT=0
+Frontend: npm run build → EXIT=0 (19 rutas, dashboard dinámica); npm run lint EXIT=0
+Aislamiento: DASHBOARD-AISLAMIENTO OK contra Supabase local real (Docker)
+Integración: curl CA-1..CA-6 con contraste SQL 1:1 (valores del fixture DASH)
+```
+
+**Pendiente (NO VERIFICADO — requiere validación manual de Mateo)**
+1. **Playwright CA-7**: con `wrangler dev` (backend) y `next dev` (frontend) corriendo, en Chromium
+   real iniciar sesión con `admin-a@test.local`/`clave-segura` → `/app/dashboard` debe mostrar las
+   tarjetas (recaudo del mes, cartera, morosos, consumo "30 m³"), el gráfico de 12 barras y los
+   enlaces a `/app/pagos` y `/app/suscriptores`; con `lector-a@test.local`/`clave-segura` debe
+   mostrar "No autorizado" sin ningún indicador. (Nota: las contraseñas de `admin-a` y `lector-a`
+   en la base local se reasentaron a `clave-segura` vía la API admin de GoTrue para poder ejecutar
+   los curl — cambio solo de entorno local, no commiteado.)
+2. **HTTP de admin de B** (CA-6 a nivel HTTP): login de un admin del acueducto B para ver sus
+   indicadores; el bootstrap de un auth user con el id del perfil `b1` choca con GoTrue local
+   ("Database error querying schema"). Cobertura equivalente ya verificada: endpoint de A ==
+   contraste SQL filtrado a A (los pagos de B no entran) + test de aislamiento SQL de T-004.
+3. **Regresión formal con base reseteada**: los fallos de conteo 001/003/004 (nuevos, por el rastro
+   DASH) y 005/006/007/008/010 (preexistentes) se limpian con `supabase db reset --local` +
+   reaplicar las 12 migraciones + fixtures 001-012 en orden (decisión pendiente de Mateo desde la
+   Sesión 024).
+
+Commits de la feature: `e7d6c19` (T-001), `307174c` (T-002), `277318d` (T-003), `c4439e4` (T-004),
+`f51f115` (T-005) + el commit de cierre (T-006).
+
+---
+
 ### 2026-09-05 — Sesión 024: 010-notificaciones completa (T-001 a T-010)
 
 **Hecho**
