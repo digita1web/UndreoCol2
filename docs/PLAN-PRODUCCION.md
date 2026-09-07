@@ -161,11 +161,16 @@ de suscriptores con cédula y dirección, y todo el histórico de facturación y
 implica políticas RLS nuevas por rol en 6 tablas + la asignación de rutas al lector, que
 `ESPECIFICACION-FUNCIONAL.md §2.14.1` reconoce que **no existe como feature todavía**.
 
-**M-3 · `ALLOWED_ORIGIN = "http://localhost:3000"` está versionado en `backend/wrangler.toml`.**
+**M-3 · `ALLOWED_ORIGIN = "http://localhost:3000"` estaba versionado en `backend/wrangler.toml`. — RESUELTO (`f98850a`).**
 Confirmado en la salida real de `wrangler deploy --dry-run`: el binding se despliega con ese valor.
-Un `wrangler deploy` desde el repo pisa el valor de producción del panel de Cloudflare. Consecuencia
-inmediata: el frontend de producción deja de poder llamar a la API (CORS). Debe moverse a un
-`[env.production]` con el origen real, o quitarse del archivo y dejarse solo en el panel.
+Un `wrangler deploy` desde el repo pisaba el valor de producción del panel de Cloudflare y el
+frontend dejaba de poder llamar a la API (CORS). *Resuelto:* `[env.production]` con el origen real
+(`https://undreocol-frontend.undreocol.workers.dev`, confirmado por Mateo) y el script
+`npm run deploy:produccion`. **Producción se despliega ahora con ese script, no con `npm run deploy`.**
+El fix evita dos trampas de Wrangler, ambas verificadas y no supuestas: sin `name` explícito en el
+bloque de entorno se habría creado un Worker NUEVO llamado `undreocol-api-production` (comprobado
+leyendo el README que genera `--outdir`), y los bindings no se heredan del bloque raíz, así que se
+repiten los cuatro. **Al añadir un binding nuevo hay que añadirlo también en `[env.production]`.**
 
 **M-4 · Cookies `SameSite=Lax` con frontend y backend en sitios distintos.**
 `uc_sesion_admin` y `uc_sesion_suscriptor` son `SameSite=Lax`, y `frontend/lib/api.ts` llama a la API
@@ -196,9 +201,15 @@ feature 015": el roadmap la numera 016.
 
 #### BAJO — documentados, sin corregir
 
-**B-1 · `planes` es legible por `anon`** (`planes_lectura ... using (true)`). Expone el catálogo
+**B-1 · `planes` es legible por `anon`. — NO SE CORRIGE: es una decisión de producto, no un bug.** (`planes_lectura ... using (true)`). Expone el catálogo
 comercial de UndreoCol (nombres de plan y `valor_suscriptor`) a cualquiera. Es la única tabla de las
-22 legible sin sesión; probablemente intencional, conviene confirmarlo.
+22 legible sin sesión. **Decisión de Mateo pendiente:** que el catálogo comercial de UndreoCol sea
+público es normal en un SaaS, así que esto no se toca por iniciativa propia. Verificado que hoy
+**nada lo lee salvo `GET /salud`**, que lo usa como prueba de conectividad — y seguiría funcionando
+igual si se restringiera, porque RLS devuelve 0 filas sin error. Si Mateo decide que no debe ser
+público, el cambio es de una línea:
+`alter policy planes_lectura on planes using (auth.uid() is not null);`
+más actualizar el comentario de `/salud`, que hoy dice "planes es lectura pública".
 
 **B-2 · `portal_validar_credenciales` lanzaba una excepción no controlada con `numero_documento` NULL — CORREGIDO (`b365141`).**
 (violación de `NOT NULL` en `portal_intentos_login`) en vez de devolver `{"estado":"invalido"}`. No
@@ -208,12 +219,21 @@ Devolvía un error de PostgreSQL con nombres de tabla y columna. *Corregido:* NU
 espacios en cualquiera de los tres parámetros devuelven `{"estado":"invalido"}`, igual que cualquier
 otra credencial incorrecta, sin crear filas basura en `portal_intentos_login`.
 
-**B-3 · `tarifa_vigente()` filtra un UUID de tarifa entre acueductos.** Es `SECURITY DEFINER`,
+**B-3 · `tarifa_vigente()` filtraba un UUID de tarifa entre acueductos. — RESUELTO (`2af5ab3`).** Es `SECURITY DEFINER`,
 otorgada a `authenticated`, y su propio comentario dice que "no filtra por cliente_id a propósito".
 Verificado: un usuario sin membresía obtiene el `tarifa_id` vigente de otro acueducto. La fila en sí
-sigue protegida por RLS (0 filas legibles), y hace falta adivinar un `servicio_id` de 128 bits, así
-que no es explotable en la práctica. Vale como recordatorio de que el patrón "el llamante es
-responsable" es frágil.
+seguía protegida por RLS (0 filas legibles), y hace falta adivinar un `servicio_id` de 128 bits, así
+que no era explotable en la práctica. Se cerró igual por consistencia: es el mismo patrón del
+identificador desnudo que causó el CRÍTICO C-1. *Resuelto:* la función comprueba que el servicio
+pertenece a un acueducto del llamante. La guarda es de **pertenencia al acueducto, no de rol** — el
+lector llega aquí por la simulación de periodo y filtrar por rol habría roto esa ruta. Los tres
+caminos legítimos (admin, lector, `service_role` del cierre masivo) se verificaron uno por uno.
+
+**Corrección adicional en el mismo commit, descubierta durante 017 T-001:** las **6 funciones del
+portal** (008/008b) conservaban el `EXECUTE` que `authenticated` recibe solo por los *default
+privileges* de Supabase — `revoke all … from public` no lo quita. No era explotable (revalidan
+credenciales completas), pero era superficie que nadie usa: quien las llama es el Worker con la clave
+`anon`. Suite nueva `tests/aislamiento/902`.
 
 **B-4 · `PATCH` faltaba en `allowMethods` del CORS — CORREGIDO (`41d78d4`).**
 El middleware de `backend/src/index.ts:95` no lo listaba, y la API registra 4 rutas `PATCH`:
@@ -230,9 +250,13 @@ advertencias requieren CSS controlado por un atacante y aquí PostCSS solo proce
 proyecto en tiempo de compilación. Sin ruta de explotación en este sistema. `npm audit` del backend:
 **0 vulnerabilidades**.
 
-**B-6 · No hay cabeceras de seguridad en el frontend** (`next.config.ts` está vacío): sin CSP, sin
-`X-Frame-Options`/`frame-ancestors`, sin `Referrer-Policy`. El panel administrativo se puede embeber
-en un iframe (clickjacking).
+**B-6 · No había cabeceras de seguridad en el frontend. — RESUELTO (`4ab4200`), pendiente de verificar el build.** (`next.config.ts` estaba vacío): sin CSP, sin
+`X-Frame-Options`/`frame-ancestors`, sin `Referrer-Policy`. El panel administrativo se podía embeber
+en un iframe (clickjacking sobre un panel que anula facturas y cambia tarifas). *Resuelto:* las cinco
+cabeceras que no pueden romper una aplicación normal. **Deliberadamente NO se añadió una CSP
+completa** —una CSP mal ajustada rompe la aplicación en silencio y aquí no se puede ejecutar
+`next build`—; merece su propia tarea con el navegador delante. **Pendiente:** ejecutar
+`npm run build` antes de desplegar, y `curl -I` sobre la URL real después.
 
 ### Lo que la auditoría confirmó que está bien
 

@@ -4,6 +4,107 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-07 — Sesión 029: cierre de hallazgos abiertos de la auditoría (M-3, B-3, B-6 + T-001)
+
+Continuación directa de la auditoría (Sesión 027) y de la feature 017 (Sesión 028). Se corrigen los
+hallazgos que **se podían corregir con verificación real**, y se dice explícitamente cuáles no y por
+qué — que es la parte que importa.
+
+**Corregidos**
+
+- **M-3 (`f98850a`) — `ALLOWED_ORIGIN` de producción.** `wrangler.toml` solo tenía
+  `http://localhost:3000`, así que un `wrangler deploy` desde el repositorio pisaba el valor real y
+  rompía el CORS del panel. Mateo confirmó el origen:
+  `https://undreocol-frontend.undreocol.workers.dev`. Se añade `[env.production]` y el script
+  `npm run deploy:produccion`.
+  **Dos trampas de Wrangler que el bloque evita, ambas verificadas, no supuestas:**
+  1. En un entorno con nombre, Wrangler llama al Worker `<nombre>-<entorno>`. Sin el override se
+     habría creado un Worker **NUEVO**. Comprobado quitando el override a propósito y leyendo el
+     README que el propio wrangler genera en `--outdir`:
+     `SIN override → worker "undreocol-api-production"` · `CON override → worker "undreocol-api"`.
+  2. Los bindings **no se heredan** del bloque raíz: sin repetirlos, producción se quedaría sin cola,
+     sin R2 y sin correo. Se repiten los cuatro y el dry-run los lista todos.
+  **AVISO:** producción se despliega ahora con `npm run deploy:produccion`, **no** con
+  `npm run deploy`. Al añadir un binding nuevo hay que añadirlo **también** en `[env.production]`.
+
+- **B-3 + observación de 017 T-001 (`2af5ab3`) — privilegios de funciones `SECURITY DEFINER`.**
+  Dos correcciones del mismo patrón, en una migración:
+  - Las **6 funciones del portal** conservaban el `EXECUTE` que `authenticated` recibe solo por los
+    *default privileges* de Supabase; `revoke all … from public` no lo quita. No era explotable
+    —revalidan credenciales completas y no aceptan un id desnudo— pero era superficie que nadie usa:
+    quien las llama es el Worker con la clave `anon`.
+  - **`tarifa_vigente()`** filtraba el `tarifa_id` de otro acueducto. Severidad real BAJA (solo un
+    UUID; la fila sigue protegida por RLS y hay que adivinar un `servicio_id` de 128 bits), pero es
+    el mismo patrón del identificador desnudo que causó el **CRÍTICO C-1**. La guarda es de
+    **pertenencia al acueducto, no de rol**: el lector llega ahí por la simulación de periodo y
+    filtrar por rol habría roto esa ruta sin ganar nada.
+  Suite nueva `tests/aislamiento/902` (6 pasos).
+
+- **B-6 (`4ab4200`) — cabeceras de seguridad.** El panel se servía sin ninguna: se podía embeber en
+  un iframe ajeno (clickjacking sobre un panel que anula facturas y cambia tarifas). Se aplican las
+  cinco que **no pueden romper** una aplicación normal. **Deliberadamente NO se añadió una CSP
+  completa**: una CSP mal ajustada rompe la aplicación en silencio y aquí no se puede ejecutar
+  `next build`. Merece su propia tarea con el navegador delante.
+
+**NO corregidos, y la razón de cada uno — ninguno se deja en silencio**
+
+| Hallazgo | Por qué no se toca |
+|---|---|
+| **M-2** el `lector` ve todo el negocio | Exige rediseñar RLS por rol en 6 tablas **y** la asignación de rutas al lector, que `ESPECIFICACION-FUNCIONAL §2.14.1` reconoce que no existe. Es una **feature**: `CLAUDE.md §3` prohíbe escribir código sin `spec.md` aprobado |
+| **M-4** cookies `SameSite=Lax` | **Probablemente ya no aplica.** Con la URL real que dio Mateo, frontend y API comparten el dominio registrable `undreocol.workers.dev`, así que son *same-site* y las cookies `Lax` sí viajan. Falta que lo confirme en DevTools para cerrarlo |
+| **M-5** registro público | Decisión de **producto**, no de seguridad |
+| **B-1** `planes` legible por `anon` | Decisión de **producto**: que el catálogo comercial de un SaaS sea público es normal. Verificado que hoy nada lo lee salvo `GET /salud`, que seguiría funcionando si se restringiera. El parche de una línea queda escrito en `PLAN-PRODUCCION.md` por si Mateo decide lo contrario |
+| **B-5** `postcss` | Exige `next@16` (cambio mayor) y aquí ni siquiera se pueden instalar las dependencias del frontend. Sin ruta de explotación en este sistema: PostCSS solo procesa el CSS propio en tiempo de compilación |
+
+**Método: cada test se probó rompiendo lo que vigila**
+
+```
+902  devolver el EXECUTE a authenticated        -> PASO 1 FALLÓ
+     revertir tarifa_vigente al estado sin guarda -> PASO 3 FALLÓ
+     restaurado                                  -> PRIVILEGIOS-FUNCIONES-AISLAMIENTO OK
+M-3  quitar el override `name` de [env.production] -> worker "undreocol-api-production"
+```
+
+**Verificado (evidencia real)**
+
+```
+17/17 migraciones aplican limpias desde cero
+Aislamiento: 14 suites, 0 en rojo · nueva 902 -> PRIVILEGIOS-FUNCIONES-AISLAMIENTO OK
+Caminos legítimos de tarifa_vigente, uno por uno:
+  admin de A -> tarifa de A · LECTOR de A -> tarifa de A (simulación de periodo intacta)
+  service_role -> tarifa de B (cierre masivo intacto) · plataforma -> tarifa de B (soporte)
+  servicio inexistente -> NULL sin lanzar (no es un oráculo de existencia)
+Portal con anon: los 12 ataques cruzados siguen bloqueados
+Backend: npx vitest run -> 176 passed (16 archivos) · tsc EXIT=0 · eslint EXIT=0
+Backend: wrangler deploy --dry-run --env production -> EXIT=0, los 4 bindings y el origen real
+Frontend: tsc --strict sobre next.config.ts -> EXIT=0; headers() ejecutada de verdad -> 5 cabeceras
+```
+
+**NO VERIFICADO — requiere validación manual de Mateo**
+
+1. **`npm run build` y `npm run lint` del frontend.** No es un descuido: **no se pueden ejecutar en
+   este contenedor**. `package.json` toma `xlsx` de `https://cdn.sheetjs.com/…` (Sesión 020) y el
+   proxy responde **403** a ese host, así que `npm ci` aborta sin dejar `node_modules`.
+   **Ejecutar el build ANTES de desplegar** el cambio de `next.config.ts`.
+2. **Las 5 cabeceras en la respuesta real:** `curl -I https://undreocol-frontend.undreocol.workers.dev/login`.
+3. **El consumidor de la cola en `[env.production]`:** wrangler no lista consumidores en el dry-run,
+   solo se puede afirmar que la configuración parsea. Confirmar tras el primer despliegue que el
+   cierre de facturación sigue consumiendo mensajes.
+4. **M-4 en DevTools:** que `uc_sesion_admin` se guarda y viaja entre el frontend y la API.
+
+**Recordatorio que sigue siendo lo más urgente:** nada de esto está aplicado en la base de
+producción. Mergear a `main` no ejecuta migraciones. **El fix del CRÍTICO C-1 puede seguir sin
+aplicar.** Orden obligatorio: migraciones primero, despliegue después — al revés, el login devuelve
+503 porque el Worker llamaría a funciones que aún no existen.
+
+**Estado de la auditoría:** 11 de 15 hallazgos cerrados (C-1, A-1, A-2, M-1, M-3, M-6, B-2, B-3, B-4,
+B-6, y la observación de 017 T-001). Quedan 4 abiertos y ninguno es un defecto pendiente de arreglo:
+M-2 necesita su propia feature, M-4 espera una comprobación en el navegador, y M-5 y B-1 son
+decisiones de producto de Mateo.
+
+---
+
+
 ### 2026-09-07 — Sesión 028: feature 017 rate-limit-login-admin (cierra A-2 y M-6)
 
 **Qué es:** la implementación completa del hallazgo **A-2 (ALTO)** de la auditoría de la Sesión 027
