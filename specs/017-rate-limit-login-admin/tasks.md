@@ -116,6 +116,11 @@ retardos** 5→1 min, 6→2, 7→4, 8→8, 9→16, 10→32, 11+→60 (CA-1, CA-3
 reintentar y el bloqueo siguiente es **mayor** (CA-3); **CA-4**: un email inexistente produce
 exactamente la misma secuencia que uno registrado; email nulo/vacío no crea fila; olvido a las 24 h.
 Serie 900+ porque 017 no está en el roadmap original (plan §1).
+**Desviación de alcance respecto del plan §8:** su paso 10 (la purga, CA-7) NO entra en esta suite.
+La purga se implementa en TypeScript (`cron/limpieza.ts`, T-005) y repetir aquí su predicado de
+borrado probaría una copia del predicado, no el código que se despliega. CA-7 se verifica en T-005
+contra el código real con contraste SQL. Por eso la suite tiene 10 pasos, pero el décimo es CA-4 (el
+innegociable) en vez de la purga.
 
 **Verificación:**
 ```bash
@@ -125,10 +130,30 @@ for f in 001..012 900 901; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/a
 ```
 **Resultado esperado:** `ADMIN-INTENTOS-LOGIN-AISLAMIENTO OK`; regresión **14/14 suites en verde**,
 cero en rojo.
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+901_admin_intentos_login_aislamiento.sql  ->  ADMIN-INTENTOS-LOGIN-AISLAMIENTO OK
+
+Prueba de que la suite SIRVE (se rompe algo a propósito y se comprueba que cae
+el paso correcto — un test que pasa en ambos casos no prueba nada):
+
+  A) grant execute ... to authenticated      -> PASO 2 FALLÓ: admin_login_estado(text)
+                                                es ejecutable por authenticated
+  B) política de escritura en la tabla       -> PASO 1 FALLÓ: hay 1 política(s) de escritura
+  C) retardo fijo de 15 min en vez del       -> PASO 4 FALLÓ: tras 5 fallo(s) la espera es
+     progresivo                                 15 min (se esperaba 1)
+  D) fuga de CA-4 quirúrgica: 1 minuto más   -> PASO 10 FALLÓ (CA-4) en el intento 5:
+     de espera si el email existe en             registrado(intentos=5, espera=2, estado=bloqueado)
+     `perfiles`                                  vs inexistente(intentos=5, espera=1, ...)
+  restaurada la función real                 -> ADMIN-INTENTOS-LOGIN-AISLAMIENTO OK
+
+  (El primer intento de sabotear CA-4 fue demasiado tosco —quitaba también el
+  bloqueo— y caía antes, en PASO 5. Se rehízo quirúrgico para demostrar que
+  PASO 10 es quien detecta la fuga: basta 1 minuto de diferencia observable.)
+
+Regresión canónica desde base reconstruida (15 migraciones desde cero + fixtures
+001-012; dashboard.sql y la 011 al final): 14/14 suites en verde, cero en rojo.
 ```
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
