@@ -330,12 +330,38 @@ cd frontend && npm run build && npm run lint
 grep -n "hidratado" components/login-form.tsx   # sigue presente e intacto
 ```
 **Resultado esperado:** build y lint EXIT=0; `disabled={!hidratado || cargando}` intacto.
-**NO VERIFICABLE aquí (requiere Mateo):** ver el mensaje real en el navegador tras 6 intentos.
-**Estado:** Pendiente
+**Estado:** COMPLETADO con una limitación de entorno declarada (abajo)
 **Evidencia:**
 ```
-<salida real>
+type-check estricto del código nuevo (frontend/lib/api.ts es TS puro, no importa Next):
+  tsc --noEmit --strict --lib ES2022,DOM --types node   ->  EXIT=0
+
+ejecución REAL de minutosParaReintentar (código compilado del archivo de verdad,
+no una copia):
+  ok   undefined                      -> null
+  ok   fecha inválida                 -> null
+  ok   ya pasó                        -> null
+  ok   +30 s -> 1 min (mínimo)        -> 1
+  ok   +1 min                         -> 1
+  ok   +90 s -> 2 (redondeo arriba)   -> 2
+  ok   +60 min                        -> 60
+  ok   ErrorPeticion sigue siendo un Error (los catch existentes no se rompen)
+  ok   conserva status y reintentarEn
+  TODOS EN VERDE
+
+regla CLAUDE.md §7: 11 de 11 formularios siguen con useHidratado; el botón del
+login conserva disabled={!hidratado || cargando} sin tocar.
 ```
+**NO VERIFICADO — `npm run build` y `npm run lint` del frontend, requiere Mateo.** No es un
+descuido: **no se pueden ejecutar en este contenedor**. `frontend/package.json` toma `xlsx` de
+`https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` (decisión de la Sesión 020, para evitar las
+vulnerabilidades sin parche del paquete de npm) y el proxy de red de este entorno responde **403
+Forbidden** a ese host, así que `npm ci` aborta y no queda ni un `node_modules`. Evidencia:
+`npm error code E403 / 403 Forbidden - GET https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`.
+Pasos para Mateo: `cd frontend && npm ci && npm run build && npm run lint` en un entorno con acceso
+a cdn.sheetjs.com.
+**NO VERIFICADO — comprobación visual, requiere Mateo:** tras 5 intentos fallidos, el sexto debe
+mostrar "Demasiados intentos. Vuelva a intentar en N minuto(s)." en vez del texto genérico.
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---
