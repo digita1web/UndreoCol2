@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { login } from '@/lib/api';
+import { ErrorPeticion, login, minutosParaReintentar } from '@/lib/api';
 
 export function LoginForm() {
   const router = useRouter();
@@ -25,7 +25,19 @@ export function LoginForm() {
       router.push('/app/dashboard');
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo iniciar sesión');
+      // 429 del límite de intentos (017): se dice cuántos minutos faltan en vez
+      // del mensaje genérico. Si el backend no mandó `reintentar_en` o la fecha
+      // ya pasó, se cae al mensaje del servidor tal cual.
+      if (e instanceof ErrorPeticion && e.status === 429) {
+        const minutos = minutosParaReintentar(e.reintentarEn);
+        setError(
+          minutos === null
+            ? e.message
+            : `Demasiados intentos. Vuelva a intentar en ${minutos} minuto${minutos === 1 ? '' : 's'}.`,
+        );
+      } else {
+        setError(e instanceof Error ? e.message : 'No se pudo iniciar sesión');
+      }
     } finally {
       setCargando(false);
     }
