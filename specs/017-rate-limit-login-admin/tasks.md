@@ -229,7 +229,29 @@ npx vitest run && npm run build && npm run lint
 npx wrangler deploy --dry-run -c wrangler.toml
 ```
 **Resultado esperado:** todo EXIT=0, 154+ tests en verde.
-**NO VERIFICABLE en este entorno (requiere Mateo):** con `wrangler dev` + Supabase real,
+**Estado:** COMPLETADO (cableado verificado; el end-to-end contra GoTrue real sigue pendiente)
+**Evidencia:**
+```
+Se AMPLIÓ el alcance de la verificación respecto del plan §8, que daba esta tarea por
+"no verificable aquí". Sí se puede ejercitar el `app.fetch` REAL sustituyendo las dos
+dependencias (el límite y GoTrue), y eso cubre justo lo que T-004 añade:
+
+  tests/unit/auth-login-limite.test.ts (nuevo, 6 casos) -> 6 passed
+    · email bloqueado      -> 429 con reintentar_en, y ordenLlamadas == ['estado']
+                              (no se llega a GoTrue: el caso caro es el más barato)
+    · no se puede consultar -> 503 y ordenLlamadas == ['estado'] (falla cerrado)
+    · credenciales malas   -> 401 y se registra { exito: false }
+    · credenciales buenas  -> 200 y se registra { exito: true }
+    · '  ADMIN@Test.Local  ' se registra como 'admin@test.local'
+    · el 401 es idéntico para un email registrado y uno inexistente (CA-4)
+
+Prueba de que los tests SIRVEN: quitando de la ruta la consulta del límite
+(volviendo al estado anterior a 017) -> 4 failed | 2 passed; restaurado -> 6 passed.
+
+Suite completa: 171 passed (15 archivos)
+npm run build (tsc) EXIT=0 · npm run lint EXIT=0 · wrangler dry-run EXIT=0
+```
+**NO VERIFICADO — requiere validación manual de Mateo:** con `wrangler dev` + Supabase real,
 ```bash
 for i in $(seq 1 6); do
   curl -s -o /dev/null -w "%{http_code} " -X POST http://localhost:8787/auth/login \
@@ -239,11 +261,6 @@ done; echo
 debe imprimir `401 401 401 401 401 429`, y la sexta respuesta traer `reintentar_en`.
 **CA-4 a nivel HTTP:** repetir la misma serie con un email inexistente y pegar ambas salidas lado a
 lado — códigos y cuerpos **idénticos**.
-**Estado:** Pendiente
-**Evidencia:**
-```
-<salida real>
-```
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---

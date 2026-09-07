@@ -9,6 +9,7 @@ import {
   verificarSesionAdministrativa,
 } from './lib/auth';
 import { resolverClienteActivo } from './lib/tenant';
+import { estadoLoginAdmin, registrarIntentoLoginAdmin } from './lib/auth-intentos';
 import {
   actualizarServicio,
   crearServicio,
@@ -142,14 +143,51 @@ app.post('/auth/registro', async (c) => {
 
 // POST /auth/login — signInWithPassword + cookie HttpOnly; devuelve perfil y
 // membresías activas para que el frontend decida onboarding vs dashboard.
+//
+// Límite de intentos (017, hallazgo A-2 de la auditoría): se consulta el estado
+// ANTES de golpear GoTrue y se registra el resultado después. El caso caro —un
+// email bloqueado— es el más barato: corta en la primera RPC y no llega a
+// Supabase Auth. El 401 genérico no cambia: sigue sin revelar si el email
+// existe, y el contador cuenta igual los emails inexistentes (CA-4).
 app.post('/auth/login', async (c) => {
   const body = await c.req
     .json<{ email?: string; password?: string }>()
     .catch(() => ({ email: undefined, password: undefined }));
   const email = body.email?.trim().toLowerCase() ?? '';
   const password = body.password ?? '';
+
+  // Falla CERRADO (plan §5.4): si no se puede saber si está bloqueado, no se
+  // intenta el login. GoTrue y esta tabla son el mismo PostgreSQL, así que el
+  // login iba a fallar igual; fallar abierto haría desaparecer la protección
+  // justo cuando un atacante puede provocarlo.
   try {
-    const { sesion, accessToken } = await iniciarSesion(c, email, password);
+    const estado = await estadoLoginAdmin(c.env, email);
+    if (estado.bloqueado) {
+      // Mismo contrato que el 429 del portal (POST /portal/:slug/login).
+      return c.json(
+        { error: 'Demasiados intentos. Intente más tarde.', reintentar_en: estado.reintentarEn },
+        429,
+      );
+    }
+  } catch (e) {
+    console.error('auth/login: no se pudo consultar el límite de intentos', e instanceof Error ? e.message : e);
+    return c.json({ error: 'Servicio no disponible. Intente más tarde.' }, 503);
+  }
+
+  let sesion: Awaited<ReturnType<typeof iniciarSesion>>['sesion'];
+  let accessToken: string;
+  try {
+    ({ sesion, accessToken } = await iniciarSesion(c, email, password));
+  } catch (e) {
+    // El registro del intento va aquí y no en un catch que envuelva también las
+    // consultas de abajo: un fallo al leer el perfil NO es un fallo de
+    // credenciales y no debe contar contra el límite.
+    await registrarIntentoLoginAdmin(c.env, email, false);
+    return c.json({ error: e instanceof Error ? e.message : 'Error de autenticación' }, 401);
+  }
+  await registrarIntentoLoginAdmin(c.env, email, true);
+
+  {
     const supabase = crearClienteSuscriptor(c.env, accessToken);
     const { data: perfil, error: errPerfil } = await supabase
       .from('perfiles')
@@ -165,8 +203,6 @@ app.post('/auth/login', async (c) => {
       return c.json({ error: 'Sesión iniciada pero no se pudo leer el perfil' }, 500);
     }
     return c.json({ sesion, perfil, membresias });
-  } catch (e) {
-    return c.json({ error: e instanceof Error ? e.message : 'Error de autenticación' }, 401);
   }
 });
 
