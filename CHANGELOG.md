@@ -4,6 +4,183 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-07 — Sesión 027: auditoría de seguridad pre-producción (docs/PLAN-PRODUCCION.md)
+
+**Qué es:** la auditoría única por LLM planificada en la Sesión 019, ejecutada antes de migrar el
+primer cliente real. Cubre los 8 puntos del encargo: RLS de las 22 tablas, funciones SECURITY
+DEFINER, sesiones admin y portal, rate limiting, validación de entradas, GRANTS, secretos y los
+hallazgos pendientes de Semgrep.
+
+**Contradicciones señaladas antes de decidir (CLAUDE.md §8)**
+1. `PLAN-PRODUCCION.md` dice que la auditoría se hace "al completar el roadmap 001-014". **013 y 014
+   no existen** (`specs/` llega hasta 012). Se auditó 001-012 y queda constancia de que la superficie
+   de 013/014 no está cubierta.
+2. El encargo pide "aplica el fix si es crítico o alto"; **CLAUDE.md §3 prohíbe escribir código sin
+   `spec.md` aprobado**. Resuelto así: los fixes *correctivos* sobre código existente se aplican
+   (C-1, A-1); el que exige un **subsistema nuevo** (A-2, tabla de intentos de login admin) NO se
+   improvisa — se documenta con el diseño listo para `/specify`. Es decisión de Mateo.
+3. El encargo dice que ya se encontró y corrigió "un problema real de GRANTS en producción" y pide
+   confirmar que la migración de fix quedó completa. **Esa migración no existe en el repositorio**:
+   no hay un solo `grant`/`revoke` de TABLA en las 13 migraciones, ni un commit que lo mencione, en
+   los 72 del historial. Todos los privilegios de tabla vienen de los *default privileges* de
+   Supabase. Si el arreglo se hizo a mano desde el panel web, **CLAUDE.md §5.2.3 exige escribir la
+   migración equivalente** — está sin escribir. Lo que sí se verificó: las 22 tablas quedan con
+   `ALL` para `anon`/`authenticated`/`service_role`, y lo único que las protege es RLS, que se probó
+   tabla por tabla y aguanta.
+
+**Método — evidencia ejecutable, no lectura de código (CLAUDE.md §4)**
+No había Docker ni Supabase CLI en este entorno, pero sí PostgreSQL 16. Se levantó un cluster real y
+se emuló el entorno de Supabase con fidelidad (roles `anon`/`authenticated`/`service_role` con
+`BYPASSRLS`, `auth.uid()` sobre `request.jwt.claim.sub`, y los *default privileges* de `public`
+idénticos a los del bootstrap de Supabase), se aplicaron las **13 migraciones desde cero** y los
+fixtures 001-012, y se atacó la base.
+
+**Hallazgos: 1 crítico, 2 altos, 6 medios, 6 bajos.** Detalle completo, riesgo de negocio y evidencia
+en `docs/PLAN-PRODUCCION.md`.
+
+- **C-1 (CRÍTICO, corregido — `1800ca9`)** — `siguiente_numero_factura()` es SECURITY DEFINER, está
+  otorgada a `authenticated` y **no comprobaba nada sobre `p_cliente_id`**: un `cliente_id` desnudo
+  en una función que no pasa por RLS. Cadena reproducida de punta a punta: `anon` saca el
+  `cliente_id` de la víctima con `portal_cliente_por_slug()` (el slug es público) → cualquiera se
+  registra por el `POST /auth/registro` abierto → muta el consecutivo de facturas de otro acueducto.
+  **El consecutivo del acueducto B pasó de 1 a 4** desde una sesión que no podía leer ni una fila de
+  `configuracion`. Riesgo: saltos en la numeración consecutiva que exige la contabilidad colombiana,
+  y bloqueo del cierre de facturación por el `SELECT ... FOR UPDATE` sobre la fila de la víctima.
+  Fix: la autorización va **dentro** de la función (no se revoca a `authenticated` porque
+  `reconectar()` la necesita) — `auth.uid() IS NULL` → service_role, si no `es_admin_de()`.
+- **A-1 (ALTO, corregido — `71e6d0b`)** — inyección de HTML en los seis cuerpos de correo al
+  suscriptor. `nombreAcueducto` y el `motivo` del corte son texto libre de una persona. Un enlace de
+  pago falso dentro de un aviso de mora legítimo, firmado con el dominio del acueducto. Confirma como
+  **real** el hallazgo WARNING de Semgrep que quedó abierto en la Sesión 019.
+- **A-2 (ALTO, PENDIENTE)** — cero protección de fuerza bruta en `POST /auth/login`. La única que
+  existe (`portal_intentos_login`) cubre solo el portal, la cuenta de **menos** valor. Agravante: el
+  Worker intermedia ante GoTrue, así que todo llega desde IPs de Cloudflare y ningún límite por IP
+  del lado de Supabase puede distinguir al atacante. Diseño de fix listo para `/specify`.
+- **Semgrep `index.ts:204` (ReDoS): FALSO POSITIVO**, medido y no supuesto. El grupo interno de
+  `^[a-z0-9]+(-[a-z0-9]+)*$` empieza por `-`, que no está en `[a-z0-9]`: no hay ambigüedad para el
+  backtracker. 50.000 caracteres del peor caso → **0,288 ms**, lineal.
+
+**Lo que se confirmó que está bien (con evidencia, no supuesto)**
+- Las **22 tablas** con RLS `ENABLE` + `FORCE`. Aislamiento multi-tenant intacto en lectura, INSERT,
+  UPDATE y DELETE — **también en las 10 tablas sin test de aislamiento propio**. Un usuario
+  autenticado sin membresía ve **2 filas en toda la base**: las de `planes`.
+- CLAUDE.md §10 punto 23 se cumple **en la base**: los 14 vectores de escalada fallaron.
+- El portal (008) resistió los 12 ataques cruzados: credenciales válidas contra otro tenant,
+  documento de uno con código de otro, `factura_id` ajeno del mismo acueducto, inyección SQL,
+  comodines `LIKE`. Ninguna función acepta un `usuario_servicio_id` desnudo.
+- `SUPABASE_SERVICE_ROLE_KEY` no aparece en ninguna ruta de usuario — solo `cron/` y la cola (§5.4).
+- Las 19 funciones SECURITY DEFINER tienen `search_path=public` fijo.
+- **Cero secretos en todo el historial de git** (804 objetos, todas las ramas).
+- **El fix de hidratación de la Sesión 022 está completo**: los 11 formularios con `<form onSubmit>`
+  deshabilitan el submit hasta hidratar, incluido el login del portal (donde el submit nativo habría
+  puesto documento y código de suscriptor en la query string). No queda ningún `<form>` sin cubrir.
+
+**Verificado (evidencia real)**
+```
+Migraciones:  13/13 aplican limpias desde cero sobre PostgreSQL 16
+Aislamiento:  13/13 suites en verde (001-010, 012 y 900 sobre fixtures 001-012;
+              011 tras dashboard.sql) — método canónico de la Sesión 026
+Exploit C-1:  ANTES consecutivo de B 1 -> 4 · DESPUÉS ERROR 42501, consecutivo intacto
+Backend:      npx vitest run -> 140 passed (11 nuevos) · tsc EXIT=0 · eslint EXIT=0
+Backend:      npx wrangler deploy --dry-run -c wrangler.toml -> EXIT=0
+npm audit:    backend 0 vulnerabilidades · frontend 2 (postcss, build-time, ver B-5)
+```
+
+**NO VERIFICADO — requiere validación manual de Mateo**
+1. **Rate limiting real en producción (A-2).** No se pudo probar contra el despliegue real (este
+   entorno no tiene credenciales de Supabase ni de Cloudflare). Lo verificado es del código: no hay
+   ningún rate limiting. Pasos: `for i in $(seq 1 50); do curl -s -o /dev/null -w "%{http_code} " -X POST https://<worker>.workers.dev/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@real","password":"malo"}'; done` — si salen 50 respuestas `401` sin ningún `429`, A-2 está confirmado en producción.
+2. **Cookies entre sitios (M-4).** Abrir el frontend de producción en Chrome, iniciar sesión y
+   comprobar en DevTools → Application → Cookies que `uc_sesion_admin` se guarda, y en Network que
+   viaja en la siguiente petición a la API. Si no viaja, el despliegue depende de que ambos estén en
+   el mismo sitio; **si se arregla con `SameSite=None` hacen falta tokens CSRF primero**.
+3. **`ALLOWED_ORIGIN` en producción (M-3).** Confirmar en el panel de Cloudflare qué valor tiene hoy
+   el Worker desplegado, y no volver a hacer `wrangler deploy` desde el repo hasta moverlo a
+   `[env.production]`: el `--dry-run` de esta sesión muestra que se desplegaría `http://localhost:3000`.
+4. **La migración de GRANTS que falta (contradicción 3).** Mateo debe confirmar si se tocaron
+   privilegios a mano desde el panel de Supabase; si es así, hay que escribir la migración
+   equivalente y compararla contra la base real (`\dp` sobre las 22 tablas).
+
+**Continuación de la misma sesión — A-2 especificado y correcciones ejecutables aplicadas**
+
+Tras entregar el informe, Mateo pidió especificar A-2 y aplicar las correcciones que se pudieran
+ejecutar. Resultado:
+
+- **`specs/017-rate-limit-login-admin/spec.md`** (`a9cb2bd`) — fase `/specify` de A-2, **EN REVISIÓN**.
+  No se escribe código: `CLAUDE.md §3` exige checkpoint humano entre `/specify` y `/plan`, y la spec
+  deja dos decisiones abiertas que son de Mateo — §0.3 el mecanismo (tabla en PostgreSQL, recomendada,
+  vs. binding de Rate Limiting de Cloudflare) y §0.4 qué se bloquea (bloquear por email es la única
+  clave posible, pero abre un **DoS dirigido contra el administrador del acueducto**; se propone
+  retardo progresivo en vez de puerta cerrada). Pide además aprobación explícita para la excepción de
+  "toda tabla lleva `cliente_id`" (§5.4), porque es infraestructura de autenticación anterior a la
+  resolución del tenant, como `_keepalive`. **Numeración 017 y no 013**: el roadmap de
+  `.specify/config.md` ya reserva 013 (exportes-contables), 014 (rrhh-incapacidades), 015 (qr-ocr) y
+  016 (limpieza). El número no marca el orden — la spec dice que es prerrequisito de producción.
+- **`b43c67d`** — corrección de un error propio: la suite del fix C-1 se había llamado
+  `013_consecutivo_factura_aislamiento.sql` y ese número pertenece a `exportes-contables`. Pasa a
+  `900_auditoria_consecutivo_factura_aislamiento.sql`; la serie 900+ queda para suites de seguridad
+  transversales, fuera de la numeración de features.
+- **B-4 corregido (`41d78d4`)** — `PATCH` faltaba en `allowMethods` del CORS y la API tiene 4 rutas
+  PATCH, entre ellas **cerrar periodo**. De paso, el origen no permitido ya no recibe la cadena entera
+  de `ALLOWED_ORIGIN` (con varios orígenes es una cabecera inválida) sino el primero de la lista.
+- **M-1 corregido (`2907ba6`)** — 12 consultas del consumidor de la cola acotadas por `cliente_id`.
+  Ahí `service_role` salta RLS, así que el `cliente_id` del mensaje era la única frontera y no se
+  usaba. Las 3 ramas validan además que el mensaje lo traiga.
+- **B-2 corregido (`b365141`)** — `portal_validar_credenciales` con documento NULL reventaba con una
+  violación de NOT NULL cuyo DETAIL filtraba nombres de tabla y columnas; ahora devuelve
+  `{"estado":"invalido"}` como cualquier otra credencial incorrecta, sin crear filas basura.
+
+**Método de verificación de los fixes de código:** además de tests/tsc/lint/dry-run, de cada test
+nuevo se comprobó que **falla sin el fix** — un test que pasa en ambos casos no prueba nada.
+```
+CORS  : revirtiendo solo allowMethods -> 2 failed | 7 passed · con el fix -> 9 passed
+Cola  : quitando solo los .eq('cliente_id') -> 3 failed | 2 passed · con el fix -> 5 passed
+Backend: npx vitest run -> 154 passed (13 archivos) · tsc EXIT=0 · eslint EXIT=0 · dry-run EXIT=0
+Base   : 14 migraciones limpias desde cero · 13/13 suites de aislamiento en verde
+B-2    : ANTES error NOT NULL con DETAIL · DESPUES los 5 casos degenerados -> "invalido"
+Portal : los 12 ataques cruzados de la auditoria, re-ejecutados -> los 12 siguen bloqueados
+```
+
+**Sigue PENDIENTE:** A-2 (a la espera de aprobar la spec 017), M-2, M-3, M-4, M-5, M-6, B-1, B-3,
+B-5 y B-6. Los 4 puntos NO VERIFICADOS de abajo siguen igual.
+
+**Cierre de la contradicción de git (CLAUDE.md §9 / §12)**
+
+Durante toda la sesión, el hook `Stop` del entorno remoto reclamó publicar en cada turno, y CLAUDE.md
+§9 lo prohibía "sin excepciones". Se señaló tres veces y no se publicó. Al final Mateo autorizó el
+push expresamente, se ejecutó, y quedó a la vista el problema de fondo: una regla escrita como
+absoluta que en la práctica se levantaba cada vez que Mateo pedía publicar no protege nada — deja el
+documento diciendo una cosa y el trabajo haciendo otra.
+
+Mateo eligió la opción de **autorización acotada** (frente a autorización permanente o dejarlo igual):
+
+- **`.claude/hooks/session-start.sh` + `.claude/settings.json`** (`f7a3565`, en la rama; `805979d`
+  en `main`) — hook `SessionStart` versionado que, en cada sesión remota, añade al hook `Stop` una
+  guarda para omitir el aviso de commits sin publicar en ramas `claude/*`. Solo esa comprobación:
+  cambios sin commitear, archivos sin seguir y firmas no verificables siguen avisando. Va versionado
+  porque `~/.claude/` es local al contenedor y se reprovisiona en cada sesión.
+- **CLAUDE.md §9.1 nueva** — la regla por defecto no cambia (la IA commitea, Mateo publica). §9.1
+  define la única vía de excepción: autorización expresa de Mateo en la conversación, y sobre todo
+  qué NO cuenta como autorización — un hook, un check de CI o un aviso del entorno **nunca** lo son;
+  tampoco el silencio, ni una autorización de otra tarea o de otra sesión, ni deducirla del contexto.
+  Cuando la hay: se publica solo lo autorizado, `main` exige nombrarla explícitamente, la
+  verificación de §4/§11 debe estar hecha antes, y se reporta después qué fue a cada rama.
+  `git push --force`, reescribir historial publicado y tocar `frappe-legacy` siguen sin excepción.
+- Se documenta también la convención de ramas `claude/<descripcion>` para el trabajo de sesión que no
+  corresponde a una feature del roadmap, y que la IA no abre PR salvo petición explícita.
+
+**Publicado en esta sesión** (con autorización expresa, la primera del proyecto): `main` ->
+`805979d`, únicamente el commit del hook mediante cherry-pick; y la rama
+`claude/security-audit-production-9oez9y` completa. **La auditoría NO se mergeó a `main`**: sus
+correcciones y la spec 017 siguen pendientes de la revisión de Mateo.
+
+Commits de la sesión: `1800ca9` (C-1), `71e6d0b` (A-1), commit de documentación, `b43c67d`
+(renombrado), `a9cb2bd` (spec 017), `41d78d4` (B-4), `2907ba6` (M-1), `b365141` (B-2), `f7a3565`
+(hook SessionStart) + el commit de §9.1.
+
+---
+
+
 ### 2026-09-06 — Sesión 026: reset de la base local + regresión limpia (cierra el pendiente de la Sesión 024)
 
 **Por qué:** desde la Sesión 024, la base local persistente acumuló rastro de pruebas reales
