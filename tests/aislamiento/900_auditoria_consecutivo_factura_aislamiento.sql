@@ -1,13 +1,19 @@
 -- =============================================================================
--- UndreoCol — Test de aislamiento del fix 013 (auditoría de seguridad
--- pre-producción, docs/PLAN-PRODUCCION.md)
+-- UndreoCol — Test de aislamiento del fix C-1 de la auditoría de seguridad
+-- pre-producción (docs/PLAN-PRODUCCION.md)
+--
+-- NUMERACIÓN: la serie 900+ queda reservada para las suites que NO pertenecen a
+-- una feature del roadmap sino a una corrección de seguridad transversal. Las
+-- suites 001-0NN siguen mapeando 1:1 con las features de `.specify/config.md`
+-- (013 es exportes-contables, 014 rrhh-incapacidades), así que este test no
+-- puede llevar un número de esa serie.
 --
 -- Cubre el hallazgo CRÍTICO: siguiente_numero_factura() es SECURITY DEFINER
 -- (no pasa por RLS) y recibía un cliente_id DESNUDO, permitiendo a cualquier
 -- sesión `authenticated` mutar el consecutivo de facturas de otro acueducto.
 --
 -- Requiere tests/fixtures/fundacion.sql (clientes A y B, perfiles a1/a2/b1/c1).
--- Ejecutar con: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/013_consecutivo_factura_aislamiento.sql
+-- Ejecutar con: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/900_auditoria_consecutivo_factura_aislamiento.sql
 --
 -- Mecánica idéntica a las suites 001-012: `set local role` + el GUC que lee
 -- auth.uid(), todo dentro de una transacción con rollback.

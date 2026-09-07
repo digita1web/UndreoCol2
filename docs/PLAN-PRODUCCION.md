@@ -86,7 +86,7 @@ la fila de `configuracion` de la víctima) — es decir, el acueducto no puede f
 *Corregido* — commit `1800ca9`, migración `20260914090000`. La autorización va **dentro** de la
 función (no se revoca a `authenticated`: `reconectar()` la necesita para la factura de reconexión):
 `auth.uid() IS NULL` → `service_role` (la cola del cierre), en otro caso `es_admin_de(p_cliente_id)`.
-Test nuevo `tests/aislamiento/013` (6 pasos) → `CONSECUTIVO-FACTURA-AISLAMIENTO OK`. Regresión
+Test nuevo `tests/aislamiento/900` (6 pasos) → `CONSECUTIVO-FACTURA-AISLAMIENTO OK`. Regresión
 canónica desde base reconstruida: **13/13 suites en verde**.
 
 #### ALTO

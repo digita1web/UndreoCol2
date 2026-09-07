@@ -78,7 +78,7 @@ en `docs/PLAN-PRODUCCION.md`.
 **Verificado (evidencia real)**
 ```
 Migraciones:  13/13 aplican limpias desde cero sobre PostgreSQL 16
-Aislamiento:  13/13 suites en verde (001-010, 012, 013 sobre fixtures 001-012;
+Aislamiento:  13/13 suites en verde (001-010, 012 y 900 sobre fixtures 001-012;
               011 tras dashboard.sql) — método canónico de la Sesión 026
 Exploit C-1:  ANTES consecutivo de B 1 -> 4 · DESPUÉS ERROR 42501, consecutivo intacto
 Backend:      npx vitest run -> 140 passed (11 nuevos) · tsc EXIT=0 · eslint EXIT=0
