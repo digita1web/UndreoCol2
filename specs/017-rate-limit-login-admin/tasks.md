@@ -180,11 +180,36 @@ npx wrangler deploy --dry-run -c wrangler.toml
 `cierre-facturacion-tenant.test.ts`); suite completa en verde; tsc, lint y dry-run EXIT=0.
 **Prueba de que los tests sirven:** se comprueba que **fallan** si se invierte el comportamiento de
 lanzar/no lanzar. Un test que pasa en ambos casos no prueba nada (método de la auditoría).
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+npx vitest run tests/unit/auth-intentos.test.ts -> 11 passed
+
+Prueba de que los tests SIRVEN — se invierte la política de fallo del plan §5.4
+y caen exactamente los tests que la vigilan:
+
+  A) estadoLoginAdmin FALLA ABIERTO (devuelve "no bloqueado" en vez de lanzar)
+     × error de la RPC -> LANZA (la ruta responde 503, no intenta el login)
+     × respuesta con estado desconocido -> LANZA, no se asume "no bloqueado"
+     × respuesta vacía -> LANZA
+     Tests  3 failed | 8 passed
+
+  B) registrarIntentoLoginAdmin FALLA CERRADO (relanza el error)
+     × error de la RPC -> NO lanza (un login correcto no puede fallar por esto)
+     × la RPC lanza -> NO lanza hacia fuera, pero lo registra
+     Tests  2 failed | 9 passed
+
+  restaurado -> Tests  11 passed
+
+Suite completa: 165 passed (14 archivos)
+npm run build (tsc)   EXIT=0
+npm run lint (eslint) EXIT=0
+npx wrangler deploy --dry-run -c wrangler.toml  EXIT=0
 ```
+**Decisión tomada durante la implementación (dentro de la política del plan §5.4, no una desviación):**
+una respuesta con `estado` desconocido o vacía se trata igual que un error de la RPC — **lanza**. Es
+la misma clase de fallo: no se pudo determinar si el email está bloqueado, así que no se deja pasar
+el login a ciegas.
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---
