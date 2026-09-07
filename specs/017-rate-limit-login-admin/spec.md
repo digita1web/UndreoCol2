@@ -1,8 +1,9 @@
 # SPEC — 017: rate-limit-login-admin
 
-**Estado:** EN REVISIÓN — pendiente de aprobación explícita de Mateo. **No se escribe una sola línea
-de código de esta feature hasta que esta spec esté aprobada** (`CLAUDE.md §3`). Las decisiones de §0.3
-y §0.4 hay que resolverlas antes de `/plan`.
+**Estado:** **Aprobado (2026-09-07)** — Mateo resolvió las decisiones de §0.3 (mecanismo: tabla en
+PostgreSQL) y §0.4 (bloqueo: retardo progresivo), y con la primera queda aprobada la excepción de
+§3.1 (tabla sin `cliente_id`). `plan.md` escrito; **pendiente de aprobación de `plan.md` antes de
+`/tasks`** (`CLAUDE.md §3`). No se escribe código hasta ese checkpoint.
 
 **Origen:** hallazgo **A-2 (severidad ALTA)** de la auditoría de seguridad pre-producción
 (`docs/PLAN-PRODUCCION.md`, CHANGELOG Sesión 027).
@@ -34,7 +35,7 @@ bloqueo**. El portal sí lo tiene especificado y construido (008, CA-9). No es u
 una ausencia. Esta spec la llena y, si se aprueba, la EF debe recibir un párrafo equivalente al de
 §2.5 del portal. Se señala aquí porque `CLAUDE.md §8` obliga a decirlo antes, no después.
 
-### 0.3 DECISIÓN PENDIENTE — mecanismo: tabla en PostgreSQL vs. binding de Cloudflare
+### 0.3 DECISIÓN RESUELTA — mecanismo: **tabla en PostgreSQL** (aprobado 2026-09-07)
 
 Hay dos formas de implementar esto y **la elección la toma Mateo**, no esta spec. Se documentan las
 dos con su costo real:
@@ -50,13 +51,16 @@ dos con su costo real:
 | Costo en Supabase Free | Una fila por email probado; **exige purga** (ver §3.5) | Cero |
 | Coste de bloqueo distribuido | Contador exacto (la base es el punto único) | Un atacante repartido entre regiones multiplica el umbral |
 
-**Recomendación de esta spec: Opción A**, por coherencia, verificabilidad y portabilidad — son
-exactamente los tres criterios con los que se decidió 008. La Opción B es un buen **complemento**
-posterior (defensa en el borde, antes de gastar una invocación de base), nunca el sustituto.
-El resto de la spec está escrita asumiendo A; si Mateo elige B, §3.1-§3.3 y los CA cambian y hay que
-volver a `/specify`.
+**APROBADO: Opción A** (Mateo, 2026-09-07), por coherencia, verificabilidad y portabilidad — los
+tres criterios con los que se decidió 008. La Opción B se descarta como sustituto: es efímera, por
+centro de datos y no verificable en local, lo que choca con `CLAUDE.md §4`. Queda anotada como
+posible **complemento** futuro (filtrar en el borde antes de gastar una invocación de base), con su
+propia spec si algún día se quiere.
 
-### 0.4 DECISIÓN PENDIENTE — qué se cuenta y qué se bloquea
+Al elegir la Opción A queda **también aprobada** la excepción de §3.1: la tabla nueva no lleva
+`cliente_id`.
+
+### 0.4 DECISIÓN RESUELTA — qué se cuenta y qué se bloquea: **retardo progresivo** (aprobado 2026-09-07)
 
 El portal cuenta por `(cliente_id, numero_documento)`. El login administrativo **no conoce el
 `cliente_id`**: la membresía se resuelve *después* de autenticar. Así que la clave solo puede ser el
@@ -68,13 +72,24 @@ email. Eso abre una decisión de negocio real:
   bloquear la facturación del mes.
 - **No bloquear** deja la contraseña expuesta a fuerza bruta sin costo, que es el hallazgo A-2.
 
-**Propuesta de esta spec (a aprobar):** bloqueo por email **con retardo progresivo, no con puerta
-cerrada**. A partir del umbral, cada intento fallido responde 429 con un `reintentar_en` que crece
-(p. ej. 1, 2, 4, 8… minutos hasta un techo), y **un acierto de contraseña reinicia el contador
-inmediatamente**. Así el atacante paga un costo que crece exponencialmente mientras el administrador
-legítimo, que sabe su contraseña, recupera el acceso en el primer intento correcto tras esperar el
-retardo vigente. Alternativa a considerar en `/plan`: exigir además que el bloqueo solo aplique a
-combinaciones email+contraseña fallidas, nunca a un email inexistente (ver §3.4 sobre enumeración).
+**APROBADO (Mateo, 2026-09-07): retardo progresivo, no puerta cerrada.** A partir del umbral, cada
+intento responde 429 con un `reintentar_en` que crece (1, 2, 4, 8… minutos hasta un techo), y **un
+acierto de contraseña, una vez pasada la espera, reinicia el contador**. Así el atacante paga un
+costo que crece exponencialmente mientras el administrador legítimo, que sabe su contraseña, recupera
+el acceso en el primer intento correcto tras esperar el retardo vigente.
+
+Se descarta el bloqueo fijo estilo portal (8 intentos → 15 min constantes): con un techo fijo, quien
+conozca el correo del administrador lo mantiene fuera del panel indefinidamente fallando adrede cada
+15 minutos, a coste cero. El retardo progresivo no elimina ese ataque, pero obliga al atacante a
+sostenerlo en el tiempo con espera creciente, y el acierto lo corta de raíz.
+
+Se descarta también la variante con aviso por correo al admin: añade un camino de notificación nuevo
+que hay que probar y amplía el alcance. Queda anotada en §4 como posible mejora posterior.
+
+**Nota de coherencia (importante para `/plan`):** durante la espera, **ni siquiera la contraseña
+correcta entra** (CA-1). Si un acierto pudiera saltarse el bloqueo, el bloqueo no protegería de nada:
+la fuerza bruta consiste precisamente en acertar. El reinicio por acierto (CA-2) aplica *antes* de
+alcanzar el umbral y *después* de que expire la espera, nunca durante.
 
 ### 0.5 Lo que esta spec NO puede arreglar y hay que saberlo
 
