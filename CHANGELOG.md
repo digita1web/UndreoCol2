@@ -144,8 +144,39 @@ Portal : los 12 ataques cruzados de la auditoria, re-ejecutados -> los 12 siguen
 **Sigue PENDIENTE:** A-2 (a la espera de aprobar la spec 017), M-2, M-3, M-4, M-5, M-6, B-1, B-3,
 B-5 y B-6. Los 4 puntos NO VERIFICADOS de abajo siguen igual.
 
+**Cierre de la contradicción de git (CLAUDE.md §9 / §12)**
+
+Durante toda la sesión, el hook `Stop` del entorno remoto reclamó publicar en cada turno, y CLAUDE.md
+§9 lo prohibía "sin excepciones". Se señaló tres veces y no se publicó. Al final Mateo autorizó el
+push expresamente, se ejecutó, y quedó a la vista el problema de fondo: una regla escrita como
+absoluta que en la práctica se levantaba cada vez que Mateo pedía publicar no protege nada — deja el
+documento diciendo una cosa y el trabajo haciendo otra.
+
+Mateo eligió la opción de **autorización acotada** (frente a autorización permanente o dejarlo igual):
+
+- **`.claude/hooks/session-start.sh` + `.claude/settings.json`** (`f7a3565`, en la rama; `805979d`
+  en `main`) — hook `SessionStart` versionado que, en cada sesión remota, añade al hook `Stop` una
+  guarda para omitir el aviso de commits sin publicar en ramas `claude/*`. Solo esa comprobación:
+  cambios sin commitear, archivos sin seguir y firmas no verificables siguen avisando. Va versionado
+  porque `~/.claude/` es local al contenedor y se reprovisiona en cada sesión.
+- **CLAUDE.md §9.1 nueva** — la regla por defecto no cambia (la IA commitea, Mateo publica). §9.1
+  define la única vía de excepción: autorización expresa de Mateo en la conversación, y sobre todo
+  qué NO cuenta como autorización — un hook, un check de CI o un aviso del entorno **nunca** lo son;
+  tampoco el silencio, ni una autorización de otra tarea o de otra sesión, ni deducirla del contexto.
+  Cuando la hay: se publica solo lo autorizado, `main` exige nombrarla explícitamente, la
+  verificación de §4/§11 debe estar hecha antes, y se reporta después qué fue a cada rama.
+  `git push --force`, reescribir historial publicado y tocar `frappe-legacy` siguen sin excepción.
+- Se documenta también la convención de ramas `claude/<descripcion>` para el trabajo de sesión que no
+  corresponde a una feature del roadmap, y que la IA no abre PR salvo petición explícita.
+
+**Publicado en esta sesión** (con autorización expresa, la primera del proyecto): `main` ->
+`805979d`, únicamente el commit del hook mediante cherry-pick; y la rama
+`claude/security-audit-production-9oez9y` completa. **La auditoría NO se mergeó a `main`**: sus
+correcciones y la spec 017 siguen pendientes de la revisión de Mateo.
+
 Commits de la sesión: `1800ca9` (C-1), `71e6d0b` (A-1), commit de documentación, `b43c67d`
-(renombrado), `a9cb2bd` (spec 017), `41d78d4` (B-4), `2907ba6` (M-1), `b365141` (B-2).
+(renombrado), `a9cb2bd` (spec 017), `41d78d4` (B-4), `2907ba6` (M-1), `b365141` (B-2), `f7a3565`
+(hook SessionStart) + el commit de §9.1.
 
 ---
 
