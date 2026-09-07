@@ -282,11 +282,37 @@ cd backend && npx vitest run && npm run build && npm run lint
 ```
 **Resultado esperado:** desaparecen las caducadas, **sobreviven** las bloqueadas y las recientes;
 contraste SQL pegado antes y después. CA-7.
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+16/16 migraciones desde cero (la 20260917090000 es nueva, ver la desviación de abajo)
+tests/unit/limpieza.test.ts nuevo, 5 casos -> 5 passed
+tests/aislamiento/901 paso 11 (purga, CA-7) -> ADMIN-INTENTOS-LOGIN-AISLAMIENTO OK
+  · 2 filas caducadas de admin_intentos_login y 1 de portal_intentos_login borradas
+  · el bloqueo VIGENTE sobrevive en las DOS tablas
+  · la fila con actividad reciente sobrevive
+  · purgar_intentos_login(0), (null) y (-99) no tocan una fila de hace 1 hora
+  · privilegios: public/anon/authenticated sin EXECUTE, service_role sí
+
+Prueba de que los tests SIRVEN: quitando del cron la llamada a la purga
+-> 3 failed | 2 passed; restaurado -> 5 passed.
+
+Regresión: 14 suites de aislamiento, 0 en rojo
+Suite completa: 176 passed (16 archivos)
+tsc EXIT=0 · eslint EXIT=0 · dry-run (principal y limpieza) EXIT=0
 ```
+**Error MÍO detectado por el propio test:** la primera versión del paso 11 daba por hecho que
+`purgar_intentos_login(0)` no tocaría una fila de hace 2 días. Falso: la guarda eleva un `p_dias`
+absurdo a **1 día**, así que una fila de 2 días entra legítimamente. La expectativa estaba mal, no la
+función; se corrigió el test para comprobar lo que la guarda sí garantiza (que no se lleva lo de las
+últimas horas).
+**DESVIACIÓN DEL PLAN, señalada:** el plan §1 solo listaba `cron/limpieza.ts` para esta tarea. Se
+añadió la migración `20260917090000_purga-intentos-login.sql` con la función `purgar_intentos_login()`
+porque el predicado de borrado en SQL es **verificable contra PostgreSQL real con filas de verdad**
+(paso 11 de la 901), mientras que el mismo predicado como cadena de PostgREST en TypeScript solo se
+podría comprobar contra un cliente falso — probando una copia en vez del que se ejecuta. `CLAUDE.md
+§4` pesa más que la lista de archivos. Efecto colateral bueno: con la purga en SQL, el paso 10 que el
+plan §8 quería (y que T-002 dejó fuera) vuelve a estar cubierto.
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---

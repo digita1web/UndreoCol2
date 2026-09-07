@@ -14,10 +14,11 @@
 --
 -- Ejecutar con: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/901_admin_intentos_login_aislamiento.sql
 --
--- COBERTURA: pasos 1-9 de la tabla del plan §8. El paso 10 (la purga, CA-7) se
--- verifica en T-005 contra el código real de cron/limpieza.ts: la purga se
--- implementa en TypeScript, y repetir aquí su predicado de borrado probaría una
--- copia del predicado, no el código que se despliega.
+-- COBERTURA: los 10 pasos del plan §8, más el paso 11 (la purga, CA-7). En
+-- T-002 la purga se dejó fuera porque iba a implementarse en TypeScript; en
+-- T-005 se movió a la función SQL purgar_intentos_login() precisamente para
+-- poder probarla aquí contra filas reales, así que el paso 11 prueba el
+-- predicado que de verdad se ejecuta, no una copia.
 -- =============================================================================
 
 \set ON_ERROR_STOP on
@@ -333,6 +334,84 @@ begin
         i, int_r, min_r, est_r, int_f, min_f, est_f;
     end if;
   end loop;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- PASO 11 (CA-7): la purga borra lo caducado y NUNCA un bloqueo vigente.
+--   Si la purga se llevara los bloqueos activos, el atacante tendría una forma
+--   gratuita de limpiar el suyo: esperar al cron.
+-- ---------------------------------------------------------------------------
+delete from admin_intentos_login;
+delete from portal_intentos_login;
+
+insert into admin_intentos_login (email, intentos, bloqueado_hasta, ultimo_intento) values
+  ('purga-caducada@test.local',   9, now() - interval '20 days', now() - interval '40 days'),
+  ('purga-sin-bloqueo@test.local',2, null,                       now() - interval '40 days'),
+  ('purga-vigente@test.local',    9, now() + interval '30 minutes', now() - interval '40 days'),
+  ('purga-reciente@test.local',   2, null,                       now() - interval '2 days'),
+  ('purga-muy-reciente@test.local',1, null,                       now() - interval '1 hour');
+
+insert into portal_intentos_login (cliente_id, numero_documento, intentos, bloqueado_hasta, ultimo_intento) values
+  ('a0000000-0000-0000-0000-000000000001','PURGA-VIEJA',  8, null,                          now() - interval '40 days'),
+  ('a0000000-0000-0000-0000-000000000001','PURGA-VIGENTE',8, now() + interval '30 minutes', now() - interval '40 days');
+
+do $$
+declare r jsonb; n integer;
+begin
+  r := purgar_intentos_login(30);
+
+  if (r->>'admin_intentos_login')::integer <> 2 then
+    raise exception 'PASO 11 FALLÓ: se esperaban 2 filas purgadas de admin_intentos_login, se borraron %',
+      r->>'admin_intentos_login';
+  end if;
+  if (r->>'portal_intentos_login')::integer <> 1 then
+    raise exception 'PASO 11 FALLÓ: se esperaba 1 fila purgada de portal_intentos_login, se borraron %',
+      r->>'portal_intentos_login';
+  end if;
+
+  -- El bloqueo VIGENTE tiene que seguir ahí, en las dos tablas
+  if not exists (select 1 from admin_intentos_login where email = 'purga-vigente@test.local') then
+    raise exception 'PASO 11 FALLÓ: la purga borró un bloqueo VIGENTE de admin_intentos_login — el atacante podría limpiar el suyo esperando al cron';
+  end if;
+  if not exists (select 1 from portal_intentos_login where numero_documento = 'PURGA-VIGENTE') then
+    raise exception 'PASO 11 FALLÓ: la purga borró un bloqueo VIGENTE de portal_intentos_login';
+  end if;
+  -- Y la fila reciente sin bloqueo tampoco se toca
+  if not exists (select 1 from admin_intentos_login where email = 'purga-reciente@test.local') then
+    raise exception 'PASO 11 FALLÓ: la purga borró una fila con actividad reciente';
+  end if;
+
+  -- Guarda defensiva: un p_dias absurdo (0, negativo, nulo) se eleva a 1 día,
+  -- así que NO puede arrasar con lo de las últimas horas. Con 1 día de corte,
+  -- 'purga-reciente' (2 días) sí entra: eso es correcto, no un fallo.
+  r := purgar_intentos_login(0);
+  select count(*) into n from admin_intentos_login where email = 'purga-muy-reciente@test.local';
+  if n <> 1 then
+    raise exception 'PASO 11 FALLÓ: purgar_intentos_login(0) borró una fila de hace 1 hora; la guarda de mínimo 1 día no está funcionando';
+  end if;
+  if exists (select 1 from admin_intentos_login where email = 'purga-vigente@test.local') = false then
+    raise exception 'PASO 11 FALLÓ: purgar_intentos_login(0) borró un bloqueo vigente';
+  end if;
+  perform purgar_intentos_login(null);
+  perform purgar_intentos_login(-99);
+  select count(*) into n from admin_intentos_login where email = 'purga-muy-reciente@test.local';
+  if n <> 1 then
+    raise exception 'PASO 11 FALLÓ: p_dias nulo o negativo borró una fila de hace 1 hora';
+  end if;
+end $$;
+
+-- Privilegios de la función de purga: solo service_role
+do $$
+declare o oid := 'purgar_intentos_login(integer)'::regprocedure::oid;
+begin
+  if has_function_privilege('public', o, 'EXECUTE')
+     or has_function_privilege('anon', o, 'EXECUTE')
+     or has_function_privilege('authenticated', o, 'EXECUTE') then
+    raise exception 'PASO 11 FALLÓ: purgar_intentos_login es ejecutable por alguien que no es service_role (podría limpiar su propio bloqueo)';
+  end if;
+  if not has_function_privilege('service_role', o, 'EXECUTE') then
+    raise exception 'PASO 11 FALLÓ: service_role no puede ejecutar purgar_intentos_login (el cron no funcionaría)';
+  end if;
 end $$;
 
 rollback;
