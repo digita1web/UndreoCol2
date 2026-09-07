@@ -10,6 +10,20 @@
 // service_role (BYPASSRLS): es un worker de sistema (CLAUDE.md §5.4), nunca una
 // ruta que atiende usuarios. El número se genera con la RPC
 // siguiente_numero_factura() (SELECT FOR UPDATE sobre configuracion, punto 9b/9c).
+//
+// DEFENSA EN PROFUNDIDAD (hallazgo M-1 de la auditoría pre-producción,
+// docs/PLAN-PRODUCCION.md): precisamente porque aquí service_role SALTA RLS, el
+// `cliente_id` del mensaje es la única frontera multi-tenant que queda. Antes,
+// las consultas buscaban `periodos`, `usuarios_servicio`, `contadores`,
+// `tarifas`, `facturas`, `factura_detalles` y `notificaciones` SOLO por su `id`:
+// un mensaje con un id de otro acueducto habría cruzado datos entre clientes sin
+// que nada lo impidiera. Hoy no es explotable —el único productor es el propio
+// Worker y siempre encola `ctx.clienteId` tras lecturas ya filtradas por RLS—
+// pero es el mismo patrón del "identificador desnudo" que causó el hallazgo
+// CRÍTICO C-1. Por eso TODAS las consultas de este archivo van acotadas además
+// por `.eq('cliente_id', clienteId)`, y las tres ramas validan que el mensaje
+// traiga `clienteId`. Regla para quien añada un productor nuevo: el mensaje
+// nunca se cree con un id que no se haya leído antes bajo RLS.
 // Si el suscriptor no tiene tarifa (tarifa_vigente NULL) se aborta el mensaje
 // (punto 9d) — el productor ya lo marcó como anomalía en la simulación.
 
@@ -49,8 +63,8 @@ export async function emitirFacturaDeMensaje(env: Env, mensaje: MensajeFactura):
   const supabase = crearClienteServicio(env);
 
   const { clienteId, periodoId, usuarioServicioId } = mensaje;
-  if (!periodoId || !usuarioServicioId) {
-    throw new Error('Mensaje emitir_factura inválido: faltan periodoId/usuarioServicioId');
+  if (!clienteId || !periodoId || !usuarioServicioId) {
+    throw new Error('Mensaje emitir_factura inválido: faltan clienteId/periodoId/usuarioServicioId');
   }
 
   // --- contexto del periodo y del suscriptor ------------------------------
@@ -58,6 +72,7 @@ export async function emitirFacturaDeMensaje(env: Env, mensaje: MensajeFactura):
     .from('periodos')
     .select('nombre, fecha_fin')
     .eq('id', periodoId)
+    .eq('cliente_id', clienteId)   // defensa M-1: service_role salta RLS
     .single();
   if (!periodo) throw new Error(`Periodo ${periodoId} no existe`);
   const periodoRow = periodo as DatosPeriodo;
@@ -67,6 +82,7 @@ export async function emitirFacturaDeMensaje(env: Env, mensaje: MensajeFactura):
     .from('usuarios_servicio')
     .select('id, nombre, codigo_suscriptor, direccion, categoria, estado')
     .eq('id', usuarioServicioId)
+    .eq('cliente_id', clienteId)   // defensa M-1: service_role salta RLS
     .single();
   if (!suscriptor) throw new Error(`Suscriptor ${usuarioServicioId} no existe`);
   const suscriptorRow = suscriptor as DatosSuscriptor;
@@ -86,6 +102,7 @@ export async function emitirFacturaDeMensaje(env: Env, mensaje: MensajeFactura):
     .from('contadores')
     .select('id')
     .eq('usuario_servicio_id', usuarioServicioId)
+    .eq('cliente_id', clienteId)   // defensa M-1: service_role salta RLS
     .eq('estado', 'activo')
     .maybeSingle();
   const { data: lectura } = contador
@@ -128,6 +145,7 @@ export async function emitirFacturaDeMensaje(env: Env, mensaje: MensajeFactura):
       .from('tarifas')
       .select('cargo_fijo, limite_basico_m3, precio_basico_m3, precio_no_basico_m3')
       .eq('id', tarifaId)
+      .eq('cliente_id', clienteId)   // defensa M-1: service_role salta RLS
       .single();
     if (!filaTarifa) continue;
     tarifasVigentes.set(svc.id, {
@@ -241,13 +259,16 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
   const supabase = crearClienteServicio(env);
 
   const { clienteId, facturaId, notificacionId } = mensaje;
-  if (!facturaId) throw new Error('Mensaje enviar_correo_factura inválido: falta facturaId');
+  if (!clienteId || !facturaId) {
+    throw new Error('Mensaje enviar_correo_factura inválido: falta clienteId/facturaId');
+  }
 
   // lee factura + detalles + cliente (acueducto) + email del suscriptor
   const { data: factura } = await supabase
     .from('facturas')
     .select('*, usuario_servicio_id')
     .eq('id', facturaId)
+    .eq('cliente_id', clienteId)   // defensa M-1: service_role salta RLS
     .single();
   if (!factura) throw new Error(`Factura ${facturaId} no existe`);
 
@@ -255,6 +276,7 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
     .from('factura_detalles')
     .select('*')
     .eq('factura_id', facturaId)
+    .eq('cliente_id', clienteId)   // defensa M-1: service_role salta RLS
     .order('orden', { ascending: true });
   const detalles = detallesData ?? [];
 
@@ -268,6 +290,7 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
     .from('usuarios_servicio')
     .select('email')
     .eq('id', factura.usuario_servicio_id)
+    .eq('cliente_id', clienteId)   // defensa M-1: service_role salta RLS
     .single();
 
   const destinatario = (suscriptor?.email ?? '').trim();
@@ -290,7 +313,8 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
   const bucket = env.FACTURAS_R2;
   if (bucket) {
     await bucket.put(key, pdfBytes, { httpMetadata: { contentType: 'application/pdf' } });
-    await supabase.from('facturas').update({ pdf_url: `/facturas/${facturaId}/pdf` }).eq('id', facturaId);
+    await supabase.from('facturas').update({ pdf_url: `/facturas/${facturaId}/pdf` })
+      .eq('id', facturaId).eq('cliente_id', clienteId);   // defensa M-1
   }
 
   const numero = String(factura.numero ?? facturaId);
@@ -315,12 +339,14 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
       .from('notificaciones')
       .select('intentos')
       .eq('id', notificacionId)
+      .eq('cliente_id', clienteId)   // defensa M-1: service_role salta RLS
       .single();
     const actualizacion = computarActualizacionNotificacion(resultado, Number(notif?.intentos ?? 0));
     const { error: errNotif } = await supabase
       .from('notificaciones')
       .update(actualizacion)
-      .eq('id', notificacionId);
+      .eq('id', notificacionId)
+      .eq('cliente_id', clienteId);   // defensa M-1
     if (errNotif) {
       console.error('cierre-facturacion: no se pudo actualizar la notificación', errNotif.message);
     }
@@ -343,9 +369,9 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
 
 export async function enviarNotificacionGenerica(env: Env, mensaje: MensajeFactura): Promise<void> {
   const supabase = crearClienteServicio(env);
-  const { notificacionId, destinatario, asunto, cuerpoHtml } = mensaje;
-  if (!notificacionId || !destinatario || !asunto || !cuerpoHtml) {
-    throw new Error('Mensaje enviar_notificacion inválido: falta notificacionId/destinatario/asunto/cuerpoHtml');
+  const { clienteId, notificacionId, destinatario, asunto, cuerpoHtml } = mensaje;
+  if (!clienteId || !notificacionId || !destinatario || !asunto || !cuerpoHtml) {
+    throw new Error('Mensaje enviar_notificacion inválido: falta clienteId/notificacionId/destinatario/asunto/cuerpoHtml');
   }
 
   const resultado = await enviarCorreo(env, {
@@ -360,12 +386,14 @@ export async function enviarNotificacionGenerica(env: Env, mensaje: MensajeFactu
     .from('notificaciones')
     .select('intentos')
     .eq('id', notificacionId)
+    .eq('cliente_id', clienteId)   // defensa M-1: service_role salta RLS
     .single();
   const actualizacion = computarActualizacionNotificacion(resultado, Number(notif?.intentos ?? 0));
   const { error: errNotif } = await supabase
     .from('notificaciones')
     .update(actualizacion)
-    .eq('id', notificacionId);
+    .eq('id', notificacionId)
+    .eq('cliente_id', clienteId);   // defensa M-1
   if (errNotif) {
     console.error('cierre-facturacion: no se pudo actualizar la notificación', errNotif.message);
   }
