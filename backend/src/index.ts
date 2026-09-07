@@ -86,13 +86,27 @@ import {
 const app = new Hono<{ Bindings: Env }>();
 
 // CORS: solo el(los) origen(es) de ALLOWED_ORIGIN; credentials para la cookie.
+//
+// allowMethods incluye PATCH porque la API registra 4 rutas PATCH — editar
+// servicio, editar suscriptor, CERRAR PERIODO y marcar lectura revisada. Sin
+// PATCH aquí el preflight del navegador rechaza esas cuatro operaciones desde
+// otro origen; cerrar el periodo es la operación central del mes (hallazgo B-4
+// de la auditoría pre-producción, docs/PLAN-PRODUCCION.md).
+//
+// El origen no permitido cae al PRIMER origen de la lista, no a la cadena
+// completa de ALLOWED_ORIGIN: si la variable trae varios separados por coma,
+// devolverla entera produce una cabecera Access-Control-Allow-Origin inválida.
+// En ambos casos el navegador bloquea al origen no permitido (que es lo que se
+// busca), pero devolver un valor válido evita diagnosticar un fallo de CORS
+// legítimo como si fuera una cabecera malformada.
 app.use('*', cors({
   origin: (origin: string, c: Context<{ Bindings: Env }>) => {
-    const permitidos = c.env.ALLOWED_ORIGIN.split(',').map((o) => o.trim());
-    return origin && permitidos.includes(origin) ? origin : c.env.ALLOWED_ORIGIN;
+    const permitidos = c.env.ALLOWED_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
+    if (origin && permitidos.includes(origin)) return origin;
+    return permitidos[0] ?? '';
   },
   allowHeaders: ['Content-Type'],
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   credentials: true,
 }));
 
