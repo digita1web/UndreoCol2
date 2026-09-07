@@ -6,6 +6,12 @@ compatibility_date = "2026-05-03"
 
 # SUPABASE_URL y SUPABASE_ANON_KEY se inyectan por entorno: en local viven en
 # .dev.vars (gitignored); en producción son [vars]/secrets de Mateo.
+#
+# ALLOWED_ORIGIN aquí es el valor de DESARROLLO. Antes este archivo solo tenía
+# este bloque, así que un `wrangler deploy` desde el repositorio desplegaba
+# `http://localhost:3000` a producción y rompía el CORS del panel real
+# (hallazgo M-3 de la auditoría, docs/PLAN-PRODUCCION.md). El origen real vive
+# ahora en [env.production], abajo.
 [vars]
 ALLOWED_ORIGIN = "http://localhost:3000"
 
@@ -35,4 +41,48 @@ bucket_name = "undreocol-facturas"
 name = "EMAIL"
 
 [observability]
+enabled = true
+
+# -----------------------------------------------------------------------------
+# Entorno de PRODUCCIÓN (fix del hallazgo M-3)
+# -----------------------------------------------------------------------------
+# Se despliega con:   npm run deploy:produccion
+#                     (wrangler deploy -c wrangler.toml --env production)
+#
+# DOS TRAMPAS DE WRANGLER QUE ESTE BLOQUE EVITA, y por las que no basta con
+# poner solo la variable:
+#
+#   1. En un entorno con nombre, Wrangler llama al Worker
+#      `<nombre>-<entorno>` — aquí habría creado uno NUEVO llamado
+#      `undreocol-api-production` en vez de actualizar el existente. Por eso se
+#      repite `name` explícitamente.
+#   2. Los BINDINGS no se heredan del bloque raíz: si no se repiten aquí, el
+#      Worker de producción se quedaría sin cola, sin R2 y sin correo. Por eso
+#      están todos duplicados abajo. Verificado con `--dry-run --env production`:
+#      los cuatro bindings aparecen.
+#
+# Al añadir un binding nuevo arriba hay que añadirlo TAMBIÉN aquí.
+[env.production]
+name = "undreocol-api"
+
+[env.production.vars]
+ALLOWED_ORIGIN = "https://undreocol-frontend.undreocol.workers.dev"
+
+[[env.production.queues.producers]]
+binding = "FACTURACION_COLA"
+queue = "undreocol-facturacion"
+
+[[env.production.queues.consumers]]
+queue = "undreocol-facturacion"
+max_batch_size = 10
+max_retries = 3
+
+[[env.production.r2_buckets]]
+binding = "FACTURAS_R2"
+bucket_name = "undreocol-facturas"
+
+[[env.production.send_email]]
+name = "EMAIL"
+
+[env.production.observability]
 enabled = true
