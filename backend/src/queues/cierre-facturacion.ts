@@ -23,7 +23,7 @@ import {
 import type { Tarifa } from '../core/tarifas';
 import { generarPdfFactura, type DatosAcueductoPdf } from '../lib/factura-pdf';
 import { enviarCorreo, enviarFacturaPorCorreo } from '../lib/email';
-import { computarActualizacionNotificacion } from '../core/notificaciones';
+import { computarActualizacionNotificacion, escaparHtml } from '../core/notificaciones';
 
 const REMITENTE_NOTIFICACIONES = 'no-responder@undreocol.app'; // dominio verificado (producción)
 
@@ -294,11 +294,15 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
   }
 
   const numero = String(factura.numero ?? facturaId);
+  // El cuerpo es HTML y `acueducto.nombre` es texto libre que escribe una
+  // persona en POST /onboarding: se escapa antes de interpolarlo (fix de la
+  // auditoría pre-producción; hallazgo WARNING de Semgrep en esta línea).
+  // El asunto NO se escapa: es texto plano de la cabecera del correo, no HTML.
   const resultado = await enviarFacturaPorCorreo(env, {
     destinatario,
     remitente: REMITENTE_NOTIFICACIONES,
     asunto: `Factura ${numero} — ${acueducto.nombre}`,
-    cuerpoHtml: `<p>Adjuntamos la factura <strong>${numero}</strong> de ${acueducto.nombre}.</p>`,
+    cuerpoHtml: `<p>Adjuntamos la factura <strong>${escaparHtml(numero)}</strong> de ${escaparHtml(acueducto.nombre)}.</p>`,
     pdfBytes,
     pdfNombre: `${numero}.pdf`,
   });

@@ -6,6 +6,7 @@ import {
   contenidoCorteEjecutado,
   contenidoReconexionCompletada,
   contenidoRecordatorioVencimiento,
+  escaparHtml,
 } from '../../src/core/notificaciones';
 
 describe('computarActualizacionNotificacion (trazabilidad del fallo, spec §3.4) — movido desde email.test.ts (010)', () => {
@@ -111,5 +112,101 @@ describe('contenido* — asunto y cuerpo por tipo de notificación (spec §3.2)'
     });
     expect(c.cuerpoHtml).not.toContain('null');
     expect(c.cuerpoHtml).toContain('reconectado');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Escape de HTML en los cuerpos de correo (fix de la auditoría de seguridad
+// pre-producción, docs/PLAN-PRODUCCION.md — hallazgo WARNING de Semgrep
+// confirmado como real). `nombreAcueducto` (POST /onboarding) y `motivo` del
+// corte son texto libre que escribe una persona; sin escapar permiten inyectar
+// marcado en un correo que el suscriptor recibe como legítimo.
+// ---------------------------------------------------------------------------
+describe('escaparHtml — inyección de HTML en el correo del suscriptor', () => {
+  it('escapa los cinco caracteres de contexto HTML sin re-escapar entidades', () => {
+    expect(escaparHtml('<b>&"\'')).toBe('&lt;b&gt;&amp;&quot;&#39;');
+  });
+
+  it('escapa & primero: no produce entidades dobles', () => {
+    expect(escaparHtml('a & <b>')).toBe('a &amp; &lt;b&gt;');
+  });
+
+  it('acepta números (los valores de dinero y días se interpolan igual)', () => {
+    expect(escaparHtml(38600)).toBe('38600');
+  });
+
+  it('deja intacto el texto normal con tildes y ñ', () => {
+    expect(escaparHtml('Acueducto La Peña')).toBe('Acueducto La Peña');
+  });
+
+  const PHISHING = '<a href="https://pagos-falsos.example">Pague aquí ahora</a>';
+
+  it('corte ejecutado: el motivo escrito por el admin no inyecta marcado', () => {
+    const { cuerpoHtml } = contenidoCorteEjecutado({
+      nombreAcueducto: 'Acueducto A',
+      motivo: PHISHING,
+      fecha: '2026-09-07',
+    });
+    expect(cuerpoHtml).not.toContain('<a href');
+    expect(cuerpoHtml).toContain('&lt;a href=&quot;https://pagos-falsos.example&quot;&gt;');
+  });
+
+  it('corte ejecutado: el nombre del acueducto tampoco inyecta marcado', () => {
+    const { cuerpoHtml } = contenidoCorteEjecutado({
+      nombreAcueducto: PHISHING,
+      motivo: 'Mora superior a 60 días',
+      fecha: '2026-09-07',
+    });
+    expect(cuerpoHtml).not.toContain('<a href');
+  });
+
+  it('recordatorio de vencimiento: el nombre del acueducto se escapa', () => {
+    const { cuerpoHtml } = contenidoRecordatorioVencimiento({
+      nombreAcueducto: PHISHING,
+      numeroFactura: 'FAC-2026-00001',
+      fechaVencimiento: '2026-10-02',
+      total: 38600,
+    });
+    expect(cuerpoHtml).not.toContain('<a href');
+    expect(cuerpoHtml).toContain('<strong>FAC-2026-00001</strong>'); // el marcado propio sí queda
+  });
+
+  it('aviso de mora: el nombre del acueducto se escapa', () => {
+    const { cuerpoHtml } = contenidoAvisoMora({
+      nombreAcueducto: PHISHING,
+      numeroFactura: 'FAC-2026-00001',
+      diasMora: 12,
+      total: 38600,
+    });
+    expect(cuerpoHtml).not.toContain('<a href');
+  });
+
+  it('confirmación de pago: los números de factura aplicados se escapan uno a uno', () => {
+    const { cuerpoHtml } = contenidoConfirmacionPago({
+      nombreAcueducto: 'Acueducto A',
+      valor: 50000,
+      fechaPago: '2026-09-07',
+      facturasAplicadas: ['FAC-2026-00001', PHISHING],
+    });
+    expect(cuerpoHtml).not.toContain('<a href');
+    expect(cuerpoHtml).toContain('FAC-2026-00001');
+  });
+
+  it('reconexión completada: nombre y número de factura de reconexión se escapan', () => {
+    const { cuerpoHtml } = contenidoReconexionCompletada({
+      nombreAcueducto: PHISHING,
+      fecha: '2026-09-07',
+      facturaReconexionNumero: PHISHING,
+    });
+    expect(cuerpoHtml).not.toContain('<a href');
+  });
+
+  it('el asunto NO se escapa (es texto plano de cabecera, no HTML)', () => {
+    const { asunto } = contenidoCorteEjecutado({
+      nombreAcueducto: 'Acueducto & Cía',
+      motivo: 'Mora',
+      fecha: '2026-09-07',
+    });
+    expect(asunto).toContain('Acueducto & Cía');
   });
 });
