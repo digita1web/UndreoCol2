@@ -7,6 +7,10 @@ política de fallo de §5.4)
 Una tarea = un commit. Sin evidencia no hay commit (`CLAUDE.md §4` y §9). La IA no hace `push`
 salvo autorización expresa de Mateo (§9.1).
 
+**Los hashes van en la Bitácora de cierre (T-007), no en cada tarea.** Escribir el hash del propio
+commit dentro de ese commit es circular: cada `--amend` para corregirlo lo cambia otra vez. Es la
+misma convención que usó 011 (`dce1c49`, "referencia de commit T-011 en tasks.md").
+
 ---
 
 ## Notas de entorno y prerrequisitos
@@ -62,12 +66,44 @@ psql "$DATABASE_URL" -c "select proname, prosecdef, proconfig, has_function_priv
 **Resultado esperado:** migración EXIT=0; `relrowsecurity` y `relforcerowsecurity` ambos `t`; una
 sola política y de `select`; las dos funciones con `prosecdef = t`, `search_path=public` y
 `publico = f`; sin columna `cliente_id` y sin FK.
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+Las 15 migraciones desde cero: 15/15 EXIT=0
+
+        proname        | sec_def |       config       | publico | anon | authenticated | service_role
+-----------------------+---------+--------------------+---------+------+---------------+--------------
+ admin_login_estado    | t       | search_path=public | f       | t    | f             | t
+ admin_login_registrar | t       | search_path=public | f       | t    | f             | t
+
+ rls | force        columnas: email, intentos, bloqueado_hasta, ultimo_intento
+-----+-------       claves foráneas: 0
+ t   | t            políticas: 1 (todas SELECT: true)
+
+Retardo progresivo, valores reales medidos contra la función:
+  fallo | intentos | espera        fallo | intentos | espera
+    1   |    1     |   —             7   |    7     |  4 min
+    2   |    2     |   —             8   |    8     |  8 min
+    3   |    3     |   —             9   |    9     | 16 min
+    4   |    4     |   —            10   |   10     | 32 min
+    5   |    5     | 1 min          11   |   11     | 60 min (techo)
+    6   |    6     | 2 min
+  estado con bloqueo vigente: {"estado":"bloqueado","reintentar_en":"2026-09-07T10:40:28+00:00"}
+  tras acierto (espera vencida): intentos=0, bloqueado=NULL, estado={"estado":"ok"}
+  normalización: 'ADMIN-A@Test.Local ' y 'admin-a@test.local' -> 1 sola fila
+
+Regresión de aislamiento sobre la base con las 15 migraciones: 13/13 en verde,
+cero en rojo (001-010, 012 y 900 sobre fixtures 001-012; 011 tras dashboard.sql).
 ```
-**Commit:** `<hash>`
+**Fallo real detectado y corregido durante la verificación:** la primera versión solo hacía
+`revoke ... from public` y `has_function_privilege('authenticated', …)` devolvía **`true`**. Los
+*default privileges* de Supabase (`grant all on functions to postgres, anon, authenticated,
+service_role`) otorgan toda función nueva a `authenticated`, y revocar de `public` **no** lo quita.
+Se añadió `revoke ... from public, authenticated`. **Observación para una tarea posterior, fuera del
+alcance de 017:** las 6 funciones del portal (008/008b) arrastran el mismo EXECUTE heredado por
+`authenticated` por la misma razón; no es explotable (revalidan credenciales completas y no aceptan
+un id desnudo), pero conviene alinearlas.
+**Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---
 
@@ -94,7 +130,7 @@ cero en rojo.
 ```
 <salida real>
 ```
-**Commit:** `<hash>`
+**Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---
 
@@ -124,7 +160,7 @@ lanzar/no lanzar. Un test que pasa en ambos casos no prueba nada (método de la 
 ```
 <salida real>
 ```
-**Commit:** `<hash>`
+**Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---
 
@@ -158,7 +194,7 @@ lado — códigos y cuerpos **idénticos**.
 ```
 <salida real>
 ```
-**Commit:** `<hash>`
+**Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---
 
@@ -184,7 +220,7 @@ contraste SQL pegado antes y después. CA-7.
 ```
 <salida real>
 ```
-**Commit:** `<hash>`
+**Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---
 
@@ -207,7 +243,7 @@ grep -n "hidratado" components/login-form.tsx   # sigue presente e intacto
 ```
 <salida real>
 ```
-**Commit:** `<hash>`
+**Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---
 
@@ -227,7 +263,7 @@ abierto de la auditoría queda cerrado.
 ```
 <salida real>
 ```
-**Commit:** `<hash>`
+**Commit:** se registra en la Bitácora de cierre (T-007)
 
 ---
 
