@@ -116,7 +116,9 @@ Adivinar esa contraseña no tiene hoy ningún costo para el atacante.
 su política, su test de aislamiento y cambios en la ruta de login — **eso es una feature, y
 CLAUDE.md §3 prohíbe escribir código sin un `spec.md` aprobado**. Es una contradicción real entre la
 instrucción "corrige lo crítico y alto" y §3, y se resuelve del lado de §3: no se improvisa un
-control de seguridad sin spec. Diseño propuesto, listo para `/specify`:
+control de seguridad sin spec. **`specs/017-rate-limit-login-admin/spec.md` ya está escrita y en
+revisión** (`a9cb2bd`) — pendiente de la aprobación de Mateo y de resolver sus dos decisiones abiertas
+(§0.3 mecanismo, §0.4 qué se bloquea). Diseño propuesto:
 
 - Tabla `admin_intentos_login (email citext primary key, intentos smallint, bloqueado_hasta timestamptz, ultimo_intento timestamptz)`, sin `cliente_id` (el login precede a la resolución del tenant), RLS `FORCE` y sin políticas — la escribe solo una función `SECURITY DEFINER`, igual que `portal_intentos_login`.
 - Función `admin_registrar_intento_login(p_email)` / `admin_login_bloqueado(p_email)`, otorgadas a `anon` (el Worker llama antes de tener sesión).
@@ -126,14 +128,15 @@ control de seguridad sin spec. Diseño propuesto, listo para `/specify`:
 
 #### MEDIO — documentados, sin corregir (decisión de Mateo)
 
-**M-1 · La cola de facturación confía en los IDs del mensaje corriendo con `service_role`.**
+**M-1 · La cola de facturación confía en los IDs del mensaje corriendo con `service_role`. — CORREGIDO (`2907ba6`).**
 `emitirFacturaDeMensaje()` y `enviarCorreoDeFactura()` buscan `periodos`, `usuarios_servicio` y
 `facturas` **solo por `id`**, sin `.eq('cliente_id', clienteId)`, en un contexto que salta RLS. Hoy
 no es explotable: el único productor es el propio Worker y siempre encola `ctx.clienteId` tras
 lecturas ya filtradas por RLS. Pero es el mismo patrón de C-1 esperando a una ruta futura: cualquier
-bug en un productor nuevo se convierte en fuga entre acueductos con `service_role`. Arreglo trivial
-(añadir `.eq('cliente_id', clienteId)` a las cuatro consultas) — vale la pena hacerlo como defensa
-en profundidad antes de que crezca el número de productores.
+bug en un productor nuevo se convierte en fuga entre acueductos con `service_role`. *Corregido:* 12 consultas acotadas con `.eq('cliente_id', clienteId)` y las tres ramas del consumidor
+validan que el mensaje traiga `clienteId`. Test nuevo `cierre-facturacion-tenant.test.ts` (5 casos)
+con un cliente de Supabase falso cuyo `.eq()` filtra de verdad; quitando solo los filtros el test
+pasa a 3 failed | 2 passed, así que mide lo que dice medir.
 
 **M-2 · El `lector` ve todo el negocio del acueducto, no solo lecturas.**
 Verificado: el lector de A ve exactamente lo mismo que el admin de A en `facturas` (9), `pagos` (8),
@@ -181,11 +184,13 @@ acotado de una base de 500 MB y el flanco de A-2 en el portal: el contador es po
 comercial de UndreoCol (nombres de plan y `valor_suscriptor`) a cualquiera. Es la única tabla de las
 22 legible sin sesión; probablemente intencional, conviene confirmarlo.
 
-**B-2 · `portal_validar_credenciales` lanza una excepción no controlada con `numero_documento` NULL**
+**B-2 · `portal_validar_credenciales` lanzaba una excepción no controlada con `numero_documento` NULL — CORREGIDO (`b365141`).**
 (violación de `NOT NULL` en `portal_intentos_login`) en vez de devolver `{"estado":"invalido"}`. No
 es alcanzable por el Worker (`POST /portal/:slug/login` exige ambos campos antes de llamar), pero la
 función está otorgada a `anon` y la propia migración 008 documenta que "la clave anon es pública".
-Devolvería un error de PostgreSQL con nombres de tabla y columna.
+Devolvía un error de PostgreSQL con nombres de tabla y columna. *Corregido:* NULL, cadena vacía y
+espacios en cualquiera de los tres parámetros devuelven `{"estado":"invalido"}`, igual que cualquier
+otra credencial incorrecta, sin crear filas basura en `portal_intentos_login`.
 
 **B-3 · `tarifa_vigente()` filtra un UUID de tarifa entre acueductos.** Es `SECURITY DEFINER`,
 otorgada a `authenticated`, y su propio comentario dice que "no filtra por cliente_id a propósito".
@@ -194,10 +199,14 @@ sigue protegida por RLS (0 filas legibles), y hace falta adivinar un `servicio_i
 que no es explotable en la práctica. Vale como recordatorio de que el patrón "el llamante es
 responsable" es frágil.
 
-**B-4 · `PATCH` falta en `allowMethods` del CORS** (`backend/src/index.ts:95`) y hay 4 rutas `PATCH`
-registradas: editar servicio, editar suscriptor, **cerrar periodo** y marcar lectura revisada. No es
-un agujero de seguridad, es un fallo funcional: el *preflight* del navegador rechaza esas cuatro
-operaciones desde otro origen. Cerrar el periodo es una operación central del mes.
+**B-4 · `PATCH` faltaba en `allowMethods` del CORS — CORREGIDO (`41d78d4`).**
+El middleware de `backend/src/index.ts:95` no lo listaba, y la API registra 4 rutas `PATCH`:
+editar servicio, editar suscriptor, **cerrar periodo** y marcar lectura revisada. No es
+un agujero de seguridad, es un fallo funcional: el *preflight* del navegador rechazaba esas cuatro
+operaciones desde otro origen. Cerrar el periodo es una operación central del mes. *Corregido:*
+`PATCH` añadido, y de paso el origen no permitido ya no recibe la cadena entera de `ALLOWED_ORIGIN`
+(que con varios orígenes produce una cabecera inválida) sino el primero de la lista. Test nuevo
+`cors.test.ts` (9 casos) que ejercita `app.fetch` con preflights reales.
 
 **B-5 · `postcss` con 2 vulnerabilidades (1 alta) por dependencia transitiva de `next`.**
 `npm audit` del frontend lo confirma; el arreglo exige `next@16` (cambio mayor). Las cuatro

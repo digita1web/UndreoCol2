@@ -101,7 +101,51 @@ npm audit:    backend 0 vulnerabilidades · frontend 2 (postcss, build-time, ver
    privilegios a mano desde el panel de Supabase; si es así, hay que escribir la migración
    equivalente y compararla contra la base real (`\dp` sobre las 22 tablas).
 
-Commits de la sesión: `1800ca9` (C-1), `71e6d0b` (A-1) + el commit de documentación.
+**Continuación de la misma sesión — A-2 especificado y correcciones ejecutables aplicadas**
+
+Tras entregar el informe, Mateo pidió especificar A-2 y aplicar las correcciones que se pudieran
+ejecutar. Resultado:
+
+- **`specs/017-rate-limit-login-admin/spec.md`** (`a9cb2bd`) — fase `/specify` de A-2, **EN REVISIÓN**.
+  No se escribe código: `CLAUDE.md §3` exige checkpoint humano entre `/specify` y `/plan`, y la spec
+  deja dos decisiones abiertas que son de Mateo — §0.3 el mecanismo (tabla en PostgreSQL, recomendada,
+  vs. binding de Rate Limiting de Cloudflare) y §0.4 qué se bloquea (bloquear por email es la única
+  clave posible, pero abre un **DoS dirigido contra el administrador del acueducto**; se propone
+  retardo progresivo en vez de puerta cerrada). Pide además aprobación explícita para la excepción de
+  "toda tabla lleva `cliente_id`" (§5.4), porque es infraestructura de autenticación anterior a la
+  resolución del tenant, como `_keepalive`. **Numeración 017 y no 013**: el roadmap de
+  `.specify/config.md` ya reserva 013 (exportes-contables), 014 (rrhh-incapacidades), 015 (qr-ocr) y
+  016 (limpieza). El número no marca el orden — la spec dice que es prerrequisito de producción.
+- **`b43c67d`** — corrección de un error propio: la suite del fix C-1 se había llamado
+  `013_consecutivo_factura_aislamiento.sql` y ese número pertenece a `exportes-contables`. Pasa a
+  `900_auditoria_consecutivo_factura_aislamiento.sql`; la serie 900+ queda para suites de seguridad
+  transversales, fuera de la numeración de features.
+- **B-4 corregido (`41d78d4`)** — `PATCH` faltaba en `allowMethods` del CORS y la API tiene 4 rutas
+  PATCH, entre ellas **cerrar periodo**. De paso, el origen no permitido ya no recibe la cadena entera
+  de `ALLOWED_ORIGIN` (con varios orígenes es una cabecera inválida) sino el primero de la lista.
+- **M-1 corregido (`2907ba6`)** — 12 consultas del consumidor de la cola acotadas por `cliente_id`.
+  Ahí `service_role` salta RLS, así que el `cliente_id` del mensaje era la única frontera y no se
+  usaba. Las 3 ramas validan además que el mensaje lo traiga.
+- **B-2 corregido (`b365141`)** — `portal_validar_credenciales` con documento NULL reventaba con una
+  violación de NOT NULL cuyo DETAIL filtraba nombres de tabla y columnas; ahora devuelve
+  `{"estado":"invalido"}` como cualquier otra credencial incorrecta, sin crear filas basura.
+
+**Método de verificación de los fixes de código:** además de tests/tsc/lint/dry-run, de cada test
+nuevo se comprobó que **falla sin el fix** — un test que pasa en ambos casos no prueba nada.
+```
+CORS  : revirtiendo solo allowMethods -> 2 failed | 7 passed · con el fix -> 9 passed
+Cola  : quitando solo los .eq('cliente_id') -> 3 failed | 2 passed · con el fix -> 5 passed
+Backend: npx vitest run -> 154 passed (13 archivos) · tsc EXIT=0 · eslint EXIT=0 · dry-run EXIT=0
+Base   : 14 migraciones limpias desde cero · 13/13 suites de aislamiento en verde
+B-2    : ANTES error NOT NULL con DETAIL · DESPUES los 5 casos degenerados -> "invalido"
+Portal : los 12 ataques cruzados de la auditoria, re-ejecutados -> los 12 siguen bloqueados
+```
+
+**Sigue PENDIENTE:** A-2 (a la espera de aprobar la spec 017), M-2, M-3, M-4, M-5, M-6, B-1, B-3,
+B-5 y B-6. Los 4 puntos NO VERIFICADOS de abajo siguen igual.
+
+Commits de la sesión: `1800ca9` (C-1), `71e6d0b` (A-1), commit de documentación, `b43c67d`
+(renombrado), `a9cb2bd` (spec 017), `41d78d4` (B-4), `2907ba6` (M-1), `b365141` (B-2).
 
 ---
 
