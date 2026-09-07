@@ -388,4 +388,47 @@ abierto de la auditoría queda cerrado.
 
 ## Bitácora de cierre
 
-<se rellena al completar cada tarea: hash, evidencia resumida y desviaciones>
+| Tarea | Commit | Estado |
+|---|---|---|
+| T-001 migración + 2 funciones | `141921b` | COMPLETADO |
+| T-002 suite de aislamiento 901 | `9008fb2` | COMPLETADO |
+| T-003 `lib/auth-intentos.ts` | `166111f` | COMPLETADO |
+| T-004 integración en `POST /auth/login` | `641f4e5` | COMPLETADO (cableado; el HTTP real queda para Mateo) |
+| T-005 purga — cierra M-6 | `7760d66` | COMPLETADO |
+| T-006 mensaje del 429 | `e8ba9b6` | COMPLETADO (build/lint del frontend imposibles aquí, ver abajo) |
+| T-007 cierre | este commit | COMPLETADO |
+
+### Checklist de `CLAUDE.md §11`
+
+- [x] Hace lo que dice el spec, ni más ni menos
+- [ ] `npm run build` (frontend) — **NO VERIFICABLE en este contenedor**: `package.json` toma `xlsx`
+      de `https://cdn.sheetjs.com/...` (Sesión 020) y el proxy responde 403, así que `npm ci` aborta.
+      Sí verificado: `tsc --strict` sobre el archivo nuevo (EXIT=0) y ejecución real de
+      `minutosParaReintentar` (9 casos en verde)
+- [x] `npx wrangler deploy --dry-run` (backend, principal y limpieza) — EXIT=0
+- [x] `npm run lint` backend — EXIT=0. Frontend: mismo bloqueo que el build
+- [x] Tests de cada tarea en verde, con la salida pegada — 176 passed (16 archivos)
+- [x] Migraciones versionadas + tests de aislamiento en verde — 16/16 migraciones, 14 suites, 0 rojas
+- [x] `core/` no se toca (desviación §5.1 aprobada); la lógica se testea contra PostgreSQL real
+- [x] Evidencia pegada en la conversación y en este documento
+- [x] `CHANGELOG.md` actualizado (Sesión 028)
+- [x] Un commit por tarea verificada; sin `push` salvo autorización expresa (§9.1)
+
+### Desviaciones respecto del plan, todas señaladas en su commit
+
+1. **§5.1** — el cálculo del retardo no va a `core/`: debe ser atómico con el incremento del
+   contador. Aprobada por Mateo al aprobar el plan.
+2. **T-002** — el paso 10 del plan §8 (la purga) no entró en la suite; se recuperó en T-005 como
+   paso 11, ya con la purga en SQL.
+3. **T-005** — migración no listada en el plan §1, para que el predicado de borrado fuera
+   verificable con filas reales.
+4. **T-004** — se **amplió** la verificación que el plan daba por imposible: el `app.fetch` real sí
+   se puede ejercitar sustituyendo las dependencias.
+
+### Pendiente de Mateo
+
+1. Secuencia HTTP `401 401 401 401 401 429` contra Supabase real (T-004).
+2. CA-4 a nivel HTTP: misma serie con email inexistente, cuerpos idénticos (T-004).
+3. `npm run build` y `npm run lint` del frontend en un entorno con acceso a `cdn.sheetjs.com` (T-006).
+4. Comprobación visual del mensaje con los minutos (T-006).
+

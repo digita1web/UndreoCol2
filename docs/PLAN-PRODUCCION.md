@@ -100,7 +100,7 @@ preparada para detectarlo. Confirma como real el hallazgo WARNING de Semgrep que
 Sesión 019. *Corregido* — commit `71e6d0b`: `escaparHtml()` en `core/`, 8 interpolaciones, 11 tests
 nuevos con payload de phishing real. 140 tests en verde.
 
-**A-2 · No hay ninguna protección de fuerza bruta en el login administrativo. — PENDIENTE.**
+**A-2 · No había ninguna protección de fuerza bruta en el login administrativo. — RESUELTO (feature 017).**
 `POST /auth/login` no tiene rate limiting de ningún tipo: ni en el Worker, ni en `wrangler.toml`, ni
 una regla documentada de WAF en `docs/INFRAESTRUCTURA.md`. La única protección de fuerza bruta del
 sistema es `portal_intentos_login`, y **solo cubre el portal del suscriptor** — justo la cuenta de
@@ -112,13 +112,25 @@ Supabase no puede distinguir al atacante del uso legítimo (o bloquea a todos, o
 tarifas, anulación de facturas, registro completo de suscriptores con cédula y dirección, pagos.
 Adivinar esa contraseña no tiene hoy ningún costo para el atacante.
 
-*Por qué no se corrigió aquí:* el arreglo exige una tabla nueva (`admin_intentos_login`) con su RLS,
-su política, su test de aislamiento y cambios en la ruta de login — **eso es una feature, y
-CLAUDE.md §3 prohíbe escribir código sin un `spec.md` aprobado**. Es una contradicción real entre la
-instrucción "corrige lo crítico y alto" y §3, y se resuelve del lado de §3: no se improvisa un
-control de seguridad sin spec. **`specs/017-rate-limit-login-admin/spec.md` ya está escrita y en
-revisión** (`a9cb2bd`) — pendiente de la aprobación de Mateo y de resolver sus dos decisiones abiertas
-(§0.3 mecanismo, §0.4 qué se bloquea). Diseño propuesto:
+*Cómo se resolvió:* no se improvisó. El arreglo exigía una tabla nueva, su RLS, su test de
+aislamiento y cambios en la ruta de login — una feature, y `CLAUDE.md §3` prohíbe escribir código sin
+`spec.md` aprobado. Se pasó por las cuatro fases con checkpoint de Mateo en cada una:
+`specs/017-rate-limit-login-admin/` (spec → plan → tasks → implement, T-001 a T-007).
+
+**Lo implementado:** tabla `admin_intentos_login` (sin `cliente_id`, excepción aprobada; **sin FK a
+`perfiles`**, requisito de CA-4) con RLS `FORCE` y una sola política de lectura para la plataforma;
+dos funciones `SECURITY DEFINER` otorgadas solo a `anon`; retardo **progresivo** —5 fallos, luego 1,
+2, 4, 8, 16, 32 y techo de 60 minutos— con olvido a las 24 h; `POST /auth/login` consulta antes de
+llegar a GoTrue (429 con `reintentar_en`, o 503 si no puede saberlo: **falla cerrado**) y registra
+después; purga semanal en `cron/limpieza.ts`, que **cierra de paso el hallazgo M-6**.
+
+**Lo que queda por verificar** (no se puede en el contenedor de la auditoría, requiere Mateo): la
+secuencia HTTP real `401 401 401 401 401 429` contra Supabase de verdad, CA-4 a nivel HTTP, y
+`npm run build`/`lint` del frontend — este último bloqueado porque el proxy deniega
+`cdn.sheetjs.com`, de donde `package.json` toma `xlsx` desde la Sesión 020. Pasos exactos en
+`specs/017-rate-limit-login-admin/tasks.md`, T-004 y T-006.
+
+*Diseño que se propuso en su día y que la 017 siguió:*
 
 - Tabla `admin_intentos_login (email citext primary key, intentos smallint, bloqueado_hasta timestamptz, ultimo_intento timestamptz)`, sin `cliente_id` (el login precede a la resolución del tenant), RLS `FORCE` y sin políticas — la escribe solo una función `SECURITY DEFINER`, igual que `portal_intentos_login`.
 - Función `admin_registrar_intento_login(p_email)` / `admin_login_bloqueado(p_email)`, otorgadas a `anon` (el Worker llama antes de tener sesión).
@@ -172,11 +184,15 @@ abuso gratuita — y en Supabase Free la base tiene 500 MB (`ARQUITECTURA.md §6
 peldaño 2 de la cadena de C-1. Con un solo cliente piloto, lo sensato es cerrar el registro o
 ponerle invitación hasta que el autoservicio sea un objetivo real.
 
-**M-6 · `portal_intentos_login` no se purga nunca.**
-`cron/limpieza.ts` declara explícitamente que la purga llega con la feature 015. Cada documento
-distinto probado contra el login del portal crea una fila permanente. Es a la vez crecimiento no
-acotado de una base de 500 MB y el flanco de A-2 en el portal: el contador es por
-`(cliente_id, numero_documento)`, así que variando el documento no hay techo de intentos.
+**M-6 · `portal_intentos_login` no se purgaba nunca. — RESUELTO (feature 017, T-005).**
+`cron/limpieza.ts` declaraba que la purga llegaba con la feature 015. Cada documento distinto probado
+contra el login del portal creaba una fila permanente: crecimiento no acotado en una base de 500 MB.
+*Resuelto:* la función `purgar_intentos_login()` (migración `20260917090000`) borra de
+`portal_intentos_login` **y** de `admin_intentos_login` las filas sin actividad en 30 días y **sin
+bloqueo vigente** —nunca un bloqueo activo, que le daría al atacante una forma gratuita de limpiar el
+suyo esperando al cron—, y el Worker semanal la invoca. Verificado contra PostgreSQL real en
+`tests/aislamiento/901` paso 11. De paso se corrigió el comentario que atribuía la purga a "la
+feature 015": el roadmap la numera 016.
 
 #### BAJO — documentados, sin corregir
 

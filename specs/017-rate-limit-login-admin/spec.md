@@ -1,9 +1,9 @@
 # SPEC — 017: rate-limit-login-admin
 
-**Estado:** **Aprobado (2026-09-07)** — Mateo resolvió las decisiones de §0.3 (mecanismo: tabla en
-PostgreSQL) y §0.4 (bloqueo: retardo progresivo), y con la primera queda aprobada la excepción de
-§3.1 (tabla sin `cliente_id`). `plan.md` escrito; **pendiente de aprobación de `plan.md` antes de
-`/tasks`** (`CLAUDE.md §3`). No se escribe código hasta ese checkpoint.
+**Estado:** **IMPLEMENTADA (2026-09-07)** — spec, plan y tasks aprobados por Mateo; T-001 a T-007
+completados. Decisiones §0.3 (tabla en PostgreSQL) y §0.4 (retardo progresivo) resueltas, y con la
+primera quedó aprobada la excepción de §3.1 (tabla sin `cliente_id`). Quedan las verificaciones que
+exigen Supabase real y un navegador: ver `tasks.md` T-004 y T-006.
 
 **Origen:** hallazgo **A-2 (severidad ALTA)** de la auditoría de seguridad pre-producción
 (`docs/PLAN-PRODUCCION.md`, CHANGELOG Sesión 027).
@@ -268,7 +268,11 @@ sembrar filas caducadas y vigentes, ejecutar el `scheduled` en local, y `SELECT`
 - [ ] Migración versionada en `supabase/migrations/` (nunca cambios a mano en el panel de Supabase)
 - [ ] Test de aislamiento nuevo (serie 900+) en verde + regresión 001-012 y 900 ejecutada y reportada
 - [ ] `npm run build` (tsc) y `npm run lint` limpios en backend; `npx wrangler deploy --dry-run` OK
-- [ ] Tests unitarios del cálculo del retardo progresivo en `core/` (es lógica pura, §5.3)
+- [x] ~~Tests unitarios del cálculo del retardo progresivo en `core/`~~ — **retirado** por la
+      desviación §5.1 del `plan.md`, aprobada por Mateo: el retardo debe calcularse en la misma
+      transacción que incrementa el contador, así que vive en SQL. Duplicarlo en `core/` sería la
+      misma fórmula en dos sitios (lo que §5.6 prohíbe). Se testea contra PostgreSQL real en
+      `tests/aislamiento/901`, que es evidencia más fuerte que un test de una copia en TypeScript.
 - [ ] `docs/ESPECIFICACION-FUNCIONAL.md` actualizada con el párrafo que hoy falta (§0.2)
 - [ ] `.specify/config.md` con la fila 017 y la nota de "prerrequisito de producción" (§0.1)
 - [ ] `docs/PLAN-PRODUCCION.md`: A-2 marcado como resuelto, con el commit

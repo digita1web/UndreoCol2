@@ -4,6 +4,96 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-07 — Sesión 028: feature 017 rate-limit-login-admin (cierra A-2 y M-6)
+
+**Qué es:** la implementación completa del hallazgo **A-2 (ALTO)** de la auditoría de la Sesión 027
+—`POST /auth/login` sin ninguna protección de fuerza bruta—, pasando por las cuatro fases del SDD con
+checkpoint de Mateo en cada una. Cierra de paso el hallazgo **M-6**.
+
+**Decisiones que resolvió Mateo antes de escribir código**
+- **§0.3 mecanismo → tabla en PostgreSQL.** Se descartó el binding de Rate Limiting de Cloudflare
+  como sustituto: efímero, por centro de datos y no verificable en local, lo que choca con §4. Queda
+  anotado como posible complemento futuro.
+- **§0.4 bloqueo → retardo progresivo, no puerta fija.** Con un techo constante, quien conozca el
+  correo del administrador lo mantiene fuera del panel indefinidamente fallando cada X minutos, a
+  coste cero — y con un solo admin eso es bloquearle la facturación del mes.
+- Con la primera quedó aprobada la **excepción a §5.4**: la tabla no lleva `cliente_id`, porque el
+  login precede a la resolución del tenant (mismo criterio que `_keepalive`).
+
+**Implementado (T-001 a T-007)**
+- **T-001** — `admin_intentos_login` + 2 funciones `SECURITY DEFINER` otorgadas solo a `anon`.
+  Retardo: umbral 5, luego 1, 2, 4, 8, 16, 32 y techo de 60 min; olvido a las 24 h. **Sin FK a
+  `perfiles`**, que es requisito de CA-4 y no un descuido: se cuentan los emails inexistentes igual
+  que los registrados, o el 429 se convierte en un oráculo para enumerar cuentas.
+- **T-002** — Suite `901`, 11 pasos contra PostgreSQL real.
+- **T-003** — `lib/auth-intentos.ts`, siempre con `crearClienteAnon`, nunca `service_role`.
+- **T-004** — Integración en la ruta: 429 con el contrato del portal, 503 si no se puede saber
+  (**falla cerrado**), 401 genérico sin cambios.
+- **T-005** — `purgar_intentos_login()` y purga semanal. **Cierra M-6.** Nunca borra un bloqueo
+  vigente: sería una forma gratuita de que el atacante limpie el suyo esperando al cron.
+- **T-006** — El 429 muestra los minutos que faltan en vez del mensaje genérico.
+- **T-007** — Este cierre: `spec §8`, `ESPECIFICACION-FUNCIONAL` (§3 tenía un vacío, ahora describe
+  el bloqueo), roadmap con la fila 017 marcada como prerrequisito de producción, y `PLAN-PRODUCCION`
+  con A-2 y M-6 resueltos.
+
+**Método: cada test se probó rompiendo lo que vigila.** Un test que pasa en ambos casos no prueba
+nada. En las seis tareas:
+```
+T-002  grant a authenticated -> PASO 2 · política de escritura -> PASO 1
+       retardo fijo -> PASO 4 · fuga de CA-4 de 1 minuto -> PASO 10
+T-003  invertir la política de fallo -> 3 failed | 2 failed según el sentido
+T-004  quitar la consulta del límite de la ruta -> 4 failed | 2 passed
+T-005  quitar la llamada a la purga del cron   -> 3 failed | 2 passed
+```
+
+**Dos errores propios que la verificación destapó (se reportan, CLAUDE.md §8)**
+1. **T-001:** la primera versión solo hacía `revoke ... from public` y `authenticated` **seguía
+   teniendo EXECUTE**: los *default privileges* de Supabase otorgan toda función nueva a ese rol y
+   revocar de `public` no lo quita. **Consecuencia más allá de la 017:** las 6 funciones del portal
+   (008/008b) arrastran el mismo EXECUTE heredado. No es explotable —revalidan credenciales completas
+   y no aceptan un id desnudo— pero conviene alinearlas en una tarea aparte.
+2. **T-005:** el paso 11 daba por hecho que `purgar_intentos_login(0)` no tocaría una fila de hace 2
+   días. Falso: la guarda eleva un `p_dias` absurdo a 1 día, así que esa fila entra legítimamente. La
+   expectativa estaba mal, no la función.
+
+**Dos desviaciones señaladas y aprobadas**
+- **plan §5.1:** el cálculo del retardo **no** va a `core/`. Debe ser atómico con el incremento del
+  contador, así que vive en SQL; duplicarlo sería la misma fórmula en dos sitios (§5.6). Se testea
+  contra PostgreSQL real, que es evidencia más fuerte que un test de una copia en TypeScript.
+- **T-005:** se añadió una migración que el plan §1 no listaba, por la misma razón: el predicado de
+  borrado en SQL es verificable con filas de verdad.
+
+**Verificado (evidencia real)**
+```
+16/16 migraciones aplican limpias desde cero
+Aislamiento: 14 suites, 0 en rojo (001-010, 012, 900, 901; 011 tras dashboard.sql)
+Backend: npx vitest run -> 176 passed (16 archivos) · tsc EXIT=0 · eslint EXIT=0
+Backend: wrangler deploy --dry-run (principal y limpieza) -> EXIT=0
+Frontend: tsc --strict sobre lib/api.ts -> EXIT=0; minutosParaReintentar ejecutada
+          de verdad (código compilado del archivo real): 9 casos en verde
+Regla §7: 11 de 11 formularios conservan useHidratado
+```
+
+**NO VERIFICADO — requiere validación manual de Mateo**
+1. **Secuencia HTTP real del bloqueo** (T-004): con `wrangler dev` + Supabase real,
+   `for i in $(seq 1 6); do curl -s -o /dev/null -w "%{http_code} " -X POST .../auth/login -H 'Content-Type: application/json' -d '{"email":"admin-a@test.local","password":"mala"}'; done`
+   debe imprimir `401 401 401 401 401 429`, con `reintentar_en` en la sexta.
+2. **CA-4 a nivel HTTP** (T-004): la misma serie con un email inexistente; códigos y cuerpos
+   idénticos, pegados lado a lado.
+3. **`npm run build` y `npm run lint` del frontend** (T-006). **No es un descuido:** no se pueden
+   ejecutar en este contenedor. `package.json` toma `xlsx` de `https://cdn.sheetjs.com/...` (Sesión
+   020, para evitar las vulnerabilidades sin parche del paquete de npm) y el proxy responde **403
+   Forbidden** a ese host, así que `npm ci` aborta sin dejar `node_modules`.
+4. **Comprobación visual** (T-006): tras 5 fallos, el sexto intento debe mostrar "Demasiados
+   intentos. Vuelva a intentar en N minuto(s)".
+
+**Estado de la auditoría tras esta sesión:** de los 15 hallazgos, resueltos C-1, A-1, **A-2**, M-1,
+**M-6**, B-2 y B-4. Siguen abiertos M-2, M-3, M-4, M-5, B-1, B-3, B-5 y B-6, documentados con su
+riesgo en `docs/PLAN-PRODUCCION.md`.
+
+---
+
+
 ### 2026-09-07 — Sesión 027: auditoría de seguridad pre-producción (docs/PLAN-PRODUCCION.md)
 
 **Qué es:** la auditoría única por LLM planificada en la Sesión 019, ejecutada antes de migrar el

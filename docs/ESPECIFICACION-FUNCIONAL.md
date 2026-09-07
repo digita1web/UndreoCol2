@@ -550,6 +550,23 @@ antes de cualquier uso oficial.
 - Solo puede ver y ejecutar órdenes de corte/reconexión **asignadas a él**
 - Usa la PWA desde el celular, con soporte offline
 
+**Protección del acceso administrativo.** Tras 5 intentos fallidos consecutivos contra
+el mismo correo, el sistema empieza a rechazar el acceso con una espera que crece:
+1, 2, 4, 8, 16, 32 y hasta 60 minutos. Durante la espera no entra nadie, ni siquiera
+con la contraseña correcta —si un acierto pudiera saltarse la espera, la protección no
+serviría de nada, porque adivinar la contraseña es justamente el objetivo del ataque—.
+Pasada la espera, el primer acceso correcto borra el contador. Sin actividad durante 24
+horas, el contador también se borra solo, para que fallos sueltos a lo largo de meses no
+acaben bloqueando a nadie.
+
+El sistema cuenta los intentos contra correos que **no existen** exactamente igual que
+contra los registrados. Es deliberado: si solo se bloquearan los correos reales, el
+propio bloqueo revelaría qué cuentas existen.
+
+**Es el equivalente para el administrador de lo que §2.5 describe para el portal del
+suscriptor**, y su ausencia fue el hallazgo A-2 de la auditoría de seguridad
+pre-producción.
+
 ### Suscriptor (portal)
 - No tiene cuenta en el sistema de identidad (D-2)
 - Accede con `numero_documento` + `codigo_suscriptor`
