@@ -30,6 +30,29 @@ export interface RespuestaLogin {
 
 interface ErrorApi {
   error: string;
+  /** Presente en las respuestas 429 (límite de intentos de login). */
+  reintentar_en?: string;
+}
+
+/**
+ * Error de la API que conserva el código de estado y, si viene, el
+ * `reintentar_en` de un 429. Extiende `Error`, así que los `catch` que solo
+ * miran `e.message` siguen funcionando igual.
+ *
+ * Existe porque el límite de intentos del login (017) responde 429 con el
+ * momento en que se puede reintentar, y ese dato se perdía al convertir la
+ * respuesta en un `Error` pelado. El portal usa el mismo contrato.
+ */
+export class ErrorPeticion extends Error {
+  readonly status: number;
+  readonly reintentarEn?: string;
+
+  constructor(mensaje: string, status: number, reintentarEn?: string) {
+    super(mensaje);
+    this.name = 'ErrorPeticion';
+    this.status = status;
+    this.reintentarEn = reintentarEn;
+  }
 }
 
 async function peticion<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
@@ -43,10 +66,26 @@ async function peticion<T>(ruta: string, opciones: RequestInit = {}): Promise<T>
   });
   const cuerpo: unknown = await respuesta.json().catch(() => null);
   if (!respuesta.ok) {
-    const mensaje = (cuerpo as ErrorApi | null)?.error ?? `Error ${respuesta.status}`;
-    throw new Error(mensaje);
+    const datos = cuerpo as ErrorApi | null;
+    const mensaje = datos?.error ?? `Error ${respuesta.status}`;
+    throw new ErrorPeticion(mensaje, respuesta.status, datos?.reintentar_en);
   }
   return cuerpo as T;
+}
+
+/**
+ * Minutos que faltan hasta `reintentarEn`, redondeados hacia arriba y con un
+ * mínimo de 1: decirle a alguien que espere "0 minutos" no ayuda. Devuelve
+ * `null` si la fecha no es utilizable, para que quien llame use su mensaje
+ * genérico en vez de mostrar un `NaN`.
+ */
+export function minutosParaReintentar(reintentarEn: string | undefined): number | null {
+  if (!reintentarEn) return null;
+  const objetivo = new Date(reintentarEn).getTime();
+  if (Number.isNaN(objetivo)) return null;
+  const restanteMs = objetivo - Date.now();
+  if (restanteMs <= 0) return null;
+  return Math.max(1, Math.ceil(restanteMs / 60000));
 }
 
 export function login(email: string, password: string): Promise<RespuestaLogin> {

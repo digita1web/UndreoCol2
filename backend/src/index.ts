@@ -9,6 +9,7 @@ import {
   verificarSesionAdministrativa,
 } from './lib/auth';
 import { resolverClienteActivo } from './lib/tenant';
+import { estadoLoginAdmin, registrarIntentoLoginAdmin } from './lib/auth-intentos';
 import {
   actualizarServicio,
   crearServicio,
@@ -86,13 +87,27 @@ import {
 const app = new Hono<{ Bindings: Env }>();
 
 // CORS: solo el(los) origen(es) de ALLOWED_ORIGIN; credentials para la cookie.
+//
+// allowMethods incluye PATCH porque la API registra 4 rutas PATCH — editar
+// servicio, editar suscriptor, CERRAR PERIODO y marcar lectura revisada. Sin
+// PATCH aquí el preflight del navegador rechaza esas cuatro operaciones desde
+// otro origen; cerrar el periodo es la operación central del mes (hallazgo B-4
+// de la auditoría pre-producción, docs/PLAN-PRODUCCION.md).
+//
+// El origen no permitido cae al PRIMER origen de la lista, no a la cadena
+// completa de ALLOWED_ORIGIN: si la variable trae varios separados por coma,
+// devolverla entera produce una cabecera Access-Control-Allow-Origin inválida.
+// En ambos casos el navegador bloquea al origen no permitido (que es lo que se
+// busca), pero devolver un valor válido evita diagnosticar un fallo de CORS
+// legítimo como si fuera una cabecera malformada.
 app.use('*', cors({
   origin: (origin: string, c: Context<{ Bindings: Env }>) => {
-    const permitidos = c.env.ALLOWED_ORIGIN.split(',').map((o) => o.trim());
-    return origin && permitidos.includes(origin) ? origin : c.env.ALLOWED_ORIGIN;
+    const permitidos = c.env.ALLOWED_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
+    if (origin && permitidos.includes(origin)) return origin;
+    return permitidos[0] ?? '';
   },
   allowHeaders: ['Content-Type'],
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   credentials: true,
 }));
 
@@ -128,14 +143,51 @@ app.post('/auth/registro', async (c) => {
 
 // POST /auth/login — signInWithPassword + cookie HttpOnly; devuelve perfil y
 // membresías activas para que el frontend decida onboarding vs dashboard.
+//
+// Límite de intentos (017, hallazgo A-2 de la auditoría): se consulta el estado
+// ANTES de golpear GoTrue y se registra el resultado después. El caso caro —un
+// email bloqueado— es el más barato: corta en la primera RPC y no llega a
+// Supabase Auth. El 401 genérico no cambia: sigue sin revelar si el email
+// existe, y el contador cuenta igual los emails inexistentes (CA-4).
 app.post('/auth/login', async (c) => {
   const body = await c.req
     .json<{ email?: string; password?: string }>()
     .catch(() => ({ email: undefined, password: undefined }));
   const email = body.email?.trim().toLowerCase() ?? '';
   const password = body.password ?? '';
+
+  // Falla CERRADO (plan §5.4): si no se puede saber si está bloqueado, no se
+  // intenta el login. GoTrue y esta tabla son el mismo PostgreSQL, así que el
+  // login iba a fallar igual; fallar abierto haría desaparecer la protección
+  // justo cuando un atacante puede provocarlo.
   try {
-    const { sesion, accessToken } = await iniciarSesion(c, email, password);
+    const estado = await estadoLoginAdmin(c.env, email);
+    if (estado.bloqueado) {
+      // Mismo contrato que el 429 del portal (POST /portal/:slug/login).
+      return c.json(
+        { error: 'Demasiados intentos. Intente más tarde.', reintentar_en: estado.reintentarEn },
+        429,
+      );
+    }
+  } catch (e) {
+    console.error('auth/login: no se pudo consultar el límite de intentos', e instanceof Error ? e.message : e);
+    return c.json({ error: 'Servicio no disponible. Intente más tarde.' }, 503);
+  }
+
+  let sesion: Awaited<ReturnType<typeof iniciarSesion>>['sesion'];
+  let accessToken: string;
+  try {
+    ({ sesion, accessToken } = await iniciarSesion(c, email, password));
+  } catch (e) {
+    // El registro del intento va aquí y no en un catch que envuelva también las
+    // consultas de abajo: un fallo al leer el perfil NO es un fallo de
+    // credenciales y no debe contar contra el límite.
+    await registrarIntentoLoginAdmin(c.env, email, false);
+    return c.json({ error: e instanceof Error ? e.message : 'Error de autenticación' }, 401);
+  }
+  await registrarIntentoLoginAdmin(c.env, email, true);
+
+  {
     const supabase = crearClienteSuscriptor(c.env, accessToken);
     const { data: perfil, error: errPerfil } = await supabase
       .from('perfiles')
@@ -159,8 +211,6 @@ app.post('/auth/login', async (c) => {
       return c.json({ error: 'Sesión iniciada pero no se pudo leer el perfil' }, 500);
     }
     return c.json({ sesion, perfil, membresias });
-  } catch (e) {
-    return c.json({ error: e instanceof Error ? e.message : 'Error de autenticación' }, 401);
   }
 });
 

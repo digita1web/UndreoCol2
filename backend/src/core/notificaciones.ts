@@ -27,6 +27,28 @@ export interface ContenidoNotificacion {
   cuerpoHtml: string;
 }
 
+// Escape de HTML para todo valor que se interpole en el cuerpo de un correo.
+// Los contenidos de abajo son strings HTML (`<p>…</p>`) que salen hacia el
+// buzón del suscriptor firmados con el dominio del acueducto. Varios de los
+// valores interpolados son texto libre que escribe una persona en el panel
+// —`nombreAcueducto` (POST /onboarding) y `motivo` del corte— así que sin
+// escapar permiten inyectar marcado arbitrario en un correo que el suscriptor
+// recibe como legítimo (enlace de pago falso, formulario de phishing). Hallazgo
+// WARNING de Semgrep en queues/cierre-facturacion.ts:298, confirmado real en la
+// auditoría pre-producción (docs/PLAN-PRODUCCION.md).
+//
+// Puro y sin dependencias (CLAUDE.md §5.3). Se escapan los cinco caracteres de
+// la recomendación de OWASP para contexto de contenido HTML; `&` va primero
+// para no re-escapar las entidades que generan los demás.
+export function escaparHtml(valor: string | number): string {
+  return String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function contenidoRecordatorioVencimiento(datos: {
   nombreAcueducto: string;
   numeroFactura: string;
@@ -35,7 +57,7 @@ export function contenidoRecordatorioVencimiento(datos: {
 }): ContenidoNotificacion {
   return {
     asunto: `Recordatorio: la factura ${datos.numeroFactura} vence el ${datos.fechaVencimiento}`,
-    cuerpoHtml: `<p>Tu factura <strong>${datos.numeroFactura}</strong> de ${datos.nombreAcueducto}, por valor de $${datos.total}, vence el <strong>${datos.fechaVencimiento}</strong>.</p>`,
+    cuerpoHtml: `<p>Tu factura <strong>${escaparHtml(datos.numeroFactura)}</strong> de ${escaparHtml(datos.nombreAcueducto)}, por valor de $${escaparHtml(datos.total)}, vence el <strong>${escaparHtml(datos.fechaVencimiento)}</strong>.</p>`,
   };
 }
 
@@ -47,7 +69,7 @@ export function contenidoAvisoMora(datos: {
 }): ContenidoNotificacion {
   return {
     asunto: `Factura ${datos.numeroFactura} vencida — ${datos.nombreAcueducto}`,
-    cuerpoHtml: `<p>Tu factura <strong>${datos.numeroFactura}</strong> de ${datos.nombreAcueducto} está vencida hace ${datos.diasMora} día(s), por un valor de $${datos.total}.</p>`,
+    cuerpoHtml: `<p>Tu factura <strong>${escaparHtml(datos.numeroFactura)}</strong> de ${escaparHtml(datos.nombreAcueducto)} está vencida hace ${escaparHtml(datos.diasMora)} día(s), por un valor de $${escaparHtml(datos.total)}.</p>`,
   };
 }
 
@@ -58,11 +80,11 @@ export function contenidoConfirmacionPago(datos: {
   facturasAplicadas: string[];
 }): ContenidoNotificacion {
   const detalleFacturas = datos.facturasAplicadas.length
-    ? `aplicado a la(s) factura(s): ${datos.facturasAplicadas.join(', ')}`
+    ? `aplicado a la(s) factura(s): ${datos.facturasAplicadas.map(escaparHtml).join(', ')}`
     : 'sin facturas pendientes por abonar — queda como saldo a favor';
   return {
     asunto: `Confirmación de pago — ${datos.nombreAcueducto}`,
-    cuerpoHtml: `<p>Recibimos tu pago de $${datos.valor} el ${datos.fechaPago}, ${detalleFacturas}.</p>`,
+    cuerpoHtml: `<p>Recibimos tu pago de $${escaparHtml(datos.valor)} el ${escaparHtml(datos.fechaPago)}, ${detalleFacturas}.</p>`,
   };
 }
 
@@ -73,7 +95,7 @@ export function contenidoCorteEjecutado(datos: {
 }): ContenidoNotificacion {
   return {
     asunto: `Corte del servicio — ${datos.nombreAcueducto}`,
-    cuerpoHtml: `<p>Tu servicio con ${datos.nombreAcueducto} fue cortado el ${datos.fecha}. Motivo: ${datos.motivo}.</p>`,
+    cuerpoHtml: `<p>Tu servicio con ${escaparHtml(datos.nombreAcueducto)} fue cortado el ${escaparHtml(datos.fecha)}. Motivo: ${escaparHtml(datos.motivo)}.</p>`,
   };
 }
 
@@ -83,11 +105,11 @@ export function contenidoReconexionCompletada(datos: {
   facturaReconexionNumero: string | null;
 }): ContenidoNotificacion {
   const notaFactura = datos.facturaReconexionNumero
-    ? ` Se generó la factura de reconexión ${datos.facturaReconexionNumero}.`
+    ? ` Se generó la factura de reconexión ${escaparHtml(datos.facturaReconexionNumero)}.`
     : '';
   return {
     asunto: `Reconexión completada — ${datos.nombreAcueducto}`,
-    cuerpoHtml: `<p>Tu servicio con ${datos.nombreAcueducto} fue reconectado el ${datos.fecha}.${notaFactura}</p>`,
+    cuerpoHtml: `<p>Tu servicio con ${escaparHtml(datos.nombreAcueducto)} fue reconectado el ${escaparHtml(datos.fecha)}.${notaFactura}</p>`,
   };
 }
 
