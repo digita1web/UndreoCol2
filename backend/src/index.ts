@@ -11,6 +11,12 @@ import {
 import { resolverClienteActivo } from './lib/tenant';
 import { estadoLoginAdmin, registrarIntentoLoginAdmin } from './lib/auth-intentos';
 import {
+  asignarAdminAcueducto,
+  crearAcueductoBase,
+  generarContrasenaTemporal,
+  signUpAdminAcueducto,
+} from './lib/plataforma';
+import {
   actualizarServicio,
   crearServicio,
   crearTarifa,
@@ -295,9 +301,11 @@ app.get('/dashboard', async (c) => {
   if (!sesion) return c.json({ error: 'No autenticado' }, 401);
   const accessToken = obtenerAccessToken(c);
   const supabase = crearClienteSuscriptor(c.env, accessToken ?? '');
-  const { activo, lista } = await resolverClienteActivo(supabase, sesion.perfilId);
+  const { activo, lista, esAdminPlataforma } = await resolverClienteActivo(supabase, sesion.perfilId);
   if (!activo) {
-    return c.json({ error: 'Sin acueducto', clientes: lista }, 400);
+    // 018: un superadmin puro (esAdminPlataforma) no tiene "acueducto" que
+    // mostrar — el frontend lo manda a /plataforma en vez de /onboarding.
+    return c.json({ error: 'Sin acueducto', clientes: lista, esAdminPlataforma }, 400);
   }
   const { data: perfil } = await supabase
     .from('perfiles')
@@ -314,6 +322,116 @@ app.get('/dashboard', async (c) => {
     perfil: { id: sesion.perfilId, email: sesion.email, nombre: (perfil as { nombre?: string } | null)?.nombre ?? sesion.email },
     conteoUsuariosServicio: count ?? 0,
   });
+});
+
+// --- Panel de plataforma (018): alta de acueductos por el superadmin -------
+
+type ResultadoAdminPlataforma =
+  | { ctx: { supabase: ReturnType<typeof crearClienteSuscriptor>; perfilId: string }; respuesta?: undefined }
+  | { ctx: null; respuesta: Response };
+
+async function requerirAdminPlataforma(c: Context<{ Bindings: Env }>): Promise<ResultadoAdminPlataforma> {
+  const sesion = await verificarSesionAdministrativa(c);
+  if (!sesion) {
+    return { ctx: null, respuesta: c.json({ error: 'No autenticado' }, 401) };
+  }
+  const accessToken = obtenerAccessToken(c);
+  const supabase = crearClienteSuscriptor(c.env, accessToken ?? '');
+  const { data: membresia } = await supabase
+    .from('membresias')
+    .select('rol')
+    .eq('perfil_id', sesion.perfilId)
+    .is('cliente_id', null)
+    .eq('rol', 'administrador')
+    .eq('activo', true)
+    .maybeSingle();
+  if (!membresia) {
+    return { ctx: null, respuesta: c.json({ error: 'No autorizado' }, 403) };
+  }
+  return { ctx: { supabase, perfilId: sesion.perfilId } };
+}
+
+// GET /plataforma — lista de acueductos, solo para el superadmin.
+app.get('/plataforma', async (c) => {
+  const { ctx, respuesta } = await requerirAdminPlataforma(c);
+  if (!ctx) return respuesta;
+  const { data, error } = await ctx.supabase
+    .from('clientes')
+    .select('id, nombre, slug, fecha_alta')
+    .order('fecha_alta', { ascending: false });
+  if (error) return c.json({ error: 'No se pudo listar los acueductos' }, 500);
+  return c.json({ acueductos: data ?? [] });
+});
+
+// POST /plataforma/acueductos — alta de un acueducto + su primer admin.
+// Orden de 3 pasos (plan §3, §5.1): sin transacción atómica única entre
+// Postgres y GoTrue — ver los comentarios de cada paso para el porqué y el
+// modo de falla de cada uno.
+app.post('/plataforma/acueductos', async (c) => {
+  const { ctx, respuesta } = await requerirAdminPlataforma(c);
+  if (!ctx) return respuesta;
+
+  const body = await c.req
+    .json<{ nombre?: string; slug?: string; nombreAdmin?: string; correoAdmin?: string }>()
+    .catch(() => ({ nombre: undefined, slug: undefined, nombreAdmin: undefined, correoAdmin: undefined }));
+  const nombre = body.nombre?.trim() ?? '';
+  const slug = body.slug?.trim().toLowerCase() ?? '';
+  const nombreAdmin = body.nombreAdmin?.trim() ?? '';
+  const correoAdmin = body.correoAdmin?.trim().toLowerCase() ?? '';
+  if (!nombre || !slug || !nombreAdmin || !correoAdmin) {
+    return c.json({ error: 'nombre, slug, nombreAdmin y correoAdmin son requeridos' }, 400);
+  }
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
+    return c.json({ error: 'El slug solo admite minúsculas, números y guiones' }, 400);
+  }
+
+  // Paso 1: clientes + configuracion. Si falla (slug duplicado), no se ha
+  // tocado Auth todavía — error limpio, nada que limpiar.
+  let clienteId: string;
+  try {
+    ({ clienteId } = await crearAcueductoBase(ctx.supabase, nombre, slug));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo crear el acueducto' }, 400);
+  }
+
+  // Paso 2: signUp con la clave anon (nunca service_role, CLAUDE.md §12). Si
+  // falla, queda un `clientes` sin admin — visible en GET /plataforma, no un
+  // usuario huérfano invisible. No hay reintento automático en v1 (plan §5.1).
+  const contrasenaTemporal = generarContrasenaTemporal();
+  let usuarioId: string;
+  try {
+    ({ usuarioId } = await signUpAdminAcueducto(c.env, correoAdmin, contrasenaTemporal));
+  } catch (e) {
+    return c.json(
+      {
+        error: `El acueducto '${slug}' se creó pero no se pudo dar de alta el correo del admin: ${
+          e instanceof Error ? e.message : 'error desconocido'
+        }. El acueducto queda sin administrador; reintente el alta del admin para este acueducto.`,
+        clienteId,
+      },
+      500,
+    );
+  }
+
+  // Paso 3: perfiles + membresias. A esta altura clientes y auth.users ya
+  // existen y son válidos; si esto falla, el auth.users queda con la
+  // contraseña ya entregada — recuperable a mano (plan §5.1).
+  try {
+    await asignarAdminAcueducto(ctx.supabase, clienteId, usuarioId, nombreAdmin, correoAdmin);
+  } catch (e) {
+    return c.json(
+      {
+        error: `El acueducto '${slug}' y el usuario de ${correoAdmin} se crearon, pero no se pudo vincularlos: ${
+          e instanceof Error ? e.message : 'error desconocido'
+        }. Requiere corrección manual.`,
+        clienteId,
+        usuarioId,
+      },
+      500,
+    );
+  }
+
+  return c.json({ clienteId, slug, correoAdmin, contrasenaTemporal }, 201);
 });
 
 // --- Catálogo de servicios y tarifas (002-catalogo-y-tarifas) --------------

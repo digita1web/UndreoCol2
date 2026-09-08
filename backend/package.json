@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy -c wrangler.toml",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:aislamiento": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f ../tests/aislamiento/001_fundacion_aislamiento.sql"
+    "test:aislamiento": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f ../tests/aislamiento/001_fundacion_aislamiento.sql",
+    "deploy:produccion": "wrangler deploy -c wrangler.toml --env production"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

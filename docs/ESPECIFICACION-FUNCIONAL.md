@@ -535,6 +535,14 @@ antes de cualquier uso oficial.
 - Acceso total a todos los acueductos
 - Gestiona planes, clientes, estado de cuentas
 - Puede crear usuarios con cualquier rol
+- **Panel de plataforma (`/plataforma`, feature 018):** da de alta un acueducto
+  nuevo (nombre + identificador/slug) junto con su primer administrador
+  (nombre + correo). El sistema genera una contraseña temporal que se muestra
+  una sola vez, para que el superadmin se la entregue al admin nuevo por un
+  canal seguro. El sistema todavía no fuerza un cambio de contraseña en el
+  primer login (queda anotado como mejora futura). Es la única vía de alta
+  hoy — no hay invitación por correo con autoservicio (mejora futura, feature
+  019)
 
 ### Administrador de acueducto
 - Gestiona su propio acueducto completo: suscriptores, tarifas, facturas, pagos,

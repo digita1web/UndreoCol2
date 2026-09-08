@@ -4,6 +4,261 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-08 — Sesión 031: feature 018, panel de plataforma
+
+**Qué es:** Mateo pidió crear un superadmin para poder dar de alta las credenciales de los
+acueductos. Al intentarlo se encontraron dos huecos reales: no existe ninguna pantalla para eso en
+`frontend/` (solo `crear_tenant_con_admin`, 001, pensada para que un usuario cree SU PROPIO
+acueducto), y `resolverClienteActivo()` no excluía la membresía `administrador` (`cliente_id NULL`)
+de "acueducto activo" — un superadmin puro caía en un `/app/dashboard` vacío. Se abrió la feature
+018 por SDD completo (`/specify` → `/plan` → `/tasks` → `/implement`, checkpoints aprobados por
+Mateo en cada fase, incluida la decisión §5.1: sin transacción atómica única entre `auth.users` y
+Postgres — el riesgo residual de un fallo a mitad del alta se acepta explícitamente a cambio de no
+usar `service_role` en la ruta, CLAUDE.md §12).
+
+**Bootstrap previo, por SQL manual (antes de que existiera el panel):** con autorización explícita
+de Mateo, se creó su propio superadmin en producción real (`undreocol-produccion`,
+`dutudjchhhmqadjowibj`) — `perfiles` + `membresias(rol='administrador', cliente_id=NULL)` para la
+cuenta `admin-prueba@undreocol.app`, verificada previamente contra `auth.users` (correo confirmado,
+`last_sign_in_at` real).
+
+**Implementado (T-001 a T-006), cada tarea con su propio commit y evidencia real:**
+
+- **T-001** — migración `20260919090000_panel-plataforma.sql`: política `perfiles_alta_plataforma`
+  (el único permiso que le faltaba al superadmin en las 4 tablas del alta) y dos funciones
+  `crear_acueducto_base`/`asignar_admin_acueducto`, **`security invoker`, no `definer`** — con la
+  política nueva, RLS ya autoriza todo lo que tocan, así que no hay bypass que auditar (lección de
+  C-1 llevada un paso más allá).
+- **T-002** — suite de aislamiento `903`: 6 pasos contra PostgreSQL real. Regresión completa desde
+  cero: 18/18 migraciones, 16/16 suites en verde.
+- **T-003** — `backend/src/lib/plataforma.ts`: `generarContrasenaTemporal`, `crearAcueductoBase`,
+  `signUpAdminAcueducto` (`crearClienteAnon`, nunca `service_role`), `asignarAdminAcueducto`.
+- **T-004** — fix de `resolverClienteActivo` (el bug real): excluye `cliente_id IS NULL` de
+  `lista`/`activo`, expone `esAdminPlataforma`.
+- **T-005** — `GET /plataforma`, `POST /plataforma/acueductos` (orden de 3 pasos que minimiza el
+  daño de un fallo a mitad de camino, plan §5.1), `GET /dashboard` con `esAdminPlataforma` en el 400.
+- **T-006** — frontend: `/plataforma` (lista + alta), `dashboard/page.tsx` redirige ahí en vez de a
+  `/onboarding` cuando corresponde, `plataforma-form.tsx` con `useHidratado()` (CLAUDE.md §7) y
+  muestra la contraseña temporal una sola vez.
+
+**Verificado (backend, real):** 206 tests unitarios en verde (19 archivos, 24 nuevos), `tsc`/`eslint`
+limpios, `wrangler deploy --dry-run` EXIT=0, 16 suites de aislamiento en verde contra PostgreSQL 16
+nativo. Cada tarea incluye la prueba de que sus tests SIRVEN (se rompe algo a propósito, cae el caso
+correcto, se restaura).
+
+**NO VERIFICADO — requiere Mateo:** `npm run build`/`npm run lint` del frontend (mismo bloqueo de
+`cdn.sheetjs.com` que 017); alta real de un acueducto contra el Worker desplegado + Supabase real;
+login del admin nuevo con la contraseña temporal, en navegador real; aplicar la migración
+`20260919090000_panel-plataforma.sql` a producción (pendiente de autorización expresa).
+
+**Fuera de alcance, a propósito:** invitación por correo (Opción A de la spec §0.3) queda para una
+feature 019 futura — decisión explícita de Mateo, para no bloquear el alta ya funcional con un
+flujo más grande.
+
+**Actualización — migración aplicada a producción real, con autorización expresa de Mateo en el
+momento:** `20260919090000_panel-plataforma.sql` aplicada a `undreocol-produccion`
+(`dutudjchhhmqadjowibj`) vía MCP. Verificado contra la base real antes/después:
+
+```
+Antes: perfiles con 2 políticas (lectura, update_propio); las 2 funciones no existían.
+Después:
+  perfiles: 3 políticas (perfiles_alta_plataforma=INSERT, perfiles_lectura=SELECT,
+            perfiles_update_propio=UPDATE)
+  crear_acueducto_base / asignar_admin_acueducto: prosecdef=false (invoker),
+    publico=false, anon=false, authenticated=true
+```
+
+Advisor de seguridad tras aplicar: sin hallazgos nuevos — ninguna de las 2 funciones aparece en los
+lints de `SECURITY DEFINER` ejecutable (correcto: son `invoker`). Los hallazgos que sí aparecen son
+preexistentes, ya conocidos de sesiones anteriores (funciones internas/triggers y el toggle de
+"leaked password protection", sin relación con esta migración).
+
+**Sigue pendiente:** desplegar el backend (el Worker en producción no tiene todavía el código de
+esta feature ni el fix de CORS/M-3) y la prueba funcional real de extremo a extremo (alta de un
+acueducto + login del admin nuevo) — ninguna de las dos se hizo, quedan para cuando el deploy esté
+hecho.
+
+### 2026-09-08 — Sesión 030: las 6 migraciones de seguridad, aplicadas a producción real
+
+**Qué es:** el conector MCP de Supabase quedó disponible en esta sesión. Mateo confirmó su
+conexión y, tras señalar que el fix del hallazgo CRÍTICO C-1 seguía sin aplicar en la base real,
+autorizó expresamente aplicar todas las migraciones pendientes.
+
+**Proyecto identificado:** `undreocol-produccion` (`dutudjchhhmqadjowibj`), `ACTIVE_HEALTHY`,
+`sa-east-1`, creado 2026-09-06. `clientes` vacío (0 filas) y `auth.users` con 1 usuario: preproducción
+real, sin acueductos todavía.
+
+**Diagnóstico antes de tocar nada.** `list_migrations` del proyecto vino vacío — sin historial de
+Supabase, aunque el esquema sí existía (aplicado por otra vía, sin tracking). Se verificó función por
+función, contra el código fuente real (`pg_proc.prosrc`) y los privilegios reales
+(`has_function_privilege`), qué estaba aplicado y qué no:
+
+```
+Base (001-013, 22 tablas, RLS FORCE en las 22)  -> APLICADO
+C-1  siguiente_numero_factura (guarda de autorización)  -> NO aplicado
+B-2  portal_validar_credenciales (guarda de NULL/vacío)  -> NO aplicado
+017  admin_intentos_login / admin_login_estado / admin_login_registrar  -> NO existían
+017  purgar_intentos_login  -> NO existía
+B-3  tarifa_vigente (guarda de pertenencia al acueducto)  -> NO aplicado
+B-3  6 funciones del portal sin EXECUTE heredado por authenticated  -> NO aplicado
+```
+
+**Se aplicaron las 6 migraciones pendientes, en orden, vía `apply_migration` (MCP), con
+verificación inmediata después de cada una:**
+
+1. `20260914090000_fix-autorizacion-siguiente-numero-factura` (**C-1, CRÍTICO**)
+2. `20260915090000_fix-portal-login-documento-nulo` (B-2)
+3. `20260916090000_rate-limit-login-admin` (017 T-001 — tabla + `admin_login_estado`/`admin_login_registrar`)
+4. `20260917090000_purga-intentos-login` (017 T-005 — cierra M-6)
+5. `20260918090000_endurecer-privilegios-funciones` (B-3 + observación de 017 T-001)
+
+**Verificado tras cada aplicación, contra la base real, no supuesto:**
+
+```
+siguiente_numero_factura contiene la guarda "No autorizado"           -> true
+portal_validar_credenciales contiene la guarda de NULL/vacío          -> true
+tarifa_vigente contiene la guarda "No autorizado"                     -> true
+admin_intentos_login existe, con RLS FORCE                            -> true
+purgar_intentos_login existe                                          -> true
+
+Privilegios finales (has_function_privilege, los 11 puntos críticos):
+  admin_login_estado/registrar       anon=t  authenticated=f   (correcto)
+  6 funciones del portal             anon=t  authenticated=f   (correcto, antes t)
+  purgar_intentos_login              anon=f  authenticated=f   (solo service_role)
+  siguiente_numero_factura           anon=f  authenticated=t   (correcto, guarda interna)
+  tarifa_vigente                     anon=f  authenticated=t   (correcto, guarda interna)
+```
+
+**Advisor de seguridad de Supabase, antes y después:** las 6 funciones del portal desaparecieron de
+`authenticated_security_definer_function_executable`; `admin_login_*` aparecen únicamente en la lista
+de `anon` (intencional, documentado en el propio hallazgo). Sin hallazgos nuevos de severidad
+relevante. **Hallazgo nuevo de bajo impacto, fuera del alcance de las migraciones:** protección de
+contraseñas filtradas (HaveIBeenPwned) desactivada en Supabase Auth — es un ajuste de un clic en el
+dashboard, no de esquema; queda pendiente para Mateo.
+
+**No se reprodujo el exploit completo de C-1 contra producción** (a diferencia de la Sesión 027 en
+local): la tabla `clientes` está vacía, así que no hay ningún acueducto ni consecutivo real que
+mutar, y no se crean datos de prueba en la base de un cliente sin que se pida explícitamente. La
+evidencia de código fuente y privilegios, verificada tras cada aplicación, se consideró suficiente:
+es el mismo texto que superó la explotación completa en el entorno local de la Sesión 027.
+
+**Estado de la auditoría tras esta sesión: los 11 hallazgos corregidos en el repositorio (C-1, A-1,
+A-2, M-1, M-3, M-6, B-2, B-3, B-4, B-6) están ahora también aplicados en la base de producción real.**
+Siguen pendientes en el repositorio, sin cambios: M-2 (feature propia), M-4 (confirmar en DevTools),
+M-5 y B-1 (decisiones de producto de Mateo), B-5 (requiere `next@16`).
+
+**Pendiente para Mateo, no de código:**
+1. Activar la protección de contraseñas filtradas en el dashboard de Supabase Auth.
+2. Desplegar el Worker (`npm run deploy:produccion`, commit `f98850a`) para que la ruta
+   `POST /auth/login` empiece a usar `admin_login_estado`/`admin_login_registrar` — las funciones ya
+   existen en la base, pero el código del Worker que las invoca solo se publica al desplegar.
+3. Configurar el cron `undreocol-limpieza` para que invoque `purgar_intentos_login` (ya lo hace el
+   código de `cron/limpieza.ts`, commit `7760d66` — falta el despliegue).
+
+---
+
+
+### 2026-09-07 — Sesión 029: cierre de hallazgos abiertos de la auditoría (M-3, B-3, B-6 + T-001)
+
+Continuación directa de la auditoría (Sesión 027) y de la feature 017 (Sesión 028). Se corrigen los
+hallazgos que **se podían corregir con verificación real**, y se dice explícitamente cuáles no y por
+qué — que es la parte que importa.
+
+**Corregidos**
+
+- **M-3 (`f98850a`) — `ALLOWED_ORIGIN` de producción.** `wrangler.toml` solo tenía
+  `http://localhost:3000`, así que un `wrangler deploy` desde el repositorio pisaba el valor real y
+  rompía el CORS del panel. Mateo confirmó el origen:
+  `https://undreocol-frontend.undreocol.workers.dev`. Se añade `[env.production]` y el script
+  `npm run deploy:produccion`.
+  **Dos trampas de Wrangler que el bloque evita, ambas verificadas, no supuestas:**
+  1. En un entorno con nombre, Wrangler llama al Worker `<nombre>-<entorno>`. Sin el override se
+     habría creado un Worker **NUEVO**. Comprobado quitando el override a propósito y leyendo el
+     README que el propio wrangler genera en `--outdir`:
+     `SIN override → worker "undreocol-api-production"` · `CON override → worker "undreocol-api"`.
+  2. Los bindings **no se heredan** del bloque raíz: sin repetirlos, producción se quedaría sin cola,
+     sin R2 y sin correo. Se repiten los cuatro y el dry-run los lista todos.
+  **AVISO:** producción se despliega ahora con `npm run deploy:produccion`, **no** con
+  `npm run deploy`. Al añadir un binding nuevo hay que añadirlo **también** en `[env.production]`.
+
+- **B-3 + observación de 017 T-001 (`2af5ab3`) — privilegios de funciones `SECURITY DEFINER`.**
+  Dos correcciones del mismo patrón, en una migración:
+  - Las **6 funciones del portal** conservaban el `EXECUTE` que `authenticated` recibe solo por los
+    *default privileges* de Supabase; `revoke all … from public` no lo quita. No era explotable
+    —revalidan credenciales completas y no aceptan un id desnudo— pero era superficie que nadie usa:
+    quien las llama es el Worker con la clave `anon`.
+  - **`tarifa_vigente()`** filtraba el `tarifa_id` de otro acueducto. Severidad real BAJA (solo un
+    UUID; la fila sigue protegida por RLS y hay que adivinar un `servicio_id` de 128 bits), pero es
+    el mismo patrón del identificador desnudo que causó el **CRÍTICO C-1**. La guarda es de
+    **pertenencia al acueducto, no de rol**: el lector llega ahí por la simulación de periodo y
+    filtrar por rol habría roto esa ruta sin ganar nada.
+  Suite nueva `tests/aislamiento/902` (6 pasos).
+
+- **B-6 (`4ab4200`) — cabeceras de seguridad.** El panel se servía sin ninguna: se podía embeber en
+  un iframe ajeno (clickjacking sobre un panel que anula facturas y cambia tarifas). Se aplican las
+  cinco que **no pueden romper** una aplicación normal. **Deliberadamente NO se añadió una CSP
+  completa**: una CSP mal ajustada rompe la aplicación en silencio y aquí no se puede ejecutar
+  `next build`. Merece su propia tarea con el navegador delante.
+
+**NO corregidos, y la razón de cada uno — ninguno se deja en silencio**
+
+| Hallazgo | Por qué no se toca |
+|---|---|
+| **M-2** el `lector` ve todo el negocio | Exige rediseñar RLS por rol en 6 tablas **y** la asignación de rutas al lector, que `ESPECIFICACION-FUNCIONAL §2.14.1` reconoce que no existe. Es una **feature**: `CLAUDE.md §3` prohíbe escribir código sin `spec.md` aprobado |
+| **M-4** cookies `SameSite=Lax` | **Probablemente ya no aplica.** Con la URL real que dio Mateo, frontend y API comparten el dominio registrable `undreocol.workers.dev`, así que son *same-site* y las cookies `Lax` sí viajan. Falta que lo confirme en DevTools para cerrarlo |
+| **M-5** registro público | Decisión de **producto**, no de seguridad |
+| **B-1** `planes` legible por `anon` | Decisión de **producto**: que el catálogo comercial de un SaaS sea público es normal. Verificado que hoy nada lo lee salvo `GET /salud`, que seguiría funcionando si se restringiera. El parche de una línea queda escrito en `PLAN-PRODUCCION.md` por si Mateo decide lo contrario |
+| **B-5** `postcss` | Exige `next@16` (cambio mayor) y aquí ni siquiera se pueden instalar las dependencias del frontend. Sin ruta de explotación en este sistema: PostCSS solo procesa el CSS propio en tiempo de compilación |
+
+**Método: cada test se probó rompiendo lo que vigila**
+
+```
+902  devolver el EXECUTE a authenticated        -> PASO 1 FALLÓ
+     revertir tarifa_vigente al estado sin guarda -> PASO 3 FALLÓ
+     restaurado                                  -> PRIVILEGIOS-FUNCIONES-AISLAMIENTO OK
+M-3  quitar el override `name` de [env.production] -> worker "undreocol-api-production"
+```
+
+**Verificado (evidencia real)**
+
+```
+17/17 migraciones aplican limpias desde cero
+Aislamiento: 14 suites, 0 en rojo · nueva 902 -> PRIVILEGIOS-FUNCIONES-AISLAMIENTO OK
+Caminos legítimos de tarifa_vigente, uno por uno:
+  admin de A -> tarifa de A · LECTOR de A -> tarifa de A (simulación de periodo intacta)
+  service_role -> tarifa de B (cierre masivo intacto) · plataforma -> tarifa de B (soporte)
+  servicio inexistente -> NULL sin lanzar (no es un oráculo de existencia)
+Portal con anon: los 12 ataques cruzados siguen bloqueados
+Backend: npx vitest run -> 176 passed (16 archivos) · tsc EXIT=0 · eslint EXIT=0
+Backend: wrangler deploy --dry-run --env production -> EXIT=0, los 4 bindings y el origen real
+Frontend: tsc --strict sobre next.config.ts -> EXIT=0; headers() ejecutada de verdad -> 5 cabeceras
+```
+
+**NO VERIFICADO — requiere validación manual de Mateo**
+
+1. **`npm run build` y `npm run lint` del frontend.** No es un descuido: **no se pueden ejecutar en
+   este contenedor**. `package.json` toma `xlsx` de `https://cdn.sheetjs.com/…` (Sesión 020) y el
+   proxy responde **403** a ese host, así que `npm ci` aborta sin dejar `node_modules`.
+   **Ejecutar el build ANTES de desplegar** el cambio de `next.config.ts`.
+2. **Las 5 cabeceras en la respuesta real:** `curl -I https://undreocol-frontend.undreocol.workers.dev/login`.
+3. **El consumidor de la cola en `[env.production]`:** wrangler no lista consumidores en el dry-run,
+   solo se puede afirmar que la configuración parsea. Confirmar tras el primer despliegue que el
+   cierre de facturación sigue consumiendo mensajes.
+4. **M-4 en DevTools:** que `uc_sesion_admin` se guarda y viaja entre el frontend y la API.
+
+**Recordatorio que sigue siendo lo más urgente:** nada de esto está aplicado en la base de
+producción. Mergear a `main` no ejecuta migraciones. **El fix del CRÍTICO C-1 puede seguir sin
+aplicar.** Orden obligatorio: migraciones primero, despliegue después — al revés, el login devuelve
+503 porque el Worker llamaría a funciones que aún no existen.
+
+**Estado de la auditoría:** 11 de 15 hallazgos cerrados (C-1, A-1, A-2, M-1, M-3, M-6, B-2, B-3, B-4,
+B-6, y la observación de 017 T-001). Quedan 4 abiertos y ninguno es un defecto pendiente de arreglo:
+M-2 necesita su propia feature, M-4 espera una comprobación en el navegador, y M-5 y B-1 son
+decisiones de producto de Mateo.
+
+---
+
+
 ### 2026-09-07 — Sesión 028: feature 017 rate-limit-login-admin (cierra A-2 y M-6)
 
 **Qué es:** la implementación completa del hallazgo **A-2 (ALTO)** de la auditoría de la Sesión 027

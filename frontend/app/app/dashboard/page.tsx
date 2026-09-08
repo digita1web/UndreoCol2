@@ -47,12 +47,18 @@ async function obtenerDashboard(): Promise<RespuestaDashboard> {
 
   if (respuesta.status === 401) redirect('/login');
 
-  const cuerpo: { error?: string } & Partial<RespuestaDashboard> = await respuesta
-    .json()
-    .catch(() => ({}));
+  const cuerpo: { error?: string; esAdminPlataforma?: boolean } & Partial<RespuestaDashboard> =
+    await respuesta.json().catch(() => ({}));
 
   if (respuesta.status === 400) {
-    if (cuerpo.error === 'Sin acueducto') redirect('/onboarding');
+    // 018: un superadmin puro (solo la membresía 'administrador', sin ningún
+    // acueducto) no va a /onboarding — ese formulario crea SU PROPIO
+    // acueducto (crear_tenant_con_admin, 001), y el superadmin no es quien
+    // debe pasar por ahí. Va a /plataforma, donde da de alta acueductos
+    // ajenos (ver lib/tenant.ts resolverClienteActivo, T-004).
+    if (cuerpo.error === 'Sin acueducto') {
+      redirect(cuerpo.esAdminPlataforma ? '/plataforma' : '/onboarding');
+    }
     throw new Error(cuerpo.error ?? 'No se pudo cargar el dashboard');
   }
   if (!respuesta.ok) {
