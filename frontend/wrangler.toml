@@ -8,3 +8,14 @@ compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
+
+# Service Binding al Worker de la API (020, proxy-cookies-mismo-origen).
+# undreocol-frontend.undreocol.workers.dev y undreocol-api.undreocol.workers.dev
+# son dominios distintos para efectos de cookies (workers.dev está en la Public
+# Suffix List) — el navegador nunca debe hablar directo con la API. El Route
+# Handler frontend/app/api/[...ruta]/route.ts reenvía todo por este binding,
+# Worker-a-Worker, sin salir a la red pública y sin costo adicional. Requiere
+# solo que el Worker "undreocol-api" exista con ese nombre (backend/wrangler.toml:1).
+[[services]]
+binding = "API"
+service = "undreocol-api"
