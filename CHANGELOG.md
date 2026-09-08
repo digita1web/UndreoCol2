@@ -55,6 +55,29 @@ login del admin nuevo con la contraseña temporal, en navegador real; aplicar la
 feature 019 futura — decisión explícita de Mateo, para no bloquear el alta ya funcional con un
 flujo más grande.
 
+**Actualización — migración aplicada a producción real, con autorización expresa de Mateo en el
+momento:** `20260919090000_panel-plataforma.sql` aplicada a `undreocol-produccion`
+(`dutudjchhhmqadjowibj`) vía MCP. Verificado contra la base real antes/después:
+
+```
+Antes: perfiles con 2 políticas (lectura, update_propio); las 2 funciones no existían.
+Después:
+  perfiles: 3 políticas (perfiles_alta_plataforma=INSERT, perfiles_lectura=SELECT,
+            perfiles_update_propio=UPDATE)
+  crear_acueducto_base / asignar_admin_acueducto: prosecdef=false (invoker),
+    publico=false, anon=false, authenticated=true
+```
+
+Advisor de seguridad tras aplicar: sin hallazgos nuevos — ninguna de las 2 funciones aparece en los
+lints de `SECURITY DEFINER` ejecutable (correcto: son `invoker`). Los hallazgos que sí aparecen son
+preexistentes, ya conocidos de sesiones anteriores (funciones internas/triggers y el toggle de
+"leaked password protection", sin relación con esta migración).
+
+**Sigue pendiente:** desplegar el backend (el Worker en producción no tiene todavía el código de
+esta feature ni el fix de CORS/M-3) y la prueba funcional real de extremo a extremo (alta de un
+acueducto + login del admin nuevo) — ninguna de las dos se hizo, quedan para cuando el deploy esté
+hecho.
+
 ### 2026-09-08 — Sesión 030: las 6 migraciones de seguridad, aplicadas a producción real
 
 **Qué es:** el conector MCP de Supabase quedó disponible en esta sesión. Mateo confirmó su

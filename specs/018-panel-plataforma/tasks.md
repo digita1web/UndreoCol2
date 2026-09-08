@@ -392,8 +392,10 @@ Checklist CLAUDE.md §11 — ver más abajo en esta sección.
 3. `npm run build`/`npm run lint` del frontend en un entorno con acceso a `cdn.sheetjs.com` (T-006).
 4. Comprobación visual completa en navegador: superadmin → `/plataforma` → alta → login del admin
    nuevo → su propio dashboard (T-006, cierra CA-3 y CA-4 del todo).
-5. Aplicar la migración `20260919090000_panel-plataforma.sql` a producción real — solo con
-   autorización expresa en el momento (§9.1), no automática ni heredada de la Sesión 030.
+5. ~~Aplicar la migración `20260919090000_panel-plataforma.sql` a producción real~~ — **HECHO**,
+   con autorización expresa de Mateo en el momento (§9.1). Verificado contra la base real: `perfiles`
+   con 3 políticas, las 2 funciones `invoker`/`anon=false`/`authenticated=true`. Ver CHANGELOG Sesión
+   031.
 6. Desplegar el backend con esta feature (junto con el resto de commits pendientes en la rama,
    incluido el fix de CORS de M-3) — requiere `npm run deploy:producción` desde una rama que ya los
    tenga, hoy solo `claude/security-audit-production-9oez9y`.
