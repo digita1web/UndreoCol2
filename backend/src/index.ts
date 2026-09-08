@@ -206,6 +206,14 @@ app.post('/auth/login', async (c) => {
       .eq('perfil_id', sesion.perfilId)
       .eq('activo', true);
     if (errPerfil || errMembresias) {
+      // El mensaje al cliente queda genérico a propósito (no filtrar detalles
+      // internos de Postgres/PostgREST) — pero el error real SIEMPRE queda en
+      // el log del Worker (CLAUDE.md §7: nunca silenciar un fallo de auth).
+      console.error('auth/login: no se pudo leer perfil/membresías tras iniciar sesión', {
+        perfilId: sesion.perfilId,
+        errPerfil: errPerfil?.message,
+        errMembresias: errMembresias?.message,
+      });
       return c.json({ error: 'Sesión iniciada pero no se pudo leer el perfil' }, 500);
     }
     return c.json({ sesion, perfil, membresias });
