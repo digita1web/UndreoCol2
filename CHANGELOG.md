@@ -4,6 +4,57 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-08 — Sesión 032: feature 020, proxy-cookies-mismo-origen (login roto en producción)
+
+**Qué es:** con 018 desplegado y la migración aplicada, Mateo probó el login real en producción y no
+funcionaba — el botón pasaba a "Ingresando…" y volvía a "Ingresar" sin navegar a ningún lado.
+Diagnosticado con evidencia real (pestaña Network del navegador de Mateo, no adivinado): `POST
+/auth/login` respondía **200** con un `Set-Cookie` válido para el usuario correcto — el backend, la
+base de datos y el login en sí funcionaban perfecto. El problema estaba en la arquitectura de
+despliegue: `undreocol-frontend.undreocol.workers.dev` y `undreocol-api.undreocol.workers.dev` son
+**dominios distintos** para efectos de cookies (`workers.dev` está en la Public Suffix List — cada
+Worker de la cuenta es su propio sitio, no comparten `undreocol.workers.dev` como se asumió antes).
+La cookie de sesión quedaba guardada bajo el dominio de la API; el frontend nunca la veía.
+
+**Corrige una afirmación equivocada de la Sesión 029** (tabla de hallazgos abiertos): decía que M-4
+"probablemente ya no aplica" porque frontend y API "comparten el dominio registrable
+`undreocol.workers.dev`". Era falso — investigado con la comunidad de Cloudflare (ver
+`specs/020-proxy-cookies-mismo-origen/spec.md` para las fuentes citadas) y confirmado con la
+evidencia real de Mateo.
+
+**Decisión de Mateo:** de dos formas de arreglarlo — comprar un dominio propio, o hacer que el
+navegador solo hable con el Worker del frontend y que este reenvíe internamente a la API — eligió la
+segunda (proxy con Service Binding de Cloudflare, sin costo). Se implementó como feature completa por
+SDD (`spec.md` → `plan.md` → `tasks.md` → `/implement`, checkpoints aprobados en cada fase).
+
+**Implementado (T-001 a T-004):**
+
+- **T-001** — `frontend/wrangler.toml`: Service Binding `API` → Worker `undreocol-api`.
+  `frontend/cloudflare-env.d.ts`: tipo `CloudflareEnv { API: Fetcher }`.
+- **T-002** — `frontend/app/api/[...ruta]/route.ts`: proxy transparente, reenvía cualquier
+  método/ruta bajo `/api/*` al binding, sin leer ni transformar el cuerpo (streaming binario intacto
+  para los PDFs).
+- **T-003** — `frontend/lib/api.ts`: `URL_BASE_API` pasa a `/api` por defecto en vez de la URL
+  absoluta del backend; desarrollo local no cambia (sigue usando `NEXT_PUBLIC_API_URL` en
+  `.env.local`).
+- **T-004** — este cierre: `docs/PLAN-PRODUCCION.md` (M-4 corregido, marcado "en corrección, no
+  cerrado"), `.specify/config.md` (fila 020), `CHANGELOG.md`.
+
+**Verificado aquí (sin poder compilar ni desplegar el frontend — mismo bloqueo de `cdn.sheetjs.com`
+de siempre):** sintaxis TOML válida del `wrangler.toml` editado; el Route Handler exporta los 6
+métodos, usa `getCloudflareContext<CloudflareEnv>()` y `env.API.fetch()`, sin `any`; `grep` confirma
+que ninguna referencia a la URL absoluta del backend quedó fuera de los *server components* (que no
+se tocan a propósito, ya reenvían la cookie a mano y no tienen este bug).
+
+**NO VERIFICADO — requiere Mateo, checklist completo antes de cerrar M-4 y esta feature:**
+1. `npm run pages:build && npx wrangler deploy` (frontend) sin error.
+2. Network: la petición de login sale hacia el dominio del frontend, no hacia la API directo.
+3. Application → Cookies: `uc_sesion_admin` bajo el dominio del frontend.
+4. El login lleva a `/plataforma` o `/app/dashboard`.
+5. Login del portal del suscriptor funciona de extremo a extremo.
+6. Un PDF de factura descarga bien.
+7. Desarrollo local sigue funcionando igual que antes.
+
 ### 2026-09-08 — Sesión 031: feature 018, panel de plataforma
 
 **Qué es:** Mateo pidió crear un superadmin para poder dar de alta las credenciales de los

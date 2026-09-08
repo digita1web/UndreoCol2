@@ -41,10 +41,12 @@ grep -n "Fetcher" frontend/cloudflare-env.d.ts
 ```
 **Resultado esperado:** TOML parseable sin error; el bloque `[[services]]` presente con `binding =
 "API"` y `service = "undreocol-api"`; el tipo sin `any`.
-**Estado:** Pendiente
+**Estado:** COMPLETADO (verificación posible aquí; el resto queda para Mateo)
 **Evidencia:**
 ```
-<salida real>
+python3 -c "import tomllib; tomllib.load(open('frontend/wrangler.toml','rb'))" -> TOML válido
+[[services]] presente: binding = "API", service = "undreocol-api"
+cloudflare-env.d.ts: interface CloudflareEnv { API: Fetcher } — sin any
 ```
 **NO VERIFICADO — requiere Mateo:** que `wrangler deploy` (frontend) reconozca el binding sin error
 ("service undreocol-api not found" solo aparecería si el nombre no coincide exacto con el Worker
@@ -72,10 +74,14 @@ grep -n "getCloudflareContext" frontend/app/api/\[...ruta\]/route.ts
 **Resultado esperado:** el archivo existe, exporta los 6 métodos (GET/POST/PATCH/PUT/DELETE/OPTIONS),
 usa `getCloudflareContext<CloudflareEnv>()` y `env.API.fetch(...)`, no llama `.json()`/`.text()`
 sobre la petición ni la respuesta.
-**Estado:** Pendiente
+**Estado:** COMPLETADO (verificación posible aquí; el resto queda para Mateo)
 **Evidencia:**
 ```
-<salida real>
+Exporta GET, POST, PATCH, PUT, DELETE, OPTIONS (6 métodos).
+Usa getCloudflareContext<CloudflareEnv>() y env.API.fetch(peticion).
+export const dynamic = 'force-dynamic' presente.
+No llama .json()/.text() sobre request ni sobre la respuesta en ningún punto
+(confirmado leyendo el archivo completo) — el streaming pasa intacto.
 ```
 **NO VERIFICADO — requiere Mateo (checklist del plan §8, pasos 1-3):**
 1. `npm run pages:build && npx wrangler deploy` (frontend) sin error.
@@ -104,10 +110,15 @@ grep -rn "undreocol-api.undreocol.workers.dev" frontend/lib frontend/app fronten
 **ninguna** referencia a la URL absoluta del backend en `lib/`, `app/` ni `components/` (los únicos
 `URL_BASE_API` que quedan con URL absoluta directa son los de los *server components*, a propósito —
 plan §5.1 — y se confirma que siguen sin tocarse).
-**Estado:** Pendiente
+**Estado:** COMPLETADO (verificación posible aquí; el resto queda para Mateo)
 **Evidencia:**
 ```
-<salida real>
+URL_BASE_API = process.env.NEXT_PUBLIC_API_URL ?? '/api'
+.env.example documentado: por qué NUNCA se define esta variable en producción.
+grep "undreocol-api.undreocol.workers.dev" en lib/, app/, components/ -> solo
+  2 coincidencias, ambas intencionales (comentario explicativo en lib/api.ts;
+  HOST_REFERENCIA del proxy en T-002, que el binding ignora para enrutar).
+  Cero fetches reales apuntando todavía a la URL absoluta.
 ```
 **NO VERIFICADO — requiere Mateo:**
 4. Login lleva a `/plataforma` o `/app/dashboard` (018 CA-2/CA-3).
@@ -129,10 +140,15 @@ cerrado — el código está escrito y es lo mejor que se puede verificar sin na
 pero **CLAUDE.md §4 no permite darlo por bueno sin esa confirmación**.
 **Verificación:** revisión del diff completo.
 **Resultado esperado:** ningún archivo de la lista sin actualizar.
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+docs/PLAN-PRODUCCION.md: M-4 corregido, marcado "EN CORRECCIÓN, NO CERRADO" —
+  no "RESUELTO", porque falta la confirmación real de Mateo (CLAUDE.md §4).
+.specify/config.md: fila 020 agregada, prerrequisito de producción.
+CHANGELOG.md: Sesión 032 completa, con el checklist de 7 puntos pendientes.
+specs/020-.../spec.md: estado actualizado a "IMPLEMENTADA, NO VERIFICADA",
+  checklist §8 marcado según lo que sí se pudo verificar aquí.
 ```
 **Commit:** se registra en la Bitácora de cierre (T-004)
 
@@ -142,10 +158,10 @@ pero **CLAUDE.md §4 no permite darlo por bueno sin esa confirmación**.
 
 | Tarea | Commit | Estado |
 |---|---|---|
-| T-001 Service Binding + tipo | — | Pendiente |
-| T-002 Route Handler proxy | — | Pendiente |
-| T-003 `lib/api.ts` rutas relativas | — | Pendiente |
-| T-004 cierre | — | Pendiente |
+| T-001 Service Binding + tipo | `8ebe140` | COMPLETADO |
+| T-002 Route Handler proxy | `bb09708` | COMPLETADO |
+| T-003 `lib/api.ts` rutas relativas | `2dede1a` | COMPLETADO |
+| T-004 cierre | este commit | COMPLETADO |
 
 ### Pendiente de Mateo (checklist completo, plan §8) — nada de esta feature se cierra sin esto
 

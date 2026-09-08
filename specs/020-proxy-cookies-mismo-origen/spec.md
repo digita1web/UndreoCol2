@@ -1,6 +1,8 @@
 # SPEC — 020: proxy-cookies-mismo-origen
 
-**Estado:** en `/specify` — checkpoint pendiente de aprobación de Mateo.
+**Estado:** **IMPLEMENTADA (2026-09-08), NO VERIFICADA** — spec, plan y tasks aprobados; T-001 a T-004
+completados con la evidencia posible en este entorno (sin build/deploy real). CA-1 a CA-3 y CA-5
+requieren el checklist real de Mateo (§6 y §8) antes de darse por cerrados.
 
 **Origen:** bug real descubierto al probar 018 en producción, hoy: el login "funciona" (`POST
 /auth/login` responde 200, la cookie se guarda) pero nunca lleva a ningún lado — el botón pasa a
@@ -131,12 +133,16 @@ en el navegador, o `curl` contra el Worker desplegado si Mateo lo hace.
 
 ## 8. Definición de terminado
 
-- [ ] CA-1 a CA-3 y CA-5 con evidencia real de Mateo (requiere su navegador)
-- [ ] CA-4 declarado NO VERIFICADO con pasos exactos, si no se puede verificar aquí
-- [ ] `frontend/wrangler.toml` con el Service Binding versionado
-- [ ] `npx wrangler deploy --dry-run` del backend sigue OK (sin cambios ahí, pero se reconfirma)
-- [ ] `.specify/config.md` con la fila 020, prerrequisito de producción
-- [ ] `docs/PLAN-PRODUCCION.md` actualizado: M-4 corregido (era una afirmación equivocada, no un
-      hallazgo cerrado)
-- [ ] `CHANGELOG.md` actualizado
-- [ ] Un commit por tarea verificada; sin `git push` (el comando se le entrega a Mateo)
+- [ ] CA-1 a CA-3 y CA-5 con evidencia real de Mateo (requiere su navegador) — **PENDIENTE**, código
+      escrito y commiteado pero sin confirmar
+- [x] CA-4 declarado NO VERIFICADO con pasos exactos, no se puede verificar aquí
+- [x] `frontend/wrangler.toml` con el Service Binding versionado
+- [x] `.specify/config.md` con la fila 020, prerrequisito de producción
+- [x] `docs/PLAN-PRODUCCION.md` actualizado: M-4 marcado "en corrección, no cerrado" (era una
+      afirmación equivocada de la Sesión 029, no un hallazgo cerrado)
+- [x] `CHANGELOG.md` actualizado (Sesión 032)
+- [x] Un commit por tarea verificada; sin `git push` (el comando se le entrega a Mateo)
+
+**Esta feature NO se cierra como "terminada" hasta que Mateo confirme el checklist de CA-1 a CA-3 y
+CA-5.** Lo que sí está: el código escrito, siguiendo los patrones documentados oficiales, con toda la
+verificación que este entorno permite.
