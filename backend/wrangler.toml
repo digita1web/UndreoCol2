@@ -13,7 +13,7 @@ compatibility_date = "2026-05-03"
 # (hallazgo M-3 de la auditoría, docs/PLAN-PRODUCCION.md). El origen real vive
 # ahora en [env.production], abajo.
 [vars]
-ALLOWED_ORIGIN = "http://localhost:3000"
+ALLOWED_ORIGIN = "http://localhost:3000,https://undreocol-frontend.undreocol.workers.dev"
 
 # --- Cierre de facturación (005): producer + consumer de la misma cola -------
 # El worker principal es a la vez HTTP (fetch) y consumidor de la cola; así el
