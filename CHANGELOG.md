@@ -4,6 +4,86 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-08 — Sesión 030: las 6 migraciones de seguridad, aplicadas a producción real
+
+**Qué es:** el conector MCP de Supabase quedó disponible en esta sesión. Mateo confirmó su
+conexión y, tras señalar que el fix del hallazgo CRÍTICO C-1 seguía sin aplicar en la base real,
+autorizó expresamente aplicar todas las migraciones pendientes.
+
+**Proyecto identificado:** `undreocol-produccion` (`dutudjchhhmqadjowibj`), `ACTIVE_HEALTHY`,
+`sa-east-1`, creado 2026-09-06. `clientes` vacío (0 filas) y `auth.users` con 1 usuario: preproducción
+real, sin acueductos todavía.
+
+**Diagnóstico antes de tocar nada.** `list_migrations` del proyecto vino vacío — sin historial de
+Supabase, aunque el esquema sí existía (aplicado por otra vía, sin tracking). Se verificó función por
+función, contra el código fuente real (`pg_proc.prosrc`) y los privilegios reales
+(`has_function_privilege`), qué estaba aplicado y qué no:
+
+```
+Base (001-013, 22 tablas, RLS FORCE en las 22)  -> APLICADO
+C-1  siguiente_numero_factura (guarda de autorización)  -> NO aplicado
+B-2  portal_validar_credenciales (guarda de NULL/vacío)  -> NO aplicado
+017  admin_intentos_login / admin_login_estado / admin_login_registrar  -> NO existían
+017  purgar_intentos_login  -> NO existía
+B-3  tarifa_vigente (guarda de pertenencia al acueducto)  -> NO aplicado
+B-3  6 funciones del portal sin EXECUTE heredado por authenticated  -> NO aplicado
+```
+
+**Se aplicaron las 6 migraciones pendientes, en orden, vía `apply_migration` (MCP), con
+verificación inmediata después de cada una:**
+
+1. `20260914090000_fix-autorizacion-siguiente-numero-factura` (**C-1, CRÍTICO**)
+2. `20260915090000_fix-portal-login-documento-nulo` (B-2)
+3. `20260916090000_rate-limit-login-admin` (017 T-001 — tabla + `admin_login_estado`/`admin_login_registrar`)
+4. `20260917090000_purga-intentos-login` (017 T-005 — cierra M-6)
+5. `20260918090000_endurecer-privilegios-funciones` (B-3 + observación de 017 T-001)
+
+**Verificado tras cada aplicación, contra la base real, no supuesto:**
+
+```
+siguiente_numero_factura contiene la guarda "No autorizado"           -> true
+portal_validar_credenciales contiene la guarda de NULL/vacío          -> true
+tarifa_vigente contiene la guarda "No autorizado"                     -> true
+admin_intentos_login existe, con RLS FORCE                            -> true
+purgar_intentos_login existe                                          -> true
+
+Privilegios finales (has_function_privilege, los 11 puntos críticos):
+  admin_login_estado/registrar       anon=t  authenticated=f   (correcto)
+  6 funciones del portal             anon=t  authenticated=f   (correcto, antes t)
+  purgar_intentos_login              anon=f  authenticated=f   (solo service_role)
+  siguiente_numero_factura           anon=f  authenticated=t   (correcto, guarda interna)
+  tarifa_vigente                     anon=f  authenticated=t   (correcto, guarda interna)
+```
+
+**Advisor de seguridad de Supabase, antes y después:** las 6 funciones del portal desaparecieron de
+`authenticated_security_definer_function_executable`; `admin_login_*` aparecen únicamente en la lista
+de `anon` (intencional, documentado en el propio hallazgo). Sin hallazgos nuevos de severidad
+relevante. **Hallazgo nuevo de bajo impacto, fuera del alcance de las migraciones:** protección de
+contraseñas filtradas (HaveIBeenPwned) desactivada en Supabase Auth — es un ajuste de un clic en el
+dashboard, no de esquema; queda pendiente para Mateo.
+
+**No se reprodujo el exploit completo de C-1 contra producción** (a diferencia de la Sesión 027 en
+local): la tabla `clientes` está vacía, así que no hay ningún acueducto ni consecutivo real que
+mutar, y no se crean datos de prueba en la base de un cliente sin que se pida explícitamente. La
+evidencia de código fuente y privilegios, verificada tras cada aplicación, se consideró suficiente:
+es el mismo texto que superó la explotación completa en el entorno local de la Sesión 027.
+
+**Estado de la auditoría tras esta sesión: los 11 hallazgos corregidos en el repositorio (C-1, A-1,
+A-2, M-1, M-3, M-6, B-2, B-3, B-4, B-6) están ahora también aplicados en la base de producción real.**
+Siguen pendientes en el repositorio, sin cambios: M-2 (feature propia), M-4 (confirmar en DevTools),
+M-5 y B-1 (decisiones de producto de Mateo), B-5 (requiere `next@16`).
+
+**Pendiente para Mateo, no de código:**
+1. Activar la protección de contraseñas filtradas en el dashboard de Supabase Auth.
+2. Desplegar el Worker (`npm run deploy:produccion`, commit `f98850a`) para que la ruta
+   `POST /auth/login` empiece a usar `admin_login_estado`/`admin_login_registrar` — las funciones ya
+   existen en la base, pero el código del Worker que las invoca solo se publica al desplegar.
+3. Configurar el cron `undreocol-limpieza` para que invoque `purgar_intentos_login` (ya lo hace el
+   código de `cron/limpieza.ts`, commit `7760d66` — falta el despliegue).
+
+---
+
+
 ### 2026-09-07 — Sesión 029: cierre de hallazgos abiertos de la auditoría (M-3, B-3, B-6 + T-001)
 
 Continuación directa de la auditoría (Sesión 027) y de la feature 017 (Sesión 028). Se corrigen los
