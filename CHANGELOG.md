@@ -4,6 +4,57 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-08 — Sesión 031: feature 018, panel de plataforma
+
+**Qué es:** Mateo pidió crear un superadmin para poder dar de alta las credenciales de los
+acueductos. Al intentarlo se encontraron dos huecos reales: no existe ninguna pantalla para eso en
+`frontend/` (solo `crear_tenant_con_admin`, 001, pensada para que un usuario cree SU PROPIO
+acueducto), y `resolverClienteActivo()` no excluía la membresía `administrador` (`cliente_id NULL`)
+de "acueducto activo" — un superadmin puro caía en un `/app/dashboard` vacío. Se abrió la feature
+018 por SDD completo (`/specify` → `/plan` → `/tasks` → `/implement`, checkpoints aprobados por
+Mateo en cada fase, incluida la decisión §5.1: sin transacción atómica única entre `auth.users` y
+Postgres — el riesgo residual de un fallo a mitad del alta se acepta explícitamente a cambio de no
+usar `service_role` en la ruta, CLAUDE.md §12).
+
+**Bootstrap previo, por SQL manual (antes de que existiera el panel):** con autorización explícita
+de Mateo, se creó su propio superadmin en producción real (`undreocol-produccion`,
+`dutudjchhhmqadjowibj`) — `perfiles` + `membresias(rol='administrador', cliente_id=NULL)` para la
+cuenta `admin-prueba@undreocol.app`, verificada previamente contra `auth.users` (correo confirmado,
+`last_sign_in_at` real).
+
+**Implementado (T-001 a T-006), cada tarea con su propio commit y evidencia real:**
+
+- **T-001** — migración `20260919090000_panel-plataforma.sql`: política `perfiles_alta_plataforma`
+  (el único permiso que le faltaba al superadmin en las 4 tablas del alta) y dos funciones
+  `crear_acueducto_base`/`asignar_admin_acueducto`, **`security invoker`, no `definer`** — con la
+  política nueva, RLS ya autoriza todo lo que tocan, así que no hay bypass que auditar (lección de
+  C-1 llevada un paso más allá).
+- **T-002** — suite de aislamiento `903`: 6 pasos contra PostgreSQL real. Regresión completa desde
+  cero: 18/18 migraciones, 16/16 suites en verde.
+- **T-003** — `backend/src/lib/plataforma.ts`: `generarContrasenaTemporal`, `crearAcueductoBase`,
+  `signUpAdminAcueducto` (`crearClienteAnon`, nunca `service_role`), `asignarAdminAcueducto`.
+- **T-004** — fix de `resolverClienteActivo` (el bug real): excluye `cliente_id IS NULL` de
+  `lista`/`activo`, expone `esAdminPlataforma`.
+- **T-005** — `GET /plataforma`, `POST /plataforma/acueductos` (orden de 3 pasos que minimiza el
+  daño de un fallo a mitad de camino, plan §5.1), `GET /dashboard` con `esAdminPlataforma` en el 400.
+- **T-006** — frontend: `/plataforma` (lista + alta), `dashboard/page.tsx` redirige ahí en vez de a
+  `/onboarding` cuando corresponde, `plataforma-form.tsx` con `useHidratado()` (CLAUDE.md §7) y
+  muestra la contraseña temporal una sola vez.
+
+**Verificado (backend, real):** 206 tests unitarios en verde (19 archivos, 24 nuevos), `tsc`/`eslint`
+limpios, `wrangler deploy --dry-run` EXIT=0, 16 suites de aislamiento en verde contra PostgreSQL 16
+nativo. Cada tarea incluye la prueba de que sus tests SIRVEN (se rompe algo a propósito, cae el caso
+correcto, se restaura).
+
+**NO VERIFICADO — requiere Mateo:** `npm run build`/`npm run lint` del frontend (mismo bloqueo de
+`cdn.sheetjs.com` que 017); alta real de un acueducto contra el Worker desplegado + Supabase real;
+login del admin nuevo con la contraseña temporal, en navegador real; aplicar la migración
+`20260919090000_panel-plataforma.sql` a producción (pendiente de autorización expresa).
+
+**Fuera de alcance, a propósito:** invitación por correo (Opción A de la spec §0.3) queda para una
+feature 019 futura — decisión explícita de Mateo, para no bloquear el alta ya funcional con un
+flujo más grande.
+
 ### 2026-09-08 — Sesión 030: las 6 migraciones de seguridad, aplicadas a producción real
 
 **Qué es:** el conector MCP de Supabase quedó disponible en esta sesión. Mateo confirmó su

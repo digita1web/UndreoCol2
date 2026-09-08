@@ -53,6 +53,8 @@ En `specs/plantillas/`. Se copian al crear cada feature nueva.
 | 015 | qr-ocr-lector (identificación de contador por QR + lectura automática por OCR, ver `docs/ESPECIFICACION-FUNCIONAL.md §2.14.1`) | 004 | Pendiente — diferenciador tecnológico principal, requiere máximo rigor de precisión y confiabilidad |
 | 016 | limpieza-automatica  | 009 | Pendiente (Worker de limpieza completo, ver INFRAESTRUCTURA.md §9). La purga de los contadores de intentos de login ya la hace 017 |
 | 017 | rate-limit-login-admin (límite de intentos del login administrativo) | 001, 008 | **Implementada** — **PRERREQUISITO DE PRODUCCIÓN: va antes que 013-016 pese al número.** Nace del hallazgo A-2 (ALTO) de la auditoría pre-producción, no del roadmap original |
+| 018 | panel-plataforma (alta de acueductos por el superadmin, `/plataforma`) | 001 | **Implementada** — **PRERREQUISITO DE PRODUCCIÓN: va antes que 013-016 pese al número.** Sin esto, dar de alta un acueducto solo se puede hacer por SQL manual. No nace de un hallazgo de auditoría: nace de una petición directa de Mateo en sesión, más el bug de `resolverClienteActivo` encontrado al intentar cumplirla |
+| 019 | invitación por correo para el alta de acueductos (Opción A descartada en 018 §0.3) | 018 | Pendiente — mejora futura, sin fecha. El admin nuevo fijaría su propia contraseña al aceptar una invitación, en vez de recibir una temporal generada por el superadmin |
 
 ## Regla de git
 

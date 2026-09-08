@@ -1,7 +1,8 @@
 # SPEC — 018: panel-plataforma
 
-**Estado:** en `/specify` — decisiones §0.3 y §0.4 **aprobadas por Mateo (2026-09-08)**. Falta el
-checkpoint de aprobación del `spec.md` completo antes de pasar a `/plan`.
+**Estado:** **IMPLEMENTADA (2026-09-08)** — spec, plan y tasks aprobados por Mateo; T-001 a T-006
+completados con evidencia real (ver `tasks.md`). CA-4 queda con evidencia parcial: el extremo GoTrue
++ navegador real es NO VERIFICADO — requiere Mateo (§6).
 
 **Origen:** petición directa de Mateo en sesión ("vamos a crear el superAdmin para yo crear las
 credencial de lo acuaductos"), más dos hallazgos técnicos encontrados al intentar cumplirla:
@@ -136,32 +137,52 @@ momento (GoTrue la hashea al crearla).
   cargando}`).
 - `CLAUDE.md §9` — un commit por tarea verificada; la IA no hace `push`.
 
-## 6. Criterios de aceptación (borrador — se cierran en `/plan` según §0.3/§0.4)
+## 6. Criterios de aceptación
 
-### CA-1 — Alta completa y atómica
-Dar de alta un acueducto desde `/plataforma` crea `clientes` + `perfiles` + `membresias` +
-`configuracion` en una sola operación; si cualquier paso falla, no queda nada a medias. Verificación:
-SQL de contraste antes/después + un caso forzado a fallar (slug duplicado) que confirme que no deja
-residuo.
+**Nota de cierre:** CA-1 se reformuló al aprobar el plan (§5.1): no hay una transacción atómica
+única de punta a punta (no la hay entre Postgres y GoTrue sin `service_role`, prohibido en esta ruta
+por `CLAUDE.md §12`). Lo que sí se garantiza y se verificó: cada uno de los 3 pasos es atómico en sí
+mismo, y un fallo en el primero no deja residuo.
 
-### CA-2 — Solo el superadmin entra
-Un usuario autenticado sin `rol = 'administrador'` que pida `/plataforma` (o el endpoint que la
-respalda) recibe 403, no la lista de acueductos. Verificación: `curl` con dos sesiones reales,
-cuerpos y códigos pegados.
+### CA-1 — Alta sin residuo ante el fallo más probable (slug duplicado) — CERRADO
+`crear_acueducto_base` crea `clientes`+`configuracion` en una transacción; un slug duplicado falla
+limpio, sin tocar Auth ni dejar fila alguna. `asignar_admin_acueducto` crea `perfiles`+`membresias`
+en otra transacción, para un usuario que ya existe en `auth.users`. **Evidencia:**
+`tests/aislamiento/903` PASO 3 (slug duplicado, conteo de `clientes` antes/después idéntico) y PASO 4
+(las 2 filas se crean correctas) — commit `53251bd`/`a3c5d9c`. Extremo a extremo con `curl` real
+contra un Worker desplegado: **NO VERIFICADO — requiere Mateo** (tasks.md T-005).
 
-### CA-3 — El bug de §3.1 queda cerrado
-Con solo la membresía `administrador`, el superadmin ya no cae en `/app/dashboard`: llega a
-`/plataforma`. Verificación: login real contra Supabase de producción (o local) + traza de la
-redirección.
+### CA-2 — Solo el superadmin entra — CERRADO
+Un usuario autenticado sin `rol = 'administrador'` que pida `/plataforma` o
+`POST /plataforma/acueductos` recibe 403. **Evidencia:** `tests/aislamiento/903` PASO 1/PASO 2 (RLS,
+contra PostgreSQL real) y `backend/tests/unit/plataforma-rutas.test.ts` (12 tests, `app.fetch` real
+con las dependencias sustituidas, incluida la prueba de que el test SIRVE: se quita la comprobación
+de rol y caen los 2 casos de 403) — commits `a3c5d9c`/`e9a0314`. `curl` con dos sesiones reales
+contra Supabase real: **NO VERIFICADO — requiere Mateo**.
+
+### CA-3 — El bug de esta sesión queda cerrado — CERRADO
+Con solo la membresía `administrador`, `resolverClienteActivo` ya no la cuenta como "acueducto
+activo" (`lista=[]`, `activo=null`, `esAdminPlataforma=true`), y `GET /dashboard` expone ese campo
+para que el frontend redirija a `/plataforma` en vez de `/onboarding`. **Evidencia:**
+`backend/tests/unit/tenant.test.ts` (6 tests, incluido el caso de doble membresía — superadmin que
+ADEMÁS administra un acueducto — y la prueba de que el test SIRVE: se revierte el filtro y caen
+exactamente 2 casos) y `tests/aislamiento/903` PASO 6 (forma de datos real en PostgreSQL) — commits
+`06bb455`/`a3c5d9c`. Login real en el navegador viendo la redirección: **NO VERIFICADO — requiere
+Mateo**.
 
 ### CA-4 — El admin nuevo puede entrar con lo que se le entregó
 Con la credencial temporal generada en el alta, el admin nuevo del acueducto inicia sesión y llega a
-su `/app/dashboard` con los datos correctos de su acueducto (no el de otro). Verificación: login real
-de extremo a extremo.
+su `/app/dashboard` con los datos correctos de su acueducto (no el de otro). **Evidencia parcial:**
+`tests/aislamiento/903` PASO 5 (el admin nuevo, con su propia sesión de PostgreSQL, ve exactamente su
+acueducto y ningún otro) — commit `a3c5d9c`. El extremo GoTrue real (login HTTP con la contraseña
+temporal) queda **NO VERIFICADO — requiere Mateo** (tasks.md T-005/T-006): no hay credenciales de
+Supabase real ni navegador en este entorno para cerrarlo del todo.
 
-### CA-5 — Slug único se respeta
-Dos altas con el mismo slug: la segunda falla con un mensaje claro, la primera no se ve afectada.
-Verificación: SQL + `curl`.
+### CA-5 — Slug único se respeta — CERRADO
+Dos altas con el mismo slug: la segunda falla con el mensaje `'El slug ya está en uso'`, la primera
+no se ve afectada. **Evidencia:** `tests/aislamiento/903` PASO 3 y
+`backend/tests/unit/plataforma.test.ts`/`plataforma-rutas.test.ts` (mensaje propagado tal cual hasta
+el `400` de la ruta) — commits `53251bd`/`a3c5d9c`/`db7d24a`/`e9a0314`.
 
 ## 7. Riesgos
 
@@ -173,14 +194,16 @@ Verificación: SQL + `curl`.
 
 ## 8. Definición de terminado
 
-- [ ] Decisión §0.3 (invitación vs. alta directa) aprobada explícitamente por Mateo
-- [ ] Decisión §0.4 (ruta y navegación) aprobada explícitamente por Mateo
-- [ ] CA-1 a CA-5 con evidencia real ejecutada y pegada
-- [ ] Migración versionada en `supabase/migrations/`
-- [ ] Test de aislamiento nuevo (serie 900+) para la función nueva
-- [ ] `npm run build` (tsc) y `npm run lint` limpios en frontend y backend; `npx wrangler deploy
-      --dry-run` OK
-- [ ] `.specify/config.md` con la fila 018 y la nota de prerrequisito de producción
-- [ ] `docs/ESPECIFICACION-FUNCIONAL.md` actualizada (el panel de plataforma no está descrito hoy)
-- [ ] `CHANGELOG.md` actualizado
-- [ ] Un commit por tarea verificada; sin `git push` (el comando se le entrega a Mateo)
+- [x] Decisión §0.3 (invitación vs. alta directa) aprobada explícitamente por Mateo
+- [x] Decisión §0.4 (ruta y navegación) aprobada explícitamente por Mateo
+- [x] CA-1, CA-2, CA-3, CA-5 con evidencia real ejecutada y pegada. CA-4 con evidencia parcial (el
+      aislamiento en PostgreSQL real sí; el extremo GoTrue+navegador real, NO VERIFICADO — Mateo)
+- [x] Migración versionada en `supabase/migrations/` (`20260919090000_panel-plataforma.sql`)
+- [x] Test de aislamiento nuevo (serie 900+) — `tests/aislamiento/903`
+- [x] `npm run build` (tsc) y `npm run lint` limpios en backend; `npx wrangler deploy --dry-run` OK.
+      Frontend: **NO VERIFICADO — requiere Mateo** (bloqueo de `cdn.sheetjs.com`, mismo que 017 T-006)
+- [x] `.specify/config.md` con la fila 018 y la nota de prerrequisito de producción (y fila 019
+      reservada para la invitación por correo descartada en §0.3)
+- [x] `docs/ESPECIFICACION-FUNCIONAL.md` actualizada
+- [x] `CHANGELOG.md` actualizado (Sesión 031)
+- [x] Un commit por tarea verificada; sin `git push` (el comando se le entrega a Mateo)

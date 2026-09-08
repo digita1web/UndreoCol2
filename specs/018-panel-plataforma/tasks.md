@@ -74,10 +74,20 @@ psql "$DATABASE_URL" -c "select proname, prosecdef, proconfig, has_function_priv
 **Resultado esperado:** migración EXIT=0; `perfiles` tiene 3 políticas (`perfiles_lectura`,
 `perfiles_update_propio`, `perfiles_alta_plataforma` — esta última `INSERT`); las 2 funciones con
 `prosecdef = f` (invoker), `publico = f`, `anon = f`, `authenticated = t`.
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+Migración EXIT=0 sobre las 17 migraciones existentes desde cero (bootstrap con
+roles anon/authenticated/service_role + default privileges reales de Supabase).
+
+         polname          | polcmd
+perfiles_alta_plataforma  | a   (INSERT)
+perfiles_lectura          | r   (SELECT)
+perfiles_update_propio    | w   (UPDATE)
+
+         proname         | prosecdef | publico | anon | authenticated
+crear_acueducto_base     | f         | f       | f    | t
+asignar_admin_acueducto  | f         | f       | f    | t
 ```
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
@@ -105,10 +115,23 @@ for f in 001..012 900 901 902 903; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f
 **Prueba de que la suite sirve:** romper a propósito cada guarda (quitar la política nueva; usar
 `security definer` sin guarda equivalente; usar un slug repetido sin capturar la excepción) y
 confirmar que el paso correcto falla; restaurar y confirmar verde.
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+PANEL-PLATAFORMA-AISLAMIENTO OK
+
+Prueba de que la suite SIRVE:
+  A) política de INSERT abierta en perfiles (with check true)
+     -> PASO 1 FALLÓ: un admin_acueducto pudo insertar en perfiles
+  B) crear_acueducto_base sin capturar unique_violation
+     -> propaga el error real de Postgres, PASO 3 lo detecta y aborta
+  restaurada la función real -> PANEL-PLATAFORMA-AISLAMIENTO OK
+
+Regresión completa desde cero: 18/18 migraciones EXIT=0, 16/16 suites de
+aislamiento en verde (001-012, 900, 901, 902, 903), cero en rojo. Se
+descubrió y corrigió un hueco del bootstrap durante esta tarea: `authenticated`
+no tenía USAGE sobre el esquema `auth` ni EXECUTE sobre `auth.uid()` — sin eso
+PASO 6 fallaba con "permission denied for schema auth", no por un bug real.
 ```
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
@@ -135,10 +158,18 @@ npx wrangler deploy --dry-run -c wrangler.toml
 `generarContrasenaTemporal` sin colisiones en 1000 llamadas y sin caracteres ambiguos.
 **Prueba de que los tests sirven:** invertir el propagado-de-error a silencioso y confirmar que caen
 los tests que lo vigilan.
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+npx vitest run tests/unit/plataforma.test.ts -> 12 passed
+generarContrasenaTemporal: 200/200 sin 0/O/1/l/I, 1000/1000 sin colisión
+
+Prueba de que los tests SIRVEN: se sabotea crearAcueductoBase para que
+trague el error de la RPC en vez de lanzarlo -> 2 failed | 10 passed;
+restaurado -> 12 passed.
+
+Suite completa: 188 passed (17 archivos)
+npm run build (tsc) EXIT=0 · npm run lint EXIT=0 · wrangler dry-run EXIT=0
 ```
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
@@ -160,10 +191,23 @@ npx vitest run tests/unit/tenant.test.ts   # si no existe, se crea aquí: caso c
 npx vitest run && npm run build && npm run lint
 ```
 **Resultado esperado:** el caso nuevo en verde; suite completa sin regresión; tsc/lint EXIT=0.
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+npx vitest run tests/unit/tenant.test.ts -> 6 passed, incluido el caso de
+doble membresía (superadmin que ADEMÁS administra un acueducto -> ese
+acueducto es el activo, esAdminPlataforma true igual)
+
+Prueba de que los tests SIRVEN: se revierte el filtro de cliente_id NULL
+-> 2 failed | 4 passed, cayendo exactamente en el caso del bug real (la
+membresía de plataforma reaparece en `lista`); restaurado -> 6 passed.
+
+Suite completa: 194 passed (18 archivos)
+npm run build (tsc) EXIT=0 · npm run lint EXIT=0
+
+Confirmado sin tocar: index.ts:290 (GET /dashboard) y :329
+(requerirClienteActivo) desestructuran { activo, lista } y siguen
+compilando con el campo esAdminPlataforma añadido (aditivo).
 ```
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
@@ -192,10 +236,27 @@ npx wrangler deploy --dry-run -c wrangler.toml
 alta completa → 201 con `clienteId`/`contrasenaTemporal`; slug duplicado → 400 sin tocar Auth; fallo
 en `signUp` → 500 con el mensaje de "sin administrador"; `GET /dashboard` con solo membresía
 `administrador` → 400 con `esAdminPlataforma: true`. Suite completa sin regresión.
-**Estado:** Pendiente
+**Estado:** COMPLETADO (cableado verificado; el HTTP real contra Supabase queda pendiente, ver abajo)
 **Evidencia:**
 ```
-<salida real>
+npx vitest run tests/unit/plataforma-rutas.test.ts -> 12 passed:
+  · sin sesión -> 401 · sin membresía de plataforma -> 403 (las 2 rutas)
+  · GET /plataforma -> 200 con la lista
+  · body incompleto / slug con mayúsculas -> 400, no llama a nada
+  · alta completa -> 201 {clienteId, slug, correoAdmin, contrasenaTemporal},
+    orden ['crearAcueductoBase','signUp','asignar']
+  · slug duplicado -> 400, orden ['crearAcueductoBase'] (no llega a signUp)
+  · signUp falla -> 500 "sin administrador" + clienteId, orden sin 'asignar'
+  · asignar falla -> 500 "corrección manual" + clienteId + usuarioId
+  · GET /dashboard con solo membresía administrador -> 400 esAdminPlataforma:true
+  · GET /dashboard sin ninguna membresía -> 400 esAdminPlataforma:false
+
+Prueba de que los tests SIRVEN: se quita la comprobación de rol en
+requerirAdminPlataforma (deja pasar a cualquiera con sesión) -> 2 failed
+| 10 passed, cayendo justo en los dos casos de 403; restaurado -> 12 passed.
+
+Suite completa: 206 passed (19 archivos)
+npm run build (tsc) EXIT=0 · npm run lint EXIT=0 · wrangler dry-run EXIT=0
 ```
 **NO VERIFICADO — requiere validación manual de Mateo (con `wrangler dev`/Worker desplegado +
 Supabase real):**
@@ -230,10 +291,25 @@ tsc --noEmit --strict --lib ES2022,DOM --types node <archivos nuevos que sean TS
 ```
 **Resultado esperado:** `disabled={!hidratado || cargando}` presente; type-check estricto de lo que
 sea verificable aquí EXIT=0.
-**Estado:** Pendiente
+**Estado:** COMPLETADO con la misma limitación de entorno de 017 T-006 (abajo)
 **Evidencia:**
 ```
-<salida real>
+grep hidratado en components/plataforma-form.tsx:
+  import { useHidratado } from '@/lib/use-hidratado';
+  const hidratado = useHidratado();
+  <Button type="submit" disabled={!hidratado || cargando}>
+
+Los 12 formularios con onSubmit del proyecto usan useHidratado (12/12,
+antes de esta tarea eran 11 — el nuevo incluido).
+
+npm ci reconfirmado bloqueado por el mismo motivo que 017 T-006:
+  npm error code E403
+  npm error 403 403 Forbidden - GET https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+Sin node_modules no hay forma de type-checkear los .tsx nuevos de forma
+aislada (importan react/next/@/components-ui, no resuelven sin instalar).
+No se intentó un stub — lib/api.ts solo agrega dos wrappers triviales sobre
+`peticion()`, sin lógica nueva que valga la pena aislar (a diferencia de
+minutosParaReintentar en 017, que sí tenía ramas que probar).
 ```
 **NO VERIFICADO — `npm run build`/`npm run lint` del frontend, requiere Mateo** (mismo bloqueo de
 `cdn.sheetjs.com` documentado en 017 T-006).
@@ -256,10 +332,15 @@ misma sesión (antes de que existiera este panel), se documenta ese hecho aquí 
 trazabilidad, no como una tarea de esta feature.
 **Verificación:** revisión del diff completo + checklist de `CLAUDE.md §11` punto por punto.
 **Resultado esperado:** ningún punto de §11 sin marcar o sin justificar por qué no aplica.
-**Estado:** Pendiente
+**Estado:** COMPLETADO
 **Evidencia:**
 ```
-<salida real>
+docs actualizados: spec.md (CA-1 a CA-5 cerrados o con NO VERIFICADO
+explícito, checklist §8), docs/ESPECIFICACION-FUNCIONAL.md (párrafo del
+panel de plataforma bajo "Administrador"), .specify/config.md (fila 018
++ fila 019 reservada), CHANGELOG.md (Sesión 031), este tasks.md.
+
+Checklist CLAUDE.md §11 — ver más abajo en esta sección.
 ```
 **Commit:** se registra en la Bitácora de cierre (T-007)
 
@@ -269,20 +350,50 @@ trazabilidad, no como una tarea de esta feature.
 
 | Tarea | Commit | Estado |
 |---|---|---|
-| T-001 migración: política + 2 funciones | — | Pendiente |
-| T-002 suite de aislamiento 903 | — | Pendiente |
-| T-003 `lib/plataforma.ts` | — | Pendiente |
-| T-004 `lib/tenant.ts` (fix del bug) | — | Pendiente |
-| T-005 rutas `/dashboard`, `/plataforma` | — | Pendiente |
-| T-006 frontend `/plataforma` | — | Pendiente |
-| T-007 cierre | — | Pendiente |
+| T-001 migración: política + 2 funciones | `53251bd` | COMPLETADO |
+| T-002 suite de aislamiento 903 | `a3c5d9c` | COMPLETADO |
+| T-003 `lib/plataforma.ts` | `db7d24a` | COMPLETADO |
+| T-004 `lib/tenant.ts` (fix del bug) | `06bb455` | COMPLETADO |
+| T-005 rutas `/dashboard`, `/plataforma` | `e9a0314` | COMPLETADO (cableado; el HTTP real queda para Mateo) |
+| T-006 frontend `/plataforma` | `06de193` | COMPLETADO (build/lint del frontend imposibles aquí, ver T-006) |
+| T-007 cierre | este commit | COMPLETADO |
 
-### Pendiente de Mateo (se completa según avancen las tareas)
+### Checklist de `CLAUDE.md §11`
+
+- [x] Hace lo que dice el spec, ni más ni menos — alcance confirmado con Mateo: solo alta directa,
+      invitación por correo queda para 019
+- [ ] `npm run build` (frontend) — **NO VERIFICABLE en este contenedor** (bloqueo de
+      `cdn.sheetjs.com`, `npm ci` aborta con E403). Sí verificado: los 12/12 formularios con
+      `useHidratado`, incluido el nuevo
+- [x] `npx wrangler deploy --dry-run` (backend) — EXIT=0
+- [x] `npm run lint` backend — EXIT=0. Frontend: mismo bloqueo que el build
+- [x] Tests de cada tarea en verde, con la salida pegada — 206 passed (19 archivos), + suite 903
+      (16/16 en verde)
+- [x] Migración versionada + test de aislamiento en verde — `20260919090000_panel-plataforma.sql`,
+      `tests/aislamiento/903`, regresión 001-012/900/901/902/903 completa
+- [x] Si toca `core/`: no aplica — sin lógica de negocio/dinero en esta feature (plan §4)
+- [x] Evidencia pegada en la conversación y en este documento
+- [x] `CHANGELOG.md` actualizado (Sesión 031)
+- [x] Un commit por tarea verificada; sin `push` salvo autorización expresa (§9.1)
+
+### Desviaciones respecto del plan, todas señaladas en su commit
+
+1. **§5.1** — no hay transacción atómica única entre `auth.users` y Postgres; se acepta el riesgo
+   residual de un fallo a mitad del alta a cambio de no usar `service_role`. Aprobada por Mateo al
+   aprobar el plan, antes de `/tasks`.
+2. **spec CA-1** — se reformuló al aprobar el plan: de "una sola operación atómica" a "cada paso es
+   atómico en sí mismo, sin residuo ante el fallo más probable". Reflejado en `spec.md` §6.
+
+### Pendiente de Mateo
 
 1. Alta real de un acueducto vía `curl` contra el Worker desplegado + Supabase real (T-005).
-2. Login del admin nuevo con la contraseña temporal, confirmando `rol: 'admin_acueducto'` (T-005).
+2. Login del admin nuevo con la contraseña temporal, confirmando `rol: 'admin_acueducto'` (T-005,
+   cierra CA-4 del todo).
 3. `npm run build`/`npm run lint` del frontend en un entorno con acceso a `cdn.sheetjs.com` (T-006).
 4. Comprobación visual completa en navegador: superadmin → `/plataforma` → alta → login del admin
-   nuevo → su propio dashboard (T-006).
+   nuevo → su propio dashboard (T-006, cierra CA-3 y CA-4 del todo).
 5. Aplicar la migración `20260919090000_panel-plataforma.sql` a producción real — solo con
-   autorización expresa en el momento (§9.1), no automática.
+   autorización expresa en el momento (§9.1), no automática ni heredada de la Sesión 030.
+6. Desplegar el backend con esta feature (junto con el resto de commits pendientes en la rama,
+   incluido el fix de CORS de M-3) — requiere `npm run deploy:producción` desde una rama que ya los
+   tenga, hoy solo `claude/security-audit-production-9oez9y`.
