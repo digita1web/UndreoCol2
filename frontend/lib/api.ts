@@ -913,3 +913,40 @@ export function confirmarImportacion(
     body: JSON.stringify({ filasValidas, errores, nombreArchivo }),
   });
 }
+
+// --- Panel de plataforma (018) ----------------------------------------------
+// Solo para el superadmin (rol 'administrador'); el backend lo exige por RLS
+// y por requerirAdminPlataforma (index.ts), no solo aquí.
+
+export interface Acueducto {
+  id: string;
+  nombre: string;
+  slug: string;
+  fecha_alta: string;
+}
+
+export function listarAcueductos(): Promise<{ acueductos: Acueducto[] }> {
+  return peticion('/plataforma');
+}
+
+export interface DatosAltaAcueducto {
+  nombre: string;
+  slug: string;
+  nombreAdmin: string;
+  correoAdmin: string;
+}
+
+export interface RespuestaAltaAcueducto {
+  clienteId: string;
+  slug: string;
+  correoAdmin: string;
+  /** Se muestra UNA sola vez: el backend no la guarda en ningún lado. */
+  contrasenaTemporal: string;
+}
+
+export function crearAcueductoPlataforma(datos: DatosAltaAcueducto): Promise<RespuestaAltaAcueducto> {
+  return peticion('/plataforma/acueductos', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
