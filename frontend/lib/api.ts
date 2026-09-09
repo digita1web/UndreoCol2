@@ -1,8 +1,19 @@
 // Wrapper fetch hacia la API de Hono (backend/). Nunca importa `@supabase/*`
 // (CA-4) — todo pasa por aquí, con `credentials: 'include'` para la cookie
 // HttpOnly `uc_sesion_admin` que pone el backend (D-3 del plan).
-
-const URL_BASE_API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
+//
+// URL_BASE_API (020, proxy-cookies-mismo-origen): en producción NO se define
+// NEXT_PUBLIC_API_URL — el valor por defecto es la ruta relativa `/api`, que
+// intercepta `app/api/[...ruta]/route.ts` y reenvía por Service Binding al
+// Worker de la API. Es a propósito: si esto siguiera apuntando a la URL
+// absoluta `https://undreocol-api.undreocol.workers.dev`, el navegador vería
+// la cookie de sesión bajo ESE dominio, no bajo el del frontend —
+// workers.dev está en la Public Suffix List, son sitios distintos para
+// cookies, y el login nunca llevaría a ningún lado (bug real, corregido en
+// esta feature). En desarrollo local sí hay que definir `NEXT_PUBLIC_API_URL`
+// en `.env.local` apuntando a `wrangler dev` (ver `.env.example`) — ahí el
+// bug no existe (mismo host `localhost`, las cookies no distinguen puerto).
+const URL_BASE_API = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
 export interface SesionAdministrativa {
   tipo: 'administrativa';

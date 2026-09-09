@@ -172,15 +172,21 @@ bloque de entorno se habría creado un Worker NUEVO llamado `undreocol-api-produ
 leyendo el README que genera `--outdir`), y los bindings no se heredan del bloque raíz, así que se
 repiten los cuatro. **Al añadir un binding nuevo hay que añadirlo también en `[env.production]`.**
 
-**M-4 · Cookies `SameSite=Lax` con frontend y backend en sitios distintos.**
-`uc_sesion_admin` y `uc_sesion_suscriptor` son `SameSite=Lax`, y `frontend/lib/api.ts` llama a la API
-desde el navegador con `credentials: 'include'`. Si el frontend y el Worker quedan en dominios
-distintos —y `*.pages.dev` y `*.workers.dev` son sitios distintos, ambos están en la Public Suffix
-List— el navegador **no envía la cookie** en esas peticiones. Hay que verificar en producción real
-cómo está resuelto hoy. **Advertencia importante:** si se resuelve poniendo `SameSite=None`, se
-elimina la única defensa CSRF que tiene el sistema (no hay token CSRF en ninguna ruta) y **toda**
-petición POST autenticada pasa a ser falsificable desde cualquier sitio. En ese caso hace falta
-tokens CSRF antes, no después.
+**M-4 · Cookies `SameSite=Lax` con frontend y backend en sitios distintos. — EN CORRECCIÓN (feature
+020), NO CERRADO: falta la verificación real de Mateo (checklist `specs/020-.../plan.md §8`).**
+Se confirmó en producción real, con evidencia de Mateo (pestaña Network): `undreocol-
+frontend.undreocol.workers.dev` y `undreocol-api.undreocol.workers.dev` **son sitios distintos** —
+`workers.dev` está en la Public Suffix List, así que la cuenta (`undreocol`) no basta para
+compartir dominio registrable, cada Worker de la cuenta es su propio sitio. No era "probablemente ya
+no aplica" (así se dejó escrito por error en la Sesión 029, `CHANGELOG.md`): el login respondía `200`
+con `Set-Cookie` válido, pero la cookie quedaba bajo el dominio de la API y el frontend nunca la veía
+— el login nunca llevaba a ningún lado. **No se corrigió con `SameSite=None`** (la advertencia de CSRF
+de abajo sigue aplicando): se eligió la Opción B (proxy de mismo origen, `specs/020-proxy-
+cookies-mismo-origen/`) — el navegador deja de hablar directo con la API; el Worker del frontend
+reenvía por Service Binding, así que la cookie queda scopeada al dominio que el navegador visita.
+`SameSite=Lax` se mantiene sin cambios, y con él la única defensa CSRF del sistema. El código está
+escrito y commiteado; **pendiente el checklist real de Mateo (build, deploy, navegador) antes de
+marcar esto resuelto**.
 
 **M-5 · El registro es público y crear acueducto es gratis.**
 `POST /auth/registro` es abierto y `crear_tenant_con_admin()` está otorgada a `authenticated`:
