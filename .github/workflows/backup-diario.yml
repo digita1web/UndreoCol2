@@ -20,8 +20,12 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      # postgres:16-alpine (imagen contenedor) da pg_dump sin instalar nada en
-      # el runner (plan.md §6, tabla de dependencias de CI).
+      # postgres:17-alpine (imagen contenedor) da pg_dump sin instalar nada en
+      # el runner (plan.md §6, tabla de dependencias de CI). Antes era
+      # postgres:16-alpine — pg_dump 16 se niega a respaldar un servidor más
+      # nuevo que él mismo ("aborting because of server version mismatch");
+      # el proyecto real corre Postgres 17.6, confirmado ejecutando este
+      # workflow (Sesión 036).
       - name: Generar el dump con pg_dump
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -33,7 +37,7 @@ jobs:
           docker run --rm --network host \
             -v "${GITHUB_WORKSPACE}:/backup" \
             -e DATABASE_URL="$DATABASE_URL" \
-            postgres:16-alpine \
+            postgres:17-alpine \
             pg_dump "$DATABASE_URL" --format=custom --no-owner -f "/backup/${ARCHIVO}"
           gzip "${ARCHIVO}"
           echo "ARCHIVO=${ARCHIVO}.gz" >> "$GITHUB_ENV"
