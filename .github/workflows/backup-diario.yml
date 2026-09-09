@@ -30,8 +30,9 @@ jobs:
           FECHA=$(date -u +%Y%m%d)
           SHA_CORTO=$(echo "${GITHUB_SHA}" | cut -c1-7)
           ARCHIVO="undreocol-backup-${FECHA}-${SHA_CORTO}.sql"
-          docker run --rm \
+          docker run --rm --network host \
             -v "${GITHUB_WORKSPACE}:/backup" \
+            -e DATABASE_URL="$DATABASE_URL" \
             postgres:16-alpine \
             pg_dump "$DATABASE_URL" --format=custom --no-owner -f "/backup/${ARCHIVO}"
           gzip "${ARCHIVO}"

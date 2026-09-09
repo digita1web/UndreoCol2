@@ -4,6 +4,100 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-09 — Sesión 034: botón de cerrar sesión (021) + auditoría de hallazgos abiertos
+
+**Qué es:** al ver el panel de plataforma recién funcionando, Mateo notó que no hay forma de salir.
+Investigado antes de escribir código: `logout()` y `POST /auth/logout` ya existían y funcionaban,
+solo que ningún componente los llamaba — confirmado con `grep`, cero resultados. El portal del
+suscriptor **no tenía este problema**: `logoutPortal()` ya estaba conectado a un botón real en
+`app/portal/[slug]/page.tsx`, no se tocó.
+
+**Implementado por SDD completo** (`specs/021-cerrar-sesion-admin/`), spec→plan→tasks→implement con
+checkpoints aprobados:
+- `frontend/components/boton-salir.tsx` (nuevo): cliente, llama `logout()`, siempre termina en
+  `/login` aunque la petición al servidor falle.
+- `frontend/app/app/layout.tsx`: un solo lugar para las 8 páginas de `/app/*` (dashboard, catálogo,
+  cortes, facturación, lecturas, notificaciones, pagos, suscriptores).
+- `frontend/app/plataforma/page.tsx`: mismo componente, misma cookie (`uc_sesion_admin`).
+
+**Incidente durante la implementación, corregido de inmediato:** el primer despliegue de prueba se
+hizo con `npm run build` (que en este repo es solo `next build`, para chequeo de tipos) en vez de
+`npm run pages:build` (el build real de OpenNext/Cloudflare que genera `.open-next/worker.js`). El
+Worker quedó desincronizado de los assets nuevos y **el sitio completo respondió 404, incluido el
+login, por unos minutos**. Se reportó de inmediato y se corrigió redesplegando con el comando
+correcto — confirmado restaurado antes de seguir. Se documenta sin ocultar el error (CLAUDE.md §8).
+
+**Verificado con evidencia real contra producción** (`curl`, sesión real): botón presente en
+`/app/suscriptores` y `/plataforma`; flujo completo de salida confirmado —
+`POST /api/auth/logout` → `200`, petición posterior a un área protegida → `307` → `/login`.
+
+**Además, auditoría completa de lo pendiente** (a pedido de Mateo, "no quiero errores"), ahora
+posible ejecutar de verdad en este entorno (acceso real a la máquina de Mateo, sin el bloqueo de
+`cdn.sheetjs.com` de las sesiones anteriores):
+- `npm run build`/`npm run lint` del frontend: limpios, verificado real por primera vez.
+- Backend: 206 tests en verde, `wrangler deploy --dry-run` OK.
+- B-6 (cabeceras de seguridad): confirmado con `curl -I` real contra producción — ya no queda
+  "pendiente de verificar build".
+- Advisor de seguridad de Supabase: sin hallazgos nuevos.
+- **Sigue genuinamente abierto**, sin cambios esta sesión: M-2 (necesita su propia feature), M-5 y
+  B-1 (decisiones de producto), B-5 (exige subir a `next@16`), "leaked password protection" de
+  Supabase Auth (un toggle nunca activado). Ninguno es un bug activo — son alcance mayor o
+  decisiones que le corresponden a Mateo.
+
+### 2026-09-08/09 — Sesión 033: login funcionando de extremo a extremo en producción real
+
+**Qué es:** cierre real del incidente de la Sesión 032. Mateo desplegó el frontend con el código de
+020 y el login seguía sin funcionar — dos rondas más de errores reales, cada una diagnosticada con
+evidencia (no supuesta) y corregida:
+
+1. **`getCloudflareContext()` devuelve una `Promise`** en la versión instalada de
+   `@opennextjs/cloudflare` (1.20.5) — la guía general de OpenNext lo documenta como síncrono. Error
+   real de `next build` de Mateo: `Property 'env' does not exist on type 'Promise<...>'`. Fix: agregar
+   `await`.
+2. **El genérico de `getCloudflareContext()` no es el tipo del `env`** — es `CfProperties`
+   (propiedades de `request.cf`), confirmado leyendo la firma real instalada
+   (`node_modules/@opennextjs/cloudflare/dist/api/cloudflare-context.d.ts`, vía Mateo). El tipo de
+   `env` se toma solo, de la interfaz global `CloudflareEnv`. Fix: quitar el genérico incorrecto.
+3. **Bug real distinto, encontrado con `wrangler tail`:** `dashboard/page.tsx` y `plataforma/page.tsx`
+   (Server Components) tenían su propio respaldo hardcodeado a `http://localhost:8787` para cuando
+   `NEXT_PUBLIC_API_URL` no está definida — que es justo lo que pasa en producción a propósito desde
+   020 T-003. `lib/url-base-api-servidor.ts` (nuevo): resuelve la URL por el host de la propia
+   petición entrante en vez de asumir una fija.
+
+**El cambio de sesión que más costó diagnosticar:** después de corregir los tres puntos de arriba, el
+login seguía dando `500` ("No se pudo consultar usuarios_servicio"). Causa real, no relacionada con
+020: **el backend (`undreocol-api`) no se había vuelto a desplegar desde antes de que existiera la
+feature 018** — el código en el repositorio ya tenía el fix de `resolverClienteActivo` (018 T-004),
+pero el Worker en producción seguía corriendo la versión vieja, que sí contaba la membresía de
+plataforma como "acueducto activo". Encontrado comparando el código local contra el comportamiento
+real observado, no adivinado.
+
+**Cambio de entorno a mitad de la sesión:** esta conversación pasó de un contenedor en la nube (sin
+salida a `cdn.sheetjs.com` ni a `api.cloudflare.com`, así que nunca pudo compilar/desplegar el
+frontend) a ejecutarse directamente en la máquina de Mateo, con `wrangler` ya autenticado — desde ahí
+se pudo desplegar el backend directamente y correr `curl`/`wrangler tail` reales contra producción,
+en vez de depender de que Mateo copiara y pegara cada resultado.
+
+**Verificación real, contra producción, con `curl` (no en el navegador todavía en ese momento):**
+```
+POST https://undreocol-frontend.undreocol.workers.dev/api/auth/login
+  -> 200, Set-Cookie uc_sesion_admin bajo undreocol-frontend.undreocol.workers.dev (dominio correcto)
+GET  https://undreocol-frontend.undreocol.workers.dev/app/dashboard  (con la cookie)
+  -> 307 -> /plataforma
+GET  https://undreocol-frontend.undreocol.workers.dev/plataforma  (con la cookie)
+  -> 200, "Panel de plataforma" en el cuerpo
+```
+Confirmado también por Mateo en su navegador real, con captura de pantalla: el panel carga completo,
+formulario de alta y lista de acueductos incluidos.
+
+**Cierra:** M-4 (`docs/PLAN-PRODUCCION.md`, ahora RESUELTO de verdad, no "probablemente"); el
+bloqueador total de login que arrastraba la Sesión 032; deja al backend y al frontend desplegados con
+el código real de `main` (se hizo cherry-pick del último fix de 020 a `main`, que no había llegado ahí
+por el momento en que se abrió el PR de fusión).
+
+**Nota operativa para Mateo:** la contraseña de prueba de `mateo2026@gmail.com` quedó escrita en la
+conversación durante el diagnóstico — cámbiala.
+
 ### 2026-09-08 — Sesión 032: feature 020, proxy-cookies-mismo-origen (login roto en producción)
 
 **Qué es:** con 018 desplegado y la migración aplicada, Mateo probó el login real en producción y no
