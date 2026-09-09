@@ -35,8 +35,13 @@ export function LoginForm() {
             ? e.message
             : `Demasiados intentos. Vuelva a intentar en ${minutos} minuto${minutos === 1 ? '' : 's'}.`,
         );
+      } else if (e instanceof Error) {
+        // Ayuda de diagnóstico temporal: se incluye e.name (p. ej.
+        // "TypeError" en un fallo de red antes de llegar al servidor) para
+        // que el error real sea visible en pantalla sin abrir DevTools.
+        setError(`${e.name}: ${e.message}`);
       } else {
-        setError(e instanceof Error ? e.message : 'No se pudo iniciar sesión');
+        setError('No se pudo iniciar sesión (error desconocido, sin instancia de Error)');
       }
     } finally {
       setCargando(false);
@@ -69,7 +74,11 @@ export function LoginForm() {
           onChange={(e) => setPassword(e.target.value)}
         />
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <div className="rounded-md border-2 border-red-600 bg-red-50 p-3 text-sm font-medium text-red-700">
+          {error}
+        </div>
+      )}
       <Button type="submit" disabled={!hidratado || cargando}>
         {cargando ? 'Ingresando…' : 'Ingresar'}
       </Button>
