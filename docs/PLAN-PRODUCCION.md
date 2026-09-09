@@ -265,13 +265,19 @@ advertencias requieren CSS controlado por un atacante y aquí PostCSS solo proce
 proyecto en tiempo de compilación. Sin ruta de explotación en este sistema. `npm audit` del backend:
 **0 vulnerabilidades**.
 
-**B-6 · No había cabeceras de seguridad en el frontend. — RESUELTO (`4ab4200`), pendiente de verificar el build.** (`next.config.ts` estaba vacío): sin CSP, sin
+**B-6 · No había cabeceras de seguridad en el frontend. — RESUELTO Y VERIFICADO (`4ab4200`).** (`next.config.ts` estaba vacío): sin CSP, sin
 `X-Frame-Options`/`frame-ancestors`, sin `Referrer-Policy`. El panel administrativo se podía embeber
 en un iframe (clickjacking sobre un panel que anula facturas y cambia tarifas). *Resuelto:* las cinco
 cabeceras que no pueden romper una aplicación normal. **Deliberadamente NO se añadió una CSP
-completa** —una CSP mal ajustada rompe la aplicación en silencio y aquí no se puede ejecutar
-`next build`—; merece su propia tarea con el navegador delante. **Pendiente:** ejecutar
-`npm run build` antes de desplegar, y `curl -I` sobre la URL real después.
+completa** —una CSP mal ajustada rompe la aplicación en silencio—; merece su propia tarea con el
+navegador delante. **Verificado (Sesión 033), `curl -I` real contra producción:**
+```
+content-security-policy: frame-ancestors 'none'
+permissions-policy: camera=(), microphone=(), geolocation=()
+referrer-policy: strict-origin-when-cross-origin
+x-content-type-options: nosniff
+x-frame-options: DENY
+```
 
 ### Lo que la auditoría confirmó que está bien
 
