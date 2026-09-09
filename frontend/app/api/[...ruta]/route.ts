@@ -29,7 +29,14 @@ async function reenviar(request: Request): Promise<Response> {
   // getCloudflareContext() devuelve una Promise en @opennextjs/cloudflare
   // 1.20.5 (contrario a lo que documenta la guía general de bindings) — error
   // real de tipos, detectado por `next build` de Mateo, no supuesto.
-  const { env } = await getCloudflareContext<CloudflareEnv>();
+  //
+  // Sin genérico: el único parámetro de tipo de esta función es
+  // `CfProperties` (las propiedades de request.cf — país, colo, etc.), no el
+  // tipo de `env`. El tipo de `env` se toma automáticamente de la interfaz
+  // global `CloudflareEnv` declarada en cloudflare-env.d.ts (confirmado
+  // contra la firma real instalada: node_modules/@opennextjs/cloudflare/
+  // dist/api/cloudflare-context.d.ts).
+  const { env } = await getCloudflareContext();
   const entrante = new URL(request.url);
   const destino = new URL(
     entrante.pathname.replace(/^\/api/, '') + entrante.search,
