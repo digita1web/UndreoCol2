@@ -4,6 +4,35 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-09 — Sesión 036: despliegue automático a Cloudflare (022)
+
+**Qué es:** con el login funcionando de verdad (Sesión 035), Mateo pidió automatizar el despliegue —
+razonable: los dos incidentes reales de esta sesión (021, sitio en 404 por un comando de build
+equivocado; 035, un `.env.production` local invisible rompiendo el login por horas) solo pudieron
+pasar porque el despliegue era manual, desde una máquina con estado acumulado.
+
+**Implementado por SDD** (`specs/022-despliegue-automatico/`): dos workflows nuevos,
+`.github/workflows/deploy-backend.yml` y `deploy-frontend.yml`, disparados por push a `main` sobre
+sus respectivas carpetas. A pedido explícito de Mateo ("lo más robusto"), cada uno lleva capas extra
+más allá de lo mínimo:
+
+- Tests/build/lint bloquean el despliegue si fallan.
+- `wrangler deploy --dry-run` antes del despliegue real.
+- El frontend verifica que no exista un `.env.production` colado, y hace `grep` sobre el paquete
+  compilado buscando la URL absoluta vieja de la API — repite en CI, automáticamente, el diagnóstico
+  manual que encontró la causa raíz de la Sesión 035.
+- Smoke test post-despliegue: `/salud` (backend) y `/login` (frontend) deben responder `200`.
+
+**Hallazgo aparte, encontrado en el camino:** los secretos `CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID` y `SUPABASE_DB_URL` que `backup-diario.yml` lleva usando desde su creación
+**no existían realmente** en GitHub — ese workflow ha estado fallando en silencio todo este tiempo.
+Se crearon `CLOUDFLARE_API_TOKEN` (token nuevo, plantilla "Edit Cloudflare Workers") y
+`CLOUDFLARE_ACCOUNT_ID` — el backup debería quedar operativo también, pero le sigue faltando
+`SUPABASE_DB_URL`. Queda anotado para revisar aparte, fuera de esta feature.
+
+**Verificación real:** pendiente de que el primer push a `main` dispare cada workflow y termine en
+verde en la pestaña Actions de GitHub — no se puede simular útilmente en este entorno.
+
 ### 2026-09-09 — Sesión 035: causa raíz real del bucle de login — `.env.production` local
 
 **Qué es:** tras la Sesión 033 (login funcionando, confirmado por Mateo en su navegador), el login
