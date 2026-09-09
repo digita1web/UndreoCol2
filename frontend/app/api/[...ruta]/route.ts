@@ -26,7 +26,10 @@ export const dynamic = 'force-dynamic';
 const HOST_REFERENCIA = 'https://undreocol-api.undreocol.workers.dev';
 
 async function reenviar(request: Request): Promise<Response> {
-  const { env } = getCloudflareContext<CloudflareEnv>();
+  // getCloudflareContext() devuelve una Promise en @opennextjs/cloudflare
+  // 1.20.5 (contrario a lo que documenta la guía general de bindings) — error
+  // real de tipos, detectado por `next build` de Mateo, no supuesto.
+  const { env } = await getCloudflareContext<CloudflareEnv>();
   const entrante = new URL(request.url);
   const destino = new URL(
     entrante.pathname.replace(/^\/api/, '') + entrante.search,
