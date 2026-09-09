@@ -100,14 +100,17 @@ esos componentes empieza a encontrarla. **No se migran a Service Binding en esta
 
 ## 6. Criterios de aceptación
 
-### CA-1 — La cookie queda en el dominio del frontend
-Tras un login exitoso desde el navegador, DevTools → Application → Cookies muestra `uc_sesion_admin`
-bajo `undreocol-frontend.undreocol.workers.dev`, no bajo `undreocol-api...`. Verificación: captura
-de pantalla o descripción exacta de Mateo (no verificable desde este entorno, sin navegador).
+### CA-1 — La cookie queda en el dominio del frontend — CERRADO
+Tras un login exitoso, la cookie `uc_sesion_admin` queda bajo `undreocol-frontend.undreocol.workers.dev`,
+no bajo `undreocol-api...`. **Evidencia real** (Sesión 033, `curl -c` contra producción real):
+`Set-Cookie` recibido con dominio `undreocol-frontend.undreocol.workers.dev` (antes del fix, era
+`undreocol-api.undreocol.workers.dev`).
 
-### CA-2 — El login administrativo lleva al dashboard/plataforma
-Iniciar sesión desde `/login` navega correctamente a `/app/dashboard` o `/plataforma` según
-corresponda (018 CA-3), sin quedarse en `/login`. Verificación: prueba real de Mateo.
+### CA-2 — El login administrativo lleva al dashboard/plataforma — CERRADO
+Iniciar sesión navega correctamente a `/app/dashboard` o `/plataforma` según corresponda (018 CA-3),
+sin quedarse en `/login`. **Evidencia real** (Sesión 033): `curl` con la cookie de sesión contra
+`/app/dashboard` responde `307` → `/plataforma`; `/plataforma` responde `200` con "Panel de
+plataforma" en el cuerpo. Confirmado también por Mateo en su navegador real (captura de pantalla).
 
 ### CA-3 — El login del portal también queda arreglado
 El portal del suscriptor (008), que usa el mismo mecanismo, también funciona de extremo a extremo.
@@ -133,16 +136,16 @@ en el navegador, o `curl` contra el Worker desplegado si Mateo lo hace.
 
 ## 8. Definición de terminado
 
-- [ ] CA-1 a CA-3 y CA-5 con evidencia real de Mateo (requiere su navegador) — **PENDIENTE**, código
-      escrito y commiteado pero sin confirmar
+- [x] CA-1 y CA-2 con evidencia real (Sesión 033: `curl` contra producción + confirmación de Mateo
+      en navegador real)
+- [ ] CA-3 (portal del suscriptor) y CA-5 (descarga de PDF) — **siguen pendientes**, no probados
+      todavía
 - [x] CA-4 declarado NO VERIFICADO con pasos exactos, no se puede verificar aquí
 - [x] `frontend/wrangler.toml` con el Service Binding versionado
 - [x] `.specify/config.md` con la fila 020, prerrequisito de producción
-- [x] `docs/PLAN-PRODUCCION.md` actualizado: M-4 marcado "en corrección, no cerrado" (era una
-      afirmación equivocada de la Sesión 029, no un hallazgo cerrado)
-- [x] `CHANGELOG.md` actualizado (Sesión 032)
+- [x] `docs/PLAN-PRODUCCION.md` actualizado: M-4 **RESUELTO**, con evidencia real (Sesión 033)
+- [x] `CHANGELOG.md` actualizado (Sesiones 032 y 033)
 - [x] Un commit por tarea verificada; sin `git push` (el comando se le entrega a Mateo)
 
-**Esta feature NO se cierra como "terminada" hasta que Mateo confirme el checklist de CA-1 a CA-3 y
-CA-5.** Lo que sí está: el código escrito, siguiendo los patrones documentados oficiales, con toda la
-verificación que este entorno permite.
+**El bloqueador de producción (login administrativo) queda cerrado.** Quedan CA-3 y CA-5 sin probar
+— no bloquean nada hoy, pero la feature no se marca 100% terminada hasta confirmarlos.

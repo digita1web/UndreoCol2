@@ -172,8 +172,8 @@ bloque de entorno se habría creado un Worker NUEVO llamado `undreocol-api-produ
 leyendo el README que genera `--outdir`), y los bindings no se heredan del bloque raíz, así que se
 repiten los cuatro. **Al añadir un binding nuevo hay que añadirlo también en `[env.production]`.**
 
-**M-4 · Cookies `SameSite=Lax` con frontend y backend en sitios distintos. — EN CORRECCIÓN (feature
-020), NO CERRADO: falta la verificación real de Mateo (checklist `specs/020-.../plan.md §8`).**
+**M-4 · Cookies `SameSite=Lax` con frontend y backend en sitios distintos. — RESUELTO (feature 020),
+verificado en producción real.**
 Se confirmó en producción real, con evidencia de Mateo (pestaña Network): `undreocol-
 frontend.undreocol.workers.dev` y `undreocol-api.undreocol.workers.dev` **son sitios distintos** —
 `workers.dev` está en la Public Suffix List, así que la cuenta (`undreocol`) no basta para
@@ -184,9 +184,18 @@ con `Set-Cookie` válido, pero la cookie quedaba bajo el dominio de la API y el 
 de abajo sigue aplicando): se eligió la Opción B (proxy de mismo origen, `specs/020-proxy-
 cookies-mismo-origen/`) — el navegador deja de hablar directo con la API; el Worker del frontend
 reenvía por Service Binding, así que la cookie queda scopeada al dominio que el navegador visita.
-`SameSite=Lax` se mantiene sin cambios, y con él la única defensa CSRF del sistema. El código está
-escrito y commiteado; **pendiente el checklist real de Mateo (build, deploy, navegador) antes de
-marcar esto resuelto**.
+`SameSite=Lax` se mantiene sin cambios, y con él la única defensa CSRF del sistema.
+
+**Verificación real, Sesión 032/033, contra producción:** con el backend Y el frontend desplegados
+desde código actualizado (el backend llevaba días sin redesplegarse — causa de una segunda ronda de
+errores, ver CHANGELOG), `curl` real con cookie guardada:
+```
+POST /api/auth/login  -> 200, Set-Cookie bajo undreocol-frontend.undreocol.workers.dev (antes: bajo
+                          undreocol-api.undreocol.workers.dev)
+GET  /app/dashboard    -> 307 -> /plataforma (esAdminPlataforma=true, cuenta superadmin sin acueducto)
+GET  /plataforma       -> 200, "Panel de plataforma" en el cuerpo
+```
+Confirmado también visualmente por Mateo en su navegador real.
 
 **M-5 · El registro es público y crear acueducto es gratis.**
 `POST /auth/registro` es abierto y `crear_tenant_con_admin()` está otorgada a `authenticated`:
