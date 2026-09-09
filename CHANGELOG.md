@@ -4,6 +4,46 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-09 — Sesión 034: botón de cerrar sesión (021) + auditoría de hallazgos abiertos
+
+**Qué es:** al ver el panel de plataforma recién funcionando, Mateo notó que no hay forma de salir.
+Investigado antes de escribir código: `logout()` y `POST /auth/logout` ya existían y funcionaban,
+solo que ningún componente los llamaba — confirmado con `grep`, cero resultados. El portal del
+suscriptor **no tenía este problema**: `logoutPortal()` ya estaba conectado a un botón real en
+`app/portal/[slug]/page.tsx`, no se tocó.
+
+**Implementado por SDD completo** (`specs/021-cerrar-sesion-admin/`), spec→plan→tasks→implement con
+checkpoints aprobados:
+- `frontend/components/boton-salir.tsx` (nuevo): cliente, llama `logout()`, siempre termina en
+  `/login` aunque la petición al servidor falle.
+- `frontend/app/app/layout.tsx`: un solo lugar para las 8 páginas de `/app/*` (dashboard, catálogo,
+  cortes, facturación, lecturas, notificaciones, pagos, suscriptores).
+- `frontend/app/plataforma/page.tsx`: mismo componente, misma cookie (`uc_sesion_admin`).
+
+**Incidente durante la implementación, corregido de inmediato:** el primer despliegue de prueba se
+hizo con `npm run build` (que en este repo es solo `next build`, para chequeo de tipos) en vez de
+`npm run pages:build` (el build real de OpenNext/Cloudflare que genera `.open-next/worker.js`). El
+Worker quedó desincronizado de los assets nuevos y **el sitio completo respondió 404, incluido el
+login, por unos minutos**. Se reportó de inmediato y se corrigió redesplegando con el comando
+correcto — confirmado restaurado antes de seguir. Se documenta sin ocultar el error (CLAUDE.md §8).
+
+**Verificado con evidencia real contra producción** (`curl`, sesión real): botón presente en
+`/app/suscriptores` y `/plataforma`; flujo completo de salida confirmado —
+`POST /api/auth/logout` → `200`, petición posterior a un área protegida → `307` → `/login`.
+
+**Además, auditoría completa de lo pendiente** (a pedido de Mateo, "no quiero errores"), ahora
+posible ejecutar de verdad en este entorno (acceso real a la máquina de Mateo, sin el bloqueo de
+`cdn.sheetjs.com` de las sesiones anteriores):
+- `npm run build`/`npm run lint` del frontend: limpios, verificado real por primera vez.
+- Backend: 206 tests en verde, `wrangler deploy --dry-run` OK.
+- B-6 (cabeceras de seguridad): confirmado con `curl -I` real contra producción — ya no queda
+  "pendiente de verificar build".
+- Advisor de seguridad de Supabase: sin hallazgos nuevos.
+- **Sigue genuinamente abierto**, sin cambios esta sesión: M-2 (necesita su propia feature), M-5 y
+  B-1 (decisiones de producto), B-5 (exige subir a `next@16`), "leaked password protection" de
+  Supabase Auth (un toggle nunca activado). Ninguno es un bug activo — son alcance mayor o
+  decisiones que le corresponden a Mateo.
+
 ### 2026-09-08/09 — Sesión 033: login funcionando de extremo a extremo en producción real
 
 **Qué es:** cierre real del incidente de la Sesión 032. Mateo desplegó el frontend con el código de
