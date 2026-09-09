@@ -5,6 +5,7 @@ import {
   DashboardIndicadores,
   type IndicadoresDashboard,
 } from '@/components/indicadores-dashboard';
+import { urlBaseApiServidor } from '@/lib/url-base-api-servidor';
 
 // Server component: llama a GET /dashboard reenviando la cookie de sesión
 // administrativa (uc_sesion_admin) — un fetch de servidor no incluye
@@ -20,7 +21,10 @@ import {
 // /dashboard responde 401 y esta página redirige a /login pese a que el login
 // fue exitoso y la cookie del navegador es válida (bug real, confirmado con
 // curl: mismo valor crudo → 200, mismo valor ya decodificado → 401).
-const URL_BASE_API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
+//
+// La URL base (lib/url-base-api-servidor.ts) ya no es una constante fija:
+// en producción NEXT_PUBLIC_API_URL se deja sin definir a propósito (020), así
+// que se resuelve por petición contra el propio host del proxy /api.
 const NOMBRE_COOKIE_SESION = 'uc_sesion_admin';
 
 interface ClienteActivo {
@@ -40,7 +44,7 @@ async function obtenerDashboard(): Promise<RespuestaDashboard> {
   const cookieSesion = almacenCookies.get(NOMBRE_COOKIE_SESION);
   if (!cookieSesion) redirect('/login');
 
-  const respuesta = await fetch(`${URL_BASE_API}/dashboard`, {
+  const respuesta = await fetch(`${await urlBaseApiServidor()}/dashboard`, {
     headers: { Cookie: `${NOMBRE_COOKIE_SESION}=${encodeURIComponent(cookieSesion.value)}` },
     cache: 'no-store',
   });
@@ -76,7 +80,7 @@ async function obtenerIndicadores(): Promise<IndicadoresDashboard> {
   const cookieSesion = almacenCookies.get(NOMBRE_COOKIE_SESION);
   if (!cookieSesion) redirect('/login');
 
-  const respuesta = await fetch(`${URL_BASE_API}/dashboard/indicadores`, {
+  const respuesta = await fetch(`${await urlBaseApiServidor()}/dashboard/indicadores`, {
     headers: { Cookie: `${NOMBRE_COOKIE_SESION}=${encodeURIComponent(cookieSesion.value)}` },
     cache: 'no-store',
   });

@@ -1,12 +1,13 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { PlataformaForm } from '@/components/plataforma-form';
+import { urlBaseApiServidor } from '@/lib/url-base-api-servidor';
 
 // Server component, mismo patrón que frontend/app/app/dashboard/page.tsx: lee
 // la cookie de sesión administrativa y reenvía el header Cookie a mano (un
 // fetch de servidor no incluye las cookies del navegador). Ver el comentario
-// de dashboard/page.tsx para el porqué de encodeURIComponent.
-const URL_BASE_API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
+// de dashboard/page.tsx para el porqué de encodeURIComponent, y
+// lib/url-base-api-servidor.ts para el porqué la URL base ya no es constante.
 const NOMBRE_COOKIE_SESION = 'uc_sesion_admin';
 
 interface Acueducto {
@@ -26,7 +27,7 @@ async function obtenerAcueductos(): Promise<RespuestaPlataforma> {
   const cookieSesion = almacenCookies.get(NOMBRE_COOKIE_SESION);
   if (!cookieSesion) redirect('/login');
 
-  const respuesta = await fetch(`${URL_BASE_API}/plataforma`, {
+  const respuesta = await fetch(`${await urlBaseApiServidor()}/plataforma`, {
     headers: { Cookie: `${NOMBRE_COOKIE_SESION}=${encodeURIComponent(cookieSesion.value)}` },
     cache: 'no-store',
   });
