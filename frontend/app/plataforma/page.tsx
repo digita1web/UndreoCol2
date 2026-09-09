@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { PlataformaForm } from '@/components/plataforma-form';
 import { urlBaseApiServidor } from '@/lib/url-base-api-servidor';
+import { BotonSalir } from '@/components/boton-salir';
 
 // Server component, mismo patrón que frontend/app/app/dashboard/page.tsx: lee
 // la cookie de sesión administrativa y reenvía el header Cookie a mano (un
@@ -64,7 +65,10 @@ export default async function PlataformaPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 p-8">
-      <h1 className="text-2xl font-semibold">Panel de plataforma</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Panel de plataforma</h1>
+        <BotonSalir />
+      </div>
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Dar de alta un acueducto</h2>
