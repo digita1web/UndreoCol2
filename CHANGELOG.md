@@ -4,6 +4,56 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-09 — Sesión 035: causa raíz real del bucle de login — `.env.production` local
+
+**Qué es:** tras la Sesión 033 (login funcionando, confirmado por Mateo en su navegador), el login
+volvió a fallar para Mateo en producción — "carga y devuelve al login". Horas de diagnóstico
+descartando, uno por uno, con evidencia real: el botón de salir (021, revertido temporalmente y
+confirmado que el fallo persistía sin él); caché regional de Cloudflare (`?v=1` no cambió nada);
+antivirus (Mateo confirmó que no tiene ninguno); Service Worker (no existe en el proyecto); límite de
+intentos de login (verificado en la base real, `intentos: 0`); despliegue desactualizado (`wrangler
+deployments list` mostraba siempre el último build como el activo); un commit inventado por otra IA
+consultada en paralelo (no existía en el historial real del repo, y su conclusión —falta de CI/CD—
+tampoco aplicaba, porque el despliegue manual sí estaba al día).
+
+**Causa real, encontrada revisando la configuración de cookies de Brave con Mateo** (Configuración →
+Privacidad y seguridad → Configuración de escudos y sitio → Contenido → Bloquear cookies: "se
+bloquean cookies de terceros", el valor por defecto en navegadores modernos). Eso hizo sospechar que
+el navegador estaba llamando a la API cruzando de dominio — lo que llevó a revisar si `lib/api.ts`
+realmente estaba usando la ruta relativa `/api` en el paquete compilado. Encontrado:
+`frontend/.env.production` **existía en el disco de la máquina de Mateo**, con
+
+```
+NEXT_PUBLIC_API_URL=https://undreocol-api.undreocol.workers.dev
+```
+
+Ese archivo está en `.gitignore` (`frontend/.gitignore:6`), así que **nunca apareció en ninguna
+revisión de código ni en `git log`** — invisible por diseño, pero real en el filesystem. Next.js lo
+carga automáticamente en todo `next build`/`pages:build`, sin aviso, y esa variable sobrescribe
+exactamente el mecanismo del proxy de la feature 020: con ella definida, el navegador volvía a
+llamar directo a `undreocol-api.undreocol.workers.dev` (cruzando de dominio) en vez de `/api/...`
+— la cookie de sesión quedaba de tercero, y Brave (con su bloqueo de cookies de terceros activado por
+defecto) la descartaba. Coincide con la toda la evidencia observada: fallaba en todos los navegadores
+y en el teléfono (todos con bloqueo de terceros por defecto hoy), nunca se veía la petición de login
+llegar al servidor **por el proxy** (sí llegaba, pero a la ruta vieja, cruzando de dominio — que
+nunca se estuvo mirando en `wrangler tail`, filtrado sin querer por buscar solo `/api/auth/login`).
+
+**Por qué mis pruebas con `curl` nunca lo detectaron:** probaban la ruta `/api/auth/login` del proxy
+directamente, a mano — eso demostraba que el proxy en sí funcionaba, pero nunca verificaba qué URL
+llamaba realmente el paquete de JavaScript que se le entrega al navegador. Lección: verificar el
+código fuente y el comportamiento del servidor no sustituye inspeccionar el artefacto compilado real
+cuando hay una variable de entorno de por medio.
+
+**Corrección:** se borró `frontend/.env.production`. Verificado contra el paquete desplegado real
+(no solo local): `grep` sobre el chunk JS de `/login` servido en producción — cero referencias a la
+URL absoluta de la API. `.env.example` actualizado con una advertencia explícita para que esto no
+vuelva a pasar.
+
+**Además, en el camino:** se mejoró la visibilidad de errores en `login-form.tsx` (caja roja grande
+con `e.name` y `e.message`, en vez de una línea pequeña) — queda como mejora permanente aunque no
+haya sido la causa de este incidente, para que el próximo error real sea imposible de no ver sin
+DevTools.
+
 ### 2026-09-09 — Sesión 034: botón de cerrar sesión (021) + auditoría de hallazgos abiertos
 
 **Qué es:** al ver el panel de plataforma recién funcionando, Mateo notó que no hay forma de salir.
