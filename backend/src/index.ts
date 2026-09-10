@@ -313,15 +313,18 @@ app.get('/dashboard', async (c) => {
     .select('nombre')
     .eq('id', sesion.perfilId)
     .maybeSingle();
-  const { count, error } = await supabase
-    .from('usuarios_servicio')
-    .select('id', { count: 'exact', head: true })
-    .eq('cliente_id', activo.clienteId);
+  // 024 le quitó a `lector` el SELECT directo sobre usuarios_servicio (RLS);
+  // usuarios_servicio_lector() sigue accesible a cualquier rol del acueducto
+  // (revalida pertenencia, no rol — igual que tarifa_vigente, B-3), así que
+  // sirve para este conteo sin depender de qué rol esté mirando el dashboard.
+  const { data: usuariosServicio, error } = await supabase.rpc('usuarios_servicio_lector', {
+    p_cliente_id: activo.clienteId,
+  });
   if (error) return c.json({ error: 'No se pudo consultar usuarios_servicio' }, 500);
   return c.json({
     cliente: activo,
     perfil: { id: sesion.perfilId, email: sesion.email, nombre: (perfil as { nombre?: string } | null)?.nombre ?? sesion.email },
-    conteoUsuariosServicio: count ?? 0,
+    conteoUsuariosServicio: usuariosServicio?.length ?? 0,
   });
 });
 
