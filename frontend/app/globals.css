@@ -14,6 +14,21 @@
     --muted-foreground: 215.4 16.3% 46.9%;
     --border: 214.3 31.8% 91.4%;
     --radius: 0.5rem;
+
+    /* 026: tokens nuevos, agregados a los de arriba — ningún componente
+       existente los usa todavía. --accent es el mismo azul que ya es el
+       acento real de la app (Tailwind blue-600), así que nada cambia de
+       color hasta que una pantalla se re-vista a propósito. */
+    --accent: #2563eb;
+    --accent-soft: #eff6ff;
+    --success: #15803d;
+    --success-soft: #f0fdf4;
+    --warning: #b45309;
+    --warning-soft: #fffbeb;
+    --danger: #b91c1c;
+    --danger-soft: #fef2f2;
+    --info: #0369a1;
+    --info-soft: #f0f9ff;
   }
 
   * {

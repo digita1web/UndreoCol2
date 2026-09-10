@@ -10,7 +10,10 @@ Una tarea = un commit. Sin evidencia no hay commit. Los hashes van en la Bitáco
 `--info`/`-soft` sin tocar los tokens existentes de shadcn; los expone como utilidades de Tailwind.
 **Verificación:** `cd frontend && npm run build` (nada debería cambiar de color todavía — los
 tokens nuevos no los usa ningún componente aún)
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:** `npm run build` → 18/18 páginas, sin errores. `.next` limpiado y `next dev`
+reiniciado después (misma rutina de las sesiones anteriores).
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-002 — `badge.tsx` y `kpi-card.tsx`
 **Archivos:** `frontend/components/ui/badge.tsx`, `frontend/components/ui/kpi-card.tsx`
