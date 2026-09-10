@@ -1,0 +1,177 @@
+# TASKS — 023: personalizacion-factura
+
+**Plan aprobado:** 2026-09-09
+
+Una tarea = un commit. Sin evidencia no hay commit.
+
+## T-001 — Migración: columna, RLS por fila y por columna, función del portal
+**Archivos:** `supabase/migrations/20260920090000_personalizacion-factura.sql`
+**Hace:** agrega `clientes.color_acento` (default `#14408C`, `CHECK` de formato hex); política
+`clientes_color_acento` (`UPDATE`, `es_admin_de(id)`); `revoke update on clientes from
+authenticated` + `grant update (color_acento)`; `create or replace function
+portal_factura_completa(...)` con `color_acento` en el bloque `acueducto`.
+**Verificación:**
+```
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260920090000_personalizacion-factura.sql
+psql "$DATABASE_URL" -c "select color_acento from clientes limit 3;"
+psql "$DATABASE_URL" -c "select has_column_privilege('authenticated','clientes','color_acento','UPDATE') as puede_color, has_column_privilege('authenticated','clientes','plan_id','UPDATE') as puede_plan;"
+```
+**Resultado esperado:** migración aplica sin error; `color_acento` = `#14408C` en filas existentes;
+`puede_color = t`, `puede_plan = f`.
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-002 — `core/color.ts`: validación y conversión, con tests
+**Archivos:** `backend/src/core/color.ts`, `backend/src/core/color.test.ts`
+**Hace:** `esColorHexValido` y `hexARgb01`, puras, sin dependencias.
+**Verificación:** `cd backend && npx vitest run color`
+**Resultado esperado:** todos los casos en verde, incluido que `hexARgb01('#14408C')` da
+`{r:0.0784…, g:0.2510…, b:0.5490…}` (ida y vuelta contra el `rgb(0.08,0.25,0.55)` actual, con la
+tolerancia de redondeo de 8 bits por canal — CA-1).
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-003 — `factura-pdf.ts` usa el color del acueducto
+**Archivos:** `backend/src/lib/factura-pdf.ts`, `backend/src/lib/factura-pdf.test.ts`
+**Hace:** `DatosAcueductoPdf.colorAcento: string`; `colorAcento` fijo se reemplaza por
+`hexARgb01(acueducto.colorAcento)`. Test nuevo: dos colores distintos → bytes de PDF distintos.
+**Verificación:** `cd backend && npx vitest run factura-pdf`
+**Resultado esperado:** tests existentes siguen en verde + el caso nuevo pasa.
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-004 — `lib/portal.ts` propaga el color al PDF del portal
+**Archivos:** `backend/src/lib/portal.ts`
+**Hace:** el mapeo de `completa.acueducto` a `DatosAcueductoPdf` incluye `colorAcento` desde
+`color_acento` (ya presente en el JSON de `portal_factura_completa` tras T-001).
+**Verificación:** `cd backend && npx vitest run portal`
+**Resultado esperado:** tests existentes en verde (ninguno debería requerir cambio, solo el tipo).
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-005 — Rutas `GET /acueducto` y `PATCH /acueducto/color`
+**Archivos:** `backend/src/index.ts`
+**Hace:** `GET /acueducto` (cualquier rol del cliente, vía `requerirClienteActivo`) devuelve datos
+de solo lectura + `color_acento`; `PATCH /acueducto/color` exige `ctx.rol === 'admin_acueducto'`
+(403 explícito si no, mismo patrón que `GET /dashboard/indicadores`), valida con
+`esColorHexValido` antes de tocar la base (400 si inválido). Las rutas `GET /facturas/:id/pdf` y
+`GET /portal/facturas/:id/pdf` agregan `color_acento` a la selección/objeto que ya arman.
+**Verificación:**
+```
+cd backend && npx vitest run
+npx wrangler dev --port 8787 &  # + curl real: GET/PATCH /acueducto con sesión admin_acueducto y con lector
+```
+**Resultado esperado:** 206+ tests unitarios en verde; con `lector`, `PATCH /acueducto/color` → 403;
+con `admin_acueducto` y un hex inválido → 400; con hex válido → 200 y el cambio persiste
+(`GET /acueducto` posterior lo confirma).
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-006 — Test de aislamiento 013
+**Archivos:** `tests/aislamiento/013_personalizacion_factura_aislamiento.sql`
+**Hace:** contra PostgreSQL real: (1) admin de A cambia el color de A → OK; (2) admin de A
+intenta cambiar el color de B → 0 filas; (3) admin de A intenta, en la misma actualización,
+tocar `plan_id`/`estado_cuenta`/`slug` de su propia fila → falla por el `GRANT` de columna;
+(4) `lector` de A intenta `UPDATE` sobre `color_acento` de A → falla.
+**Verificación:** `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/013_personalizacion_factura_aislamiento.sql`
+**Resultado esperado:** los 4 pasos verifican lo esperado (incluida la prueba de que el test SIRVE:
+se relaja algo a propósito y el paso correspondiente cae, luego se restaura).
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-007 — Frontend: cliente de la API (`lib/api.ts`)
+**Archivos:** `frontend/lib/api.ts`
+**Hace:** tipo `Acueducto`, `obtenerAcueducto()`, `actualizarColorAcentoAcueducto(hex: string)`.
+**Verificación:** `cd frontend && npx tsc --noEmit`
+**Resultado esperado:** sin errores de tipos.
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-008 — Frontend: pantalla `/app/configuracion`
+**Archivos:** `frontend/app/app/configuracion/page.tsx`
+**Hace:** datos de solo lectura del acueducto + `<input type="color">` para `color_acento` con
+vista previa en vivo (mismo layout del encabezado de la factura); `useHidratado()` en el submit
+(CLAUDE.md §7); si la API responde 403 (rol `lector`), muestra "No autorizado" explícito, mismo
+patrón que `/app/dashboard`.
+**Verificación:** `cd frontend && npm run build && npm run lint`
+**Resultado esperado:** build y lint limpios, sin warnings de TypeScript.
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-009 — Frontend: encabezado del acueducto en la vista de impresión
+**Archivos:** `frontend/app/app/facturacion/[facturaId]/page.tsx`
+**Hace:** llama a `obtenerAcueducto()`; agrega el encabezado (logo si existe, nombre, NIT,
+municipio, teléfono, dirección) con el color de acento en el nombre y en el TOTAL — cierra CA-8 (el
+hueco de 006). El resto de la vista no cambia de color.
+**Verificación:** `cd frontend && npm run build && npm run lint`
+**Resultado esperado:** build y lint limpios; verificación manual con `wrangler dev` + `next dev`
+(como en la sesión de portal de punta a punta): `GET /app/facturacion/:id` con sesión real muestra
+el encabezado.
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-010 — Frontend: enlace desde el dashboard
+**Archivos:** `frontend/app/app/dashboard/page.tsx`
+**Hace:** enlace a `/app/configuracion`, condicionado a `datos.cliente.rol === 'admin_acueducto'`
+(mismo bloque donde ya está el enlace a `/app/lecturas`) — el `lector` no lo ve.
+**Verificación:** `cd frontend && npm run build && npm run lint`
+**Resultado esperado:** limpio; verificación manual: con sesión de `lector`, el enlace no aparece.
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
+
+## T-011 — Cierre: CHANGELOG y verificación final completa
+**Archivos:** `CHANGELOG.md`
+**Hace:** entrada de la sesión con lo implementado y su evidencia; corre la definición de
+"terminado" completa del spec (§8).
+**Verificación:**
+```
+cd backend && npm test && npx wrangler deploy --dry-run
+cd frontend && npm run build && npm run lint
+```
+**Resultado esperado:** todo en verde, sin warnings.
+**Estado:** Pendiente
+**Evidencia:**
+```
+(se pega al ejecutar)
+```
+**Commit:** —
