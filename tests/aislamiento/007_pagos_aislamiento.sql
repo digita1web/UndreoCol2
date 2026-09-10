@@ -58,8 +58,12 @@ do $$
 declare
   n integer;
 begin
-  select count(*) into n from pagos;
-  if n <> 2 then raise exception 'PASO 2 FALLÓ: admin A ve % pagos (esperaba 2 del fixture)', n; end if;
+  -- Por existencia de los 2 IDs originales del fixture, no por conteo total:
+  -- fixtures posteriores (011-dashboard) agregan más pagos a A a propósito,
+  -- y un conteo fijo se vuelve frágil sin que la RLS esté rota.
+  select count(*) into n from pagos
+    where id in ('d1000000-0000-0000-0000-0000000000a1', 'd1000000-0000-0000-0000-0000000000a2');
+  if n <> 2 then raise exception 'PASO 2 FALLÓ: admin A no ve sus 2 pagos originales (ve %)', n; end if;
   select count(*) into n from pagos where cliente_id = 'b0000000-0000-0000-0000-000000000002';
   if n <> 0 then raise exception 'PASO 2 FALLÓ: admin A ve pagos del cliente B'; end if;
   select count(*) into n from pago_aplicaciones;
@@ -74,7 +78,9 @@ do $$
 declare
   n integer;
 begin
-  select count(*) into n from pagos;
+  -- Scoped a los pagos DE A (no al total que B ve): 011-dashboard le agrega a
+  -- B su propio pago legítimo, así que un conteo total ya no prueba nada.
+  select count(*) into n from pagos where cliente_id = 'a0000000-0000-0000-0000-000000000001';
   if n <> 0 then raise exception 'PASO 2 FALLÓ: admin B ve % pagos de A (esperaba 0)', n; end if;
 end $$;
 rollback;
@@ -109,8 +115,11 @@ do $$
 declare
   n integer;
 begin
-  select count(*) into n from pagos;
-  if n <> 2 then raise exception 'PASO 4 FALLÓ: el lector A ve % pagos (esperaba 2)', n; end if;
+  -- Por existencia de los 2 IDs originales, no por conteo total (011-dashboard
+  -- agrega más pagos a A a propósito).
+  select count(*) into n from pagos
+    where id in ('d1000000-0000-0000-0000-0000000000a1', 'd1000000-0000-0000-0000-0000000000a2');
+  if n <> 2 then raise exception 'PASO 4 FALLÓ: el lector A no ve sus 2 pagos originales (ve %)', n; end if;
 end $$;
 rollback;
 

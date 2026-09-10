@@ -50,8 +50,11 @@ do $$
 declare
   n integer;
 begin
-  select count(*) into n from facturas;
-  if n <> 1 then raise exception 'PASO 2 FALLÓ: admin A ve % facturas (esperaba 1)', n; end if;
+  -- Por existencia del ID original del fixture, no por conteo total:
+  -- fixtures posteriores (011-dashboard) agregan más facturas a A a
+  -- propósito, y un conteo fijo se vuelve frágil sin que la RLS esté rota.
+  select count(*) into n from facturas where id = 'ff000000-0000-0000-0000-0000000000a1';
+  if n <> 1 then raise exception 'PASO 2 FALLÓ: admin A no ve su factura original'; end if;
   select count(*) into n from facturas where cliente_id = 'b0000000-0000-0000-0000-000000000002';
   if n <> 0 then raise exception 'PASO 2 FALLÓ: admin A ve facturas del cliente B'; end if;
 end $$;
@@ -101,9 +104,10 @@ do $$
 declare
   n integer;
 begin
-  -- lee (SELECT sobre facturas de su cliente)
-  select count(*) into n from facturas;
-  if n <> 1 then raise exception 'PASO 4 FALLÓ: lector A ve % facturas (esperaba 1)', n; end if;
+  -- lee (SELECT sobre facturas de su cliente) — por existencia del ID
+  -- original, no por conteo total (011-dashboard agrega más facturas a A).
+  select count(*) into n from facturas where id = 'ff000000-0000-0000-0000-0000000000a1';
+  if n <> 1 then raise exception 'PASO 4 FALLÓ: lector A no ve la factura original'; end if;
 
   -- no puede insertar (RLS: INSERT con with check falla)
   begin

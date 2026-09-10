@@ -56,8 +56,11 @@ do $$
 declare
   n integer;
 begin
-  select count(*) into n from periodos;
-  if n <> 1 then raise exception 'PASO 2 FALLÓ: admin A ve % periodos (esperaba 1)', n; end if;
+  -- Por existencia del ID original del fixture, no por conteo total:
+  -- fixtures posteriores (011-dashboard) agregan más periodos a A a
+  -- propósito, y un conteo fijo se vuelve frágil sin que la RLS esté rota.
+  select count(*) into n from periodos where id = 'e0000000-0000-0000-0000-0000000000a1';
+  if n <> 1 then raise exception 'PASO 2 FALLÓ: admin A no ve su periodo original'; end if;
   select count(*) into n from periodos where cliente_id = 'b0000000-0000-0000-0000-000000000002';
   if n <> 0 then raise exception 'PASO 2 FALLÓ: admin A ve periodos del cliente B'; end if;
   select count(*) into n from lecturas;
