@@ -209,11 +209,24 @@ hueco de 006). El resto de la vista no cambia de color.
 **Resultado esperado:** build y lint limpios; verificación manual con `wrangler dev` + `next dev`
 (como en la sesión de portal de punta a punta): `GET /app/facturacion/:id` con sesión real muestra
 el encabezado.
-**Estado:** Pendiente
+**Estado:** Hecho (parcial — ver NO VERIFICADO abajo)
 **Evidencia:**
 ```
-(se pega al ejecutar)
+$ npm run build  → 18/18 páginas, sin errores
+$ npm run lint   → ESLint: No issues found
+
+Contra wrangler dev + next dev reales, con sesión de admin_acueducto real:
+  GET /acueducto (lo que consume la página)
+    -> {"nombre":"Acueducto A","nit":"900000001-1",...,"colorAcento":"#14408C"}
+  GET /app/facturacion/ff000000-...-0a1 (shell SSR real)
+    -> HTTP 200, "Cargando…" (esperado: es un client component, el fetch y el
+       renderizado del encabezado ocurren tras la hidratación con JS)
 ```
+**NO VERIFICADO — requiere Mateo:** el renderizado final del encabezado con el color aplicado
+(logo, nombre en color, NIT/municipio/teléfono/dirección) solo se puede confirmar con JS ejecutado
+en un navegador real — este entorno no tiene Chromium/Playwright, mismo límite ya documentado en
+sesiones anteriores del proyecto. Pasos: abrir `/app/facturacion/<id>` logueado, confirmar el
+encabezado en pantalla Y con `Ctrl+P` (vista de impresión real).
 **Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-010 — Frontend: enlace desde el dashboard

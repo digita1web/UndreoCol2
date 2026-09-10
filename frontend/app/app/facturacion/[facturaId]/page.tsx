@@ -8,9 +8,11 @@ import {
   anularFactura,
   anularPago,
   enviarCorreoFactura,
+  obtenerAcueducto,
   obtenerFactura,
   obtenerPagosDeFactura,
   urlPdfFactura,
+  type Acueducto,
   type AplicacionHistorialFactura,
   type DetalleFactura,
   type Factura,
@@ -31,6 +33,7 @@ interface PageProps {
 export default function DetalleFacturaPage({ params }: PageProps) {
   const { facturaId } = use(params);
   const [factura, setFactura] = useState<Factura | null>(null);
+  const [acueducto, setAcueducto] = useState<Acueducto | null>(null);
   const [detalles, setDetalles] = useState<DetalleFactura[]>([]);
   const [pagos, setPagos] = useState<AplicacionHistorialFactura[]>([]);
   const [mostrarFormPago, setMostrarFormPago] = useState(false);
@@ -52,6 +55,14 @@ export default function DetalleFacturaPage({ params }: PageProps) {
   }, [facturaId]);
 
   useEffect(recargar, [recargar]);
+
+  // Encabezado del acueducto (023, cierra el hueco de 006): mismos datos que
+  // ya usa el PDF, no depende de la factura — se carga aparte.
+  useEffect(() => {
+    obtenerAcueducto()
+      .then((r) => setAcueducto(r.acueducto))
+      .catch((e) => console.error('No se pudo cargar el encabezado del acueducto', e));
+  }, []);
 
   async function alAnularPago(pagoId: string) {
     const motivo = window.prompt('Motivo de anulación del pago (obligatorio):');
@@ -136,6 +147,28 @@ export default function DetalleFacturaPage({ params }: PageProps) {
         )}
       </div>
 
+      {acueducto && (
+        <div className="flex items-start gap-3 border-b border-border pb-4">
+          {acueducto.logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- logo externo (R2), no un asset local
+            <img src={acueducto.logoUrl} alt="" className="h-14 w-auto object-contain" />
+          )}
+          <div className="text-sm">
+            <p className="text-lg font-bold" style={{ color: acueducto.colorAcento }}>
+              {acueducto.nombre}
+            </p>
+            <p className="text-muted-foreground">
+              {[
+                acueducto.nit ? `NIT: ${acueducto.nit}` : null,
+                acueducto.municipio,
+                acueducto.telefono ? `Tel: ${acueducto.telefono}` : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
+            {acueducto.direccion && <p className="text-muted-foreground">{acueducto.direccion}</p>}
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Datos</CardTitle>
@@ -148,7 +181,9 @@ export default function DetalleFacturaPage({ params }: PageProps) {
           <p><strong>Subtotal servicios:</strong> ${factura.subtotal_servicios.toLocaleString('es-CO')}</p>
           <p><strong>Recargo mora:</strong> ${factura.recargo_mora.toLocaleString('es-CO')}</p>
           <p><strong>Saldo anterior:</strong> ${factura.saldo_anterior.toLocaleString('es-CO')}</p>
-          <p className="text-base"><strong>Total:</strong> ${factura.total.toLocaleString('es-CO')}</p>
+          <p className="text-base" style={{ color: acueducto?.colorAcento }}>
+            <strong>Total:</strong> ${factura.total.toLocaleString('es-CO')}
+          </p>
           <p><strong>Pagado:</strong> ${factura.total_pagado.toLocaleString('es-CO')} · <strong>Saldo:</strong> ${(factura.total - factura.total_pagado).toLocaleString('es-CO')}</p>
           <p className="text-xs text-muted-foreground">Emisión {factura.fecha_emision} · vence {factura.fecha_vencimiento}</p>
           {factura.motivo_anulacion && (
