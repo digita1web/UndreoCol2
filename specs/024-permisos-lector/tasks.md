@@ -105,7 +105,16 @@ comportamiento viejo que esta misma feature cambia.
 /suscriptores` con lector devuelve solo 5 campos; las 4 rutas de facturación dan `403` a lector y
 funcionan igual para admin; `/app/lecturas` arma su desplegable igual que antes.
 **Verificación:** curl real contra `wrangler dev` + carga real de `/app/lecturas` contra `next dev`.
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+GET /app/lecturas (next dev, sesión real de lector) -> HTTP 200
+GET /periodos (wrangler dev, lector)    -> 200, periodo real devuelto (sin cambios, no tocado)
+GET /suscriptores (wrangler dev, lector) -> 6 suscriptores, con contador_actual_id/nombre/
+  codigo_suscriptor intactos (A-001 - Suscriptor A1 - contador c0000000-...-0a1) — exactamente
+  los 3 campos que /app/lecturas usa para armar el desplegable (CA-4 confirmado).
+```
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-006 — Cierre: PLAN-PRODUCCION.md, CHANGELOG, regresión completa
 **Archivos:** `docs/PLAN-PRODUCCION.md`, `CHANGELOG.md`
