@@ -5,6 +5,7 @@ import {
   DashboardIndicadores,
   type IndicadoresDashboard,
 } from '@/components/indicadores-dashboard';
+import { SaludoHora } from '@/components/panel/saludo-hora';
 import { urlBaseApiServidor } from '@/lib/url-base-api-servidor';
 
 // Server component: llama a GET /dashboard reenviando la cookie de sesión
@@ -119,11 +120,18 @@ export default async function DashboardPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 p-8">
-      <h1 className="text-2xl font-semibold">{datos.cliente.nombre}</h1>
+    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 p-8">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wide text-accent">Resumen</p>
+        <h1 className="text-[28px] font-bold tracking-tight">
+          <SaludoHora nombre={datos.perfil.nombre} />
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Así va la operación de <strong>{datos.cliente.nombre}</strong> este periodo.
+        </p>
+      </div>
+
       <dl className="grid grid-cols-2 gap-y-2 text-sm">
-        <dt className="text-muted-foreground">Usuario</dt>
-        <dd>{datos.perfil.nombre}</dd>
         <dt className="text-muted-foreground">Rol</dt>
         <dd>{etiquetaRol(datos.cliente.rol)}</dd>
         <dt className="text-muted-foreground">Usuarios de servicio</dt>
@@ -133,7 +141,7 @@ export default async function DashboardPage() {
       {datos.cliente.rol === 'admin_acueducto' && indicadores ? (
         <>
           <DashboardIndicadores indicadores={indicadores} />
-          <Link href="/app/configuracion" className="text-sm text-blue-600 hover:underline">
+          <Link href="/app/configuracion" className="text-sm text-accent hover:underline">
             Configuración del acueducto →
           </Link>
         </>
@@ -143,7 +151,7 @@ export default async function DashboardPage() {
           <p className="text-sm text-muted-foreground">
             Los indicadores del acueducto son visibles solo para el administrador del acueducto.
           </p>
-          <Link href="/app/lecturas" className="text-sm text-blue-600 hover:underline">
+          <Link href="/app/lecturas" className="text-sm text-accent hover:underline">
             Ir a lecturas →
           </Link>
         </div>
