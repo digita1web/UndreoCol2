@@ -54,4 +54,42 @@ Sesión de lector (regresión): "No autorizado" presente; ninguna de "Recaudo de
 **Archivos:** `CHANGELOG.md`
 **Hace:** entrada de la sesión, Bitácora de cierre con los commits, checklist de CLAUDE.md §11.
 **Verificación:** `npm run build && npm run lint` (frontend) limpios.
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+$ cd backend && npm test          → 215 passed (sin cambios)
+$ npx wrangler deploy --dry-run   → EXIT=0
+$ cd frontend && npm run build    → 18/18 páginas
+$ npm run lint                    → ESLint: No issues found
+CHANGELOG.md: Sesión 041.
+```
+**Commit:** este commit (cierre)
+
+## Bitácora de cierre
+
+| Tarea | Commit | Estado |
+|---|---|---|
+| T-001 `KpiCard` + variación real de recaudo | `6b6923f` | COMPLETADO |
+| T-002 encabezado con saludo real | `e7fb50d` | COMPLETADO |
+| T-003 verificación de integración real | `d7097f9` | COMPLETADO |
+| T-004 cierre | este commit | COMPLETADO |
+
+### Checklist de `CLAUDE.md §11`
+
+- [x] Hace lo que dice el spec, ni más ni menos — cero datos nuevos, confirmado en T-003 contra la
+      respuesta cruda real
+- [x] `npm run build` (frontend) sin errores ni warnings de TypeScript
+- [x] `npx wrangler deploy --dry-run` (backend) exitoso — sin cambios de backend
+- [x] `npm run lint` limpio
+- [x] Tests en verde — 215/215 backend (sin cambios), build/lint frontend
+- [x] Si toca base de datos: no aplica
+- [x] Si toca `core/`: no aplica
+- [x] Evidencia pegada en la conversación y en este documento
+- [x] `CHANGELOG.md` actualizado (Sesión 041)
+- [x] Commit hecho por tarea verificada; sin `push` salvo autorización expresa (§9.1)
+
+### Desviaciones respecto del plan, señaladas en su commit
+
+1. **T-002:** `saludo-hora.tsx` no estaba en la lista de archivos de `plan.md` — necesario porque
+   el saludo debe reflejar la hora de quien lee la página (cliente), no la del Worker que la sirve
+   (Server Component).

@@ -4,6 +4,44 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-10 — Sesión 041: feature 027, re-vestido de /app/dashboard (Panel principal)
+
+Primera pantalla de contenido re-vestida sobre el shell de 026, siguiendo la propuesta de Mateo.
+Antes de este spec se aclaró un punto de alcance real: la propuesta muestra cifras de recaudo que
+hoy ve todo `admin_acueducto`, y Mateo describió una futura distinción de rol dentro del acueducto
+—"administrador" (ve balances) vs. "secretaria" (solo lo administrativo, sin verlos)— que **no
+existe todavía** (verificado contra la base real: `rol_usuario` solo tiene `administrador`,
+`admin_acueducto`, `lector`). Se acordó explícitamente: este spec re-viste el dashboard tal como es
+hoy; el rol nuevo queda como su propia feature futura, del tamaño de 024.
+
+**Implementado, cero datos nuevos** (mismos dos endpoints de siempre, `GET /dashboard` y
+`GET /dashboard/indicadores`): las 4 tarjetas usan `KpiCard` (026); "Cartera" se separó en "Cartera
+vencida" (rojo, con los suscriptores en mora como texto de apoyo) y "Por vencer" (ámbar), ambas
+enlazando a `/app/pagos` igual que antes; encabezado nuevo con eyebrow "Resumen" y saludo real
+(hora + nombre del perfil); el gráfico de tendencia (CSS puro, D-5) y "Suscriptores por estado" se
+conservan, re-vestidos con los tokens de 026.
+
+**Mejora propia, a pedido de Mateo:** "Recaudo del mes" muestra una variación real (`↑/↓ N% vs. mes
+anterior`) calculada de los últimos dos meses de `tendencia` (ya se pedía para el gráfico, sin
+llamada nueva) — en vez de copiar los porcentajes decorativos fijos de la propuesta (`↑ 12,4%` en
+las 4 tarjetas, sin dato real detrás en ninguna salvo esta). Las otras 3 tarjetas no tienen serie
+histórica en la respuesta de hoy, así que no se les inventó una variación — mejor sin el dato que
+con uno falso, en un panel de dinero real de gente real.
+
+**Detalle técnico real:** el saludo por hora tiene que reflejar la hora de quien lee la página, no
+la del Worker que la sirve — se resolvió con un componente cliente pequeño (`saludo-hora.tsx`) que
+renderiza "Hola, {nombre}" en el servidor y lo corrige a "Buenos días/tardes/noches" al hidratar,
+sin parpadeo perceptible.
+
+**Verificado:** 215/215 tests del backend (sin cambios), `npm run build`/`npm run lint` limpios.
+Contra `wrangler dev`/`next dev` reales: la variación de recaudo (`↑ 201,7%` con los datos del
+fixture) coincide exacto con el cálculo manual sobre los mismos dos meses de `tendencia`; las 3
+tarjetas de dinero muestran los valores y enlaces correctos en el HTML servido real; sesión de
+`lector` sigue viendo "No autorizado" sin ninguna cifra financiera (regresión).
+
+**NO VERIFICADO — requiere Mateo:** el aspecto visual final en un navegador real (sigue sin
+Chromium/Playwright en este entorno).
+
 ### 2026-09-10 — Sesión 040: feature 026, shell del panel admin (primera fase del rediseño)
 
 Mateo trajo un prototipo HTML completo (`undreocol_ui_propuesta.html`, 15 pantallas navegables)
