@@ -984,3 +984,18 @@ export function actualizarColorAcentoAcueducto(colorAcento: string): Promise<{ c
     body: JSON.stringify({ color_acento: colorAcento }),
   });
 }
+
+// ---- Contexto del usuario actual (025) -------------------------------------
+// GET /dashboard ya existe (Server Component de /app/dashboard); esta función
+// lo reutiliza desde el cliente, solo para saber el rol antes de decidir qué
+// shell renderizar en /app/lecturas — sin ruta nueva de backend.
+
+export interface ContextoUsuario {
+  cliente: { clienteId: string; rol: string; nombre: string };
+  perfil: { id: string; email: string; nombre: string };
+  conteoUsuariosServicio: number;
+}
+
+export function obtenerContextoUsuario(): Promise<ContextoUsuario> {
+  return peticion('/dashboard');
+}
