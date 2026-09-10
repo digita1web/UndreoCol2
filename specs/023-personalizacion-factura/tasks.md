@@ -149,10 +149,19 @@ tocar `plan_id`/`estado_cuenta`/`slug` de su propia fila → falla por el `GRANT
 **Verificación:** `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/013_personalizacion_factura_aislamiento.sql`
 **Resultado esperado:** los 4 pasos verifican lo esperado (incluida la prueba de que el test SIRVE:
 se relaja algo a propósito y el paso correspondiente cae, luego se restaura).
-**Estado:** Pendiente
+**Estado:** Hecho (5 pasos — se agregó un PASO 5 de control: confirma que la política
+`clientes_color_acento` existe exactamente como se espera, no una variante más laxa)
 **Evidencia:**
 ```
-(se pega al ejecutar)
+$ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/013_personalizacion_factura_aislamiento.sql
+...
+PERSONALIZACION-FACTURA-AISLAMIENTO OK
+
+Prueba de que el test SIRVE: se relajó el grant a propósito
+  (grant update on clientes to authenticated, sin restricción de columna)
+  -> PASO 3 FALLÓ: se pudo tocar plan_id junto con color_acento  (el test SÍ detecta el hueco)
+Se restauró el grant correcto (revoke update / grant update (color_acento))
+  -> PERSONALIZACION-FACTURA-AISLAMIENTO OK de nuevo, los 5 pasos en verde
 ```
 **Commit:** se registra en la Bitácora de cierre (T-011)
 
