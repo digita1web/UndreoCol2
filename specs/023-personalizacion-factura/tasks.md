@@ -257,9 +257,73 @@ cd backend && npm test && npx wrangler deploy --dry-run
 cd frontend && npm run build && npm run lint
 ```
 **Resultado esperado:** todo en verde, sin warnings.
-**Estado:** Pendiente
+**Estado:** Hecho
 **Evidencia:**
 ```
-(se pega al ejecutar)
+$ cd backend && npm test        → 215 passed (20 archivos)
+$ npx wrangler deploy --dry-run → EXIT=0, Total Upload: 1762.91 KiB / gzip: 400.73 KiB
+$ cd frontend && npm run build  → 18/18 páginas, sin errores
+$ npm run lint                  → ESLint: No issues found
+
+Regresión completa de aislamiento (17 suites, entorno limpio desde cero: Postgres 17 descartable +
+20 migraciones + los 11 fixtures en orden):
+  002, 006, 008, 009, 010, 011, 012, 013, 900, 901, 902, 903 → OK (12/17)
+  001, 003, 004, 005, 007 → FALLAN, hallazgo preexistente sin relación con 023 (ver CHANGELOG
+  Sesión 037 y nota abajo) — ninguno toca clientes/RLS de UPDATE/color_acento.
 ```
-**Commit:** se registra en la Bitácora de cierre (T-011)
+**Nota sobre los 5 fallos de aislamiento (no de esta feature):** `tests/fixtures/dashboard.sql`
+(011) reutiliza el cliente A y le agrega usuarios_servicio/periodos/facturas/pagos de prueba
+(`DASH-*`) — su propio comentario dice "NO es idempotente: aplicar sobre una base recién
+reseteada". Los tests `001`/`003`/`004`/`005`/`007` (anteriores a 011) esperan los conteos de ANTES
+de ese fixture. Confirmado que es preexistente y no de 023: los 5 fallan con los mismos conteos
+exactos tanto en el Supabase local (con fixtures viejos) como en un Postgres descartable recién
+creado; ninguno menciona `clientes`, RLS ni `color_acento`. No se corrige aquí — sería ampliar el
+alcance de un spec ya aprobado (CLAUDE.md §12) — queda reportado en el CHANGELOG para que Mateo
+decida (separar el fixture de dashboard a un cliente propio, o aceptar que 001-007 solo se corren
+de forma aislada).
+**Commit:** este commit (cierre)
+
+## Bitácora de cierre
+
+| Tarea | Commit | Estado |
+|---|---|---|
+| T-001 migración: columna + RLS por fila y por columna + función del portal | `94d9d9f` | COMPLETADO |
+| T-002 `core/color.ts`, validación y conversión | `b246bb0` | COMPLETADO |
+| T-003 `factura-pdf.ts` usa el color | `b704db4` | COMPLETADO |
+| T-004 `lib/portal.ts` + `queues/cierre-facturacion.ts` propagan el color | `0523029` | COMPLETADO (desviación del plan señalada: 3er archivo no listado, ver plan.md) |
+| T-005 rutas `GET /acueducto`, `PATCH /acueducto/color` | `94ea856` | COMPLETADO |
+| T-006 test de aislamiento 013 | `4b55c57` | COMPLETADO |
+| T-007 frontend `lib/api.ts` | `ae2b747` | COMPLETADO |
+| T-008 pantalla `/app/configuracion` | `ea97813` | COMPLETADO (ajuste de diseño señalado: sin estado "No autorizado" propio) |
+| T-009 encabezado en la vista de impresión | `43c4325` | COMPLETADO (renderizado final en navegador real: NO VERIFICADO, requiere Mateo) |
+| T-010 enlace en el dashboard | `1b1de34` | COMPLETADO |
+| T-011 cierre | este commit | COMPLETADO |
+
+### Checklist de `CLAUDE.md §11`
+
+- [x] Hace lo que dice el spec, ni más ni menos — alcance confirmado con Mateo en cada checkpoint
+      (`/specify`, `/plan`, `/tasks`)
+- [x] `npm run build` (frontend) sin errores ni warnings de TypeScript
+- [x] `npx wrangler deploy --dry-run` (backend) exitoso
+- [x] `npm run lint` limpio en ambos proyectos
+- [x] Tests de la tarea en verde, con la salida pegada — 215/215 backend, build/lint frontend
+- [x] Migración versionada + test de aislamiento en verde —
+      `20260920090000_personalizacion-factura.sql`, `tests/aislamiento/013`, verificado que el test
+      SIRVE (falla si se relaja el `GRANT`, pasa si está correcto)
+- [x] Tests de los casos límite de `core/`, no solo el caso feliz — `color.test.ts`: mayúsculas,
+      sin `#`, longitud corta/larga, caracteres inválidos, color inválido lanza
+- [x] Evidencia pegada en la conversación y en este documento
+- [x] `CHANGELOG.md` actualizado (Sesión 037)
+- [x] Commit hecho por tarea verificada; sin `push` salvo autorización expresa (§9.1)
+
+### Desviaciones respecto del plan, todas señaladas en su commit
+
+1. **T-004:** `queues/cierre-facturacion.ts` era un tercer lugar que arma `DatosAcueductoPdf` que
+   `plan.md` no había listado — encontrado con `tsc --noEmit`, corregido con el mismo ajuste
+   mecánico, sin cambio de comportamiento.
+2. **T-008:** no se construyó un estado "No autorizado" propio para la pantalla de configuración —
+   innecesario, porque `GET /acueducto` responde a cualquier rol (es de solo lectura); solo el
+   `PATCH` exige `admin_acueducto`, y ese error ya lo muestra el formulario.
+3. **T-011 (este cierre):** hallazgo colateral de 5 tests de aislamiento preexistentes que fallan en
+   una regresión completa por una interacción entre fixtures ajena a esta feature — reportado, no
+   corregido (fuera de alcance del spec aprobado).

@@ -4,6 +4,98 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-09 — Sesión 037: consolidación local, PDF y portal verificados de punta a punta, fix de una colisión de migraciones, y feature 023 (color de acento + encabezado de factura)
+
+**Consolidación de carpetas locales.** Existían dos checkouts del proyecto en la máquina de
+Mateo: `~/Desktop/UndreoCol2` (este) y `~/UndreoCol` (de una sesión anterior, rama
+`claude/security-audit-production-9oez9y`). Verificado antes de borrar: ambas ramas de
+`~/UndreoCol` estaban al día con `origin` y sin cambios sin commitear — se eliminó sin pérdida de
+trabajo. De paso apareció `~/UndreoCol.web`, un repositorio distinto (`digita1-web/UndreoCol.git`,
+la landing de marketing, no el SaaS) — se dejó intacto.
+
+**Descarga de PDF de factura, verificada de punta a punta en local** (no en producción real: la
+base de producción sigue vacía, 0 facturas). Contra Supabase local + `wrangler dev`: la ruta admin
+(`GET /facturas/:id/pdf`) genera un PDF real la primera vez (confirmado con `pdfinfo`/`pdftotext`,
+no solo por el código 200), lo cachea en R2, y persiste `facturas.pdf_url`; la ruta del portal
+(`GET /portal/facturas/:id/pdf`) genera bajo demanda sin cachear, y la protección IDOR (CA-5 de 008)
+se confirmó real: la sesión de un suscriptor no puede descargar la factura de otro (`404`, sin
+filtrar bytes).
+
+**Login del portal del suscriptor, verificado de punta a punta en local** (mismo límite: sin datos
+reales en producción). Con `next dev` + `wrangler dev`, simulando exactamente el navegador (mismo
+`Origin`, misma cookie): login sin contraseña (documento + código) → cookie `uc_sesion_suscriptor`
+(`HttpOnly + Secure + SameSite=Lax`, punto 22b); el middleware de Next.js redirige a `/login` sin
+sesión y dejaba entrar con sesión válida; las tres llamadas del panel (factura actual, saldo a
+favor, consumo) devuelven datos reales; logout limpia la cookie y tanto el middleware como el
+backend rechazan after.
+
+**Hallazgo real, corregido: dos migraciones con el mismo timestamp.**
+`20260914090000_fix-autorizacion-siguiente-numero-factura.sql` y
+`20260914090000_grants-tablas-faltantes.sql` compartían versión, lo que rompía
+`supabase migration up` (colisión de PK en `supabase_migrations.schema_migrations`). No afectaba
+producción (sus migraciones se aplicaron por SQL directo vía MCP, con versiones autogeneradas
+propias — confirmado con `list_migrations`). Se renombró `grants-tablas-faltantes` a
+`20260914090001` (un segundo después, sin dependencia funcional entre ambas). Verificado aplicando
+las 19 migraciones en orden, sin error, contra un Postgres 17 limpio y descartable.
+
+**Feature 023 — personalizacion-factura**, completa por SDD (`/specify` → `/plan` → `/tasks` →
+`/implement`, checkpoints aprobados por Mateo en cada fase, `specs/023-personalizacion-factura/`).
+Nace de una pregunta directa de Mateo sobre personalizar la factura; en el camino se encontró que
+006 había quedado incompleto (la vista de impresión, el flujo **principal** según D-8, nunca mostró
+el encabezado del acueducto que el spec 006 sí describía) — se cerró junto con el color, a pedido
+explícito de Mateo de "aplicar todas las medidas que correspondan para que el sistema sea robusto".
+
+- **Columna `clientes.color_acento`** (default `#14408C`, exacto al azul fijo anterior — ningún
+  acueducto cambia de apariencia) con `CHECK` de formato hex en la base, además de la validación de
+  la ruta (dos capas, no una).
+- **Hallazgo de seguridad real, encontrado en la fase `/plan` y cerrado en la misma migración:**
+  `20260914090001_grants-tablas-faltantes.sql` ya le había dado a `authenticated` `UPDATE` de TABLA
+  COMPLETA sobre `clientes`. Sin una restricción adicional, la política RLS nueva por sí sola habría
+  dejado a cualquier `admin_acueducto` cambiar `plan_id`/`estado_cuenta`/`slug` de su propia fila por
+  la misma vía usada para el color. Se cerró con `GRANT UPDATE` **por columna**
+  (`grant update (color_acento) on clientes to authenticated`), verificado con un test de
+  aislamiento nuevo (`013`) que además demuestra que SIRVE: relajado el `GRANT` a propósito, el paso
+  correspondiente cae con el mensaje exacto esperado; restaurado, los 5 pasos vuelven a pasar.
+- El color se aplica en **ambos** canales: el PDF (`factura-pdf.ts`, adjunto de correo y descarga
+  bajo demanda del portal) y la vista de impresión en pantalla (`/app/facturacion/[facturaId]`,
+  cierra el hueco de 006) — decisión explícita de Mateo, porque la mayoría de suscriptores solo ve
+  la factura impresa, nunca el PDF de correo.
+- Pantalla nueva `/app/configuracion`: datos del acueducto de solo lectura + el color como único
+  campo editable (`<input type="color">` nativo, cero dependencias nuevas), con vista previa en
+  vivo. Enlace visible solo para `admin_acueducto` desde el dashboard — el `lector` no lo ve, y el
+  backend igual responde `403` si se llama directo.
+- Un PDF ya generado y cacheado en R2 **no cambia de color retroactivamente** si el acueducto
+  cambia su color después — coherente con la inmutabilidad de la factura (CLAUDE.md §5.6/§10.9d).
+
+**Desviaciones del plan, señaladas en el momento y documentadas en `plan.md`/`tasks.md`:**
+`queues/cierre-facturacion.ts` (el envío por correo del cierre masivo, 006) resultó ser un tercer
+lugar que construye los datos del PDF que el plan original no había listado — se corrigió con el
+mismo ajuste mecánico que `lib/portal.ts`, sin cambiar comportamiento.
+
+**Verificado:** 215/215 tests unitarios del backend (9 nuevos: `core/color.ts` y los casos de color
+en `factura-pdf.test.ts`); `npx tsc --noEmit` sin errores en todo el backend; `wrangler deploy
+--dry-run` OK; `npm run build`/`npm run lint` del frontend limpios (`/app/configuracion` genera
+correctamente); test de aislamiento `013` en verde, con la prueba de que SIRVE. Contra `wrangler
+dev`/`next dev` reales: `GET`/`PATCH /acueducto` con `admin_acueducto` y `lector` (403 en el
+segundo), color inválido (`400`), el enlace del dashboard aparece solo para `admin_acueducto`.
+
+**NO VERIFICADO — requiere Mateo:** el renderizado final del encabezado nuevo con JS ejecutado en un
+navegador real (este entorno sigue sin Chromium/Playwright) — confirmar en pantalla y con `Ctrl+P`.
+
+**Hallazgo colateral, fuera del alcance de 023, reportado sin corregir:** al correr la regresión
+completa de los 17 tests de aislamiento (001-013, 900-903) contra un entorno recién creado con
+todos los fixtures aplicados en secuencia, **5 tests preexistentes fallan** (`001`, `003`, `004`,
+`005`, `007`) — todos por conteos de filas (`usuarios_servicio`, `periodos`, `facturas`, `pagos`)
+mayores a los que esperaban, porque `tests/fixtures/dashboard.sql` (011) reutiliza el cliente A y le
+agrega suscriptores/facturas/pagos de prueba (`DASH-*`) que esos tests más viejos no contemplaban —
+su propio comentario ya dice "NO es idempotente: aplicar sobre una base recién reseteada". No es una
+regresión de 023 (ninguno de los 5 toca `clientes`, RLS de `UPDATE` ni nada de esta feature; los
+tests directamente relevantes — `002`, `006`, `008`-`013`, `900`-`903` — pasan limpio), y no se
+corrigió aquí (cambiar el alcance de un spec aprobado sin volver a `/specify`, CLAUDE.md §12). Queda
+anotado para decidir aparte: separar los fixtures de dashboard a un cliente propio, o aceptar que
+los tests de aislamiento 001-007 solo se corren de forma aislada, no como suite acumulativa completa.
+
+
 ### 2026-09-09 — Sesión 036: despliegue automático a Cloudflare (022)
 
 **Qué es:** con el login funcionando de verdad (Sesión 035), Mateo pidió automatizar el despliegue —

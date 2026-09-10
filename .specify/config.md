@@ -58,7 +58,7 @@ En `specs/plantillas/`. Se copian al crear cada feature nueva.
 | 020 | proxy-cookies-mismo-origen (el navegador deja de hablar directo con la API) | 001 | **Implementada y verificada en producción real (Sesión 035)** — cerró el bloqueador total de login. La causa raíz final no fue el proxy en sí (correcto desde el principio) sino un `frontend/.env.production` local que lo sobrescribía en cada build — ver CHANGELOG Sesión 035 |
 | 021 | cerrar-sesion-admin (botón "Salir" en `/app/*` y `/plataforma`) | 018, 020 | **Implementada** — nace de una petición directa de Mateo, no de un hallazgo. El portal del suscriptor ya tenía su propio botón, no se tocó |
 | 022 | despliegue-automático (CI/CD a Cloudflare vía GitHub Actions) | 020 | **Implementada** — nace de dos incidentes reales de despliegue manual en esta sesión (021 y 035). Incluye verificaciones automáticas que repiten en CI los diagnósticos manuales que encontraron ambos bugs |
-| 023 | personalizacion-factura (color de acento por acueducto + encabezado faltante en la vista de impresión) | 006, 018 | En /specify — spec.md en revisión. Nace de una pregunta directa de Mateo; de paso encontró que 006 quedó incompleto (la vista de impresión nunca mostró el encabezado del acueducto) |
+| 023 | personalizacion-factura (color de acento por acueducto + encabezado faltante en la vista de impresión) | 006, 018 | **Implementada** — nace de una pregunta directa de Mateo; de paso cerró que 006 quedó incompleto (la vista de impresión nunca mostró el encabezado del acueducto). Renderizado final en navegador real: NO VERIFICADO, requiere Mateo |
 
 ## Regla de git
 
