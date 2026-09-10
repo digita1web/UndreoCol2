@@ -186,10 +186,17 @@ vista previa en vivo (mismo layout del encabezado de la factura); `useHidratado(
 patrón que `/app/dashboard`.
 **Verificación:** `cd frontend && npm run build && npm run lint`
 **Resultado esperado:** build y lint limpios, sin warnings de TypeScript.
-**Estado:** Pendiente
+**Estado:** Hecho (ajuste de diseño respecto al plan: no hace falta un estado "No autorizado" propio
+—`GET /acueducto` responde a cualquier rol— solo el `PATCH` da 403 al lector, y ese error ya lo
+muestra el formulario como cualquier otro error de guardado)
 **Evidencia:**
 ```
-(se pega al ejecutar)
+$ npm run build
+├ ○ /app/configuracion                   3.24 kB         113 kB
+(18/18 páginas generadas, sin errores)
+
+$ npm run lint
+ESLint: No issues found
 ```
 **Commit:** se registra en la Bitácora de cierre (T-011)
 
