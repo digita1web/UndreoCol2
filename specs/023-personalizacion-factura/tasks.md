@@ -115,10 +115,28 @@ npx wrangler dev --port 8787 &  # + curl real: GET/PATCH /acueducto con sesión 
 **Resultado esperado:** 206+ tests unitarios en verde; con `lector`, `PATCH /acueducto/color` → 403;
 con `admin_acueducto` y un hex inválido → 400; con hex válido → 200 y el cambio persiste
 (`GET /acueducto` posterior lo confirma).
-**Estado:** Pendiente
+**Estado:** Hecho
 **Evidencia:**
 ```
-(se pega al ejecutar)
+$ npx tsc --noEmit        → sin errores (antes: 1 en index.ts, ya corregido)
+$ npx vitest run          → 215 passed (20 archivos, antes 206 + 9 nuevos de esta feature)
+$ npx wrangler deploy --dry-run → Total Upload: 1762.91 KiB / gzip: 400.73 KiB, EXIT=0
+
+Contra wrangler dev real (puerto 8787), con sesiones reales:
+  GET  /acueducto (admin_acueducto)         -> 200, colorAcento="#14408C"
+  GET  /acueducto (lector)                  -> 200, mismo dato (lectura permitida a cualquier rol)
+  PATCH /acueducto/color (lector)           -> 403 "Solo el administrador..."
+  PATCH /acueducto/color (admin, "rojo")    -> 400 "color_acento debe ser un hexadecimal #RRGGBB"
+  PATCH /acueducto/color (admin, "#FF0000") -> 200; GET posterior confirma colorAcento="#FF0000"
+
+  Intento de colar slug/plan_id en el mismo PATCH (body con
+  {color_acento, slug:"hackeado", plan_id:null}):
+    -> 200 (la ruta solo lee color_acento del body, el resto se ignora)
+    -> verificado en la base: slug sigue "acueducto-a", plan_id sin cambios,
+       solo color_acento cambió — defensa a nivel de código, además del
+       GRANT de columna en la base (probado aparte en T-006)
+
+Color del fixture restaurado a #14408C después de la prueba.
 ```
 **Commit:** se registra en la Bitácora de cierre (T-011)
 

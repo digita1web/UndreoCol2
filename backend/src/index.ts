@@ -52,6 +52,7 @@ import {
   simularPeriodo,
 } from './lib/facturacion';
 import { generarPdfFactura, type DatosAcueductoPdf } from './lib/factura-pdf';
+import { esColorHexValido } from './core/color';
 import {
   anularPago,
   obtenerCartera,
@@ -478,6 +479,55 @@ app.get('/dashboard/indicadores', async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudieron obtener los indicadores' }, 400);
   }
+});
+
+// GET /acueducto — datos del acueducto activo (023): nombre, NIT, dirección,
+// teléfono, municipio, logo y color de acento. Cualquier rol del acueducto
+// puede leerlo (RLS clientes_lectura ya lo permite) — lo usan tanto
+// /app/configuracion como el encabezado de /app/facturacion/[facturaId].
+app.get('/acueducto', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  const { data, error } = await ctx.supabase
+    .from('clientes')
+    .select('nombre, nit, direccion, telefono, municipio, logo_url, color_acento')
+    .eq('id', ctx.clienteId)
+    .single();
+  if (error || !data) return c.json({ error: 'No se pudo leer el acueducto' }, 400);
+  return c.json({
+    acueducto: {
+      nombre: data.nombre,
+      nit: data.nit,
+      direccion: data.direccion,
+      telefono: data.telefono,
+      municipio: data.municipio,
+      logoUrl: data.logo_url,
+      colorAcento: data.color_acento,
+    },
+  });
+});
+
+// PATCH /acueducto/color — cambia el color de acento (023). Solo
+// `admin_acueducto` (403 explícito, mismo patrón que /dashboard/indicadores);
+// el hex se valida ANTES de tocar la base (400 si es inválido) — el CHECK de
+// la migración es la segunda capa, no la única (CA-4).
+app.patch('/acueducto/color', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede cambiar el color' }, 403);
+  }
+  const body = await c.req.json<{ color_acento?: string }>().catch(() => ({ color_acento: undefined }));
+  const colorAcento = body.color_acento?.trim() ?? '';
+  if (!esColorHexValido(colorAcento)) {
+    return c.json({ error: 'color_acento debe ser un hexadecimal #RRGGBB' }, 400);
+  }
+  const { error } = await ctx.supabase
+    .from('clientes')
+    .update({ color_acento: colorAcento })
+    .eq('id', ctx.clienteId);
+  if (error) return c.json({ error: 'No se pudo guardar el color' }, 400);
+  return c.json({ colorAcento });
 });
 
 app.get('/catalogo/servicios', async (c) => {
@@ -1087,7 +1137,7 @@ app.get('/facturas/:id/pdf', async (c) => {
     if (!pdfBytes) {
       const { data: acueductoRow } = await ctx.supabase
         .from('clientes')
-        .select('nombre, nit, direccion, telefono, municipio, logo_url')
+        .select('nombre, nit, direccion, telefono, municipio, logo_url, color_acento')
         .eq('id', ctx.clienteId)
         .single();
       const acueducto: DatosAcueductoPdf = {
@@ -1097,6 +1147,7 @@ app.get('/facturas/:id/pdf', async (c) => {
         telefono: acueductoRow?.telefono ?? null,
         municipio: acueductoRow?.municipio ?? null,
         logoUrl: acueductoRow?.logo_url ?? null,
+        colorAcento: acueductoRow?.color_acento ?? '#14408C',
       };
       pdfBytes = await generarPdfFactura({ factura, detalles, acueducto });
       if (bucket) {
