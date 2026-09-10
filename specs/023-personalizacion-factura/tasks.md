@@ -46,10 +46,13 @@ Aplicada también con `supabase migration up --local --yes` sobre el Supabase lo
 **Resultado esperado:** todos los casos en verde, incluido que `hexARgb01('#14408C')` da
 `{r:0.0784…, g:0.2510…, b:0.5490…}` (ida y vuelta contra el `rgb(0.08,0.25,0.55)` actual, con la
 tolerancia de redondeo de 8 bits por canal — CA-1).
-**Estado:** Pendiente
+**Estado:** Hecho
 **Evidencia:**
 ```
-(se pega al ejecutar)
+ RUN  v2.1.9 /home/oem/Desktop/UndreoCol2/backend
+ ✓ src/core/color.test.ts (7 tests) 9ms
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
 ```
 **Commit:** se registra en la Bitácora de cierre (T-011)
 
