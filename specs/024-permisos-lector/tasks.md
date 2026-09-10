@@ -81,7 +81,23 @@ Contra wrangler dev real, con sesiones reales de admin-a@test.local y lector-a@t
 **Hace:** los 4 pasos de plan.md §8, contra PostgreSQL real, con la prueba de que el test SIRVE
 (relajar algo a propósito, ver caer el paso, restaurar).
 **Verificación:** `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/aislamiento/014_permisos_lector_aislamiento.sql`
-**Estado:** Pendiente
+**Estado:** Hecho (con una corrección no prevista, ver abajo)
+**Evidencia:**
+```
+014: PERMISOS-LECTOR-AISLAMIENTO OK (4 pasos, incluida la prueba de que SIRVE: se restauró a
+propósito facturas_lectura, el PASO 1 cayó con el mensaje exacto esperado, se restauró y volvió
+a pasar).
+
+Regresión completa (18 suites, entorno limpio desde cero, reproducida dos veces en contenedores
+Postgres 17 nuevos): 4 suites viejas (005, 006, 007, 011) tenían su propio "PASO 4: el lector LEE
+X pero no escribe" — aserciones correctas ANTES de 024, ahora obsoletas a propósito porque 024
+le quita esa lectura. Se corrigieron las 4 (lector ahora espera 0 facturas/notificaciones/pagos,
+no 1/1/2/>=1) — no es una regresión real, es actualizar aserciones que verificaban el
+comportamiento viejo que esta misma feature cambia.
+
+18/18 OK tras la corrección, reproducido en 2 contenedores nuevos y contra el Supabase local.
+```
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-005 — Verificación de integración real (wrangler dev + next dev)
 **Archivos:** ninguno (solo verificación)

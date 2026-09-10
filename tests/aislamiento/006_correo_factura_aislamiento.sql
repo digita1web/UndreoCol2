@@ -63,7 +63,8 @@ end $$;
 rollback;
 
 -- ---------------------------------------------------------------------------
--- PASO 4: el lector de A LEE sus notificaciones pero NO inserta ni cambia estado
+-- PASO 4: el lector de A YA NO lee notificaciones (024/M-2) y sigue sin
+-- poder insertar ni cambiar estado
 -- ---------------------------------------------------------------------------
 begin;
 set local role authenticated;
@@ -72,8 +73,10 @@ do $$
 declare
   n integer;
 begin
+  -- 024 (M-2): se eliminó notificaciones_lectura (antes de 024 esto
+  -- esperaba 1 — revela actividad de cobranza, el lector no la necesita).
   select count(*) into n from notificaciones;
-  if n <> 1 then raise exception 'PASO 4 FALLÓ: lector A ve % notificaciones (esperaba 1)', n; end if;
+  if n <> 0 then raise exception 'PASO 4 FALLÓ: lector A ve % notificaciones (024 debería dejarlo en 0)', n; end if;
 
   begin
     insert into notificaciones (cliente_id, tipo, canal, destinatario, asunto)

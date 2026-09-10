@@ -134,9 +134,10 @@ end $$;
 rollback;
 
 -- ---------------------------------------------------------------------------
--- PASO 4: el lector de A LEE (pagos/cartera de su cliente) pero NO inserta
--- (regresión de permisos de rol; spec §0.4: el control admin-only del endpoint
--- es de aplicación, la RLS sigue siendo la red de seguridad de fondo)
+-- PASO 4: el lector de A YA NO lee pagos/cartera (024/M-2) y sigue sin
+-- insertar. Al escribirse este paso (spec §0.4) la RLS todavía dejaba pasar
+-- la lectura a propósito ("red de seguridad de fondo", solo el endpoint de
+-- indicadores era admin-only) — 024 cierra esa lectura también.
 -- ---------------------------------------------------------------------------
 begin;
 set local role authenticated;
@@ -145,8 +146,9 @@ do $$
 declare
   n integer;
 begin
+  -- 024 (M-2): se eliminó pagos_lectura (antes de 024 esto esperaba >= 1).
   select count(*) into n from pagos where cliente_id = 'a0000000-0000-0000-0000-000000000001';
-  if n < 1 then raise exception 'PASO 4 FALLÓ: lector de A no lee los pagos de su cliente'; end if;
+  if n <> 0 then raise exception 'PASO 4 FALLÓ: lector de A ve % pagos de su cliente (024 debería dejarlo en 0)', n; end if;
 
   begin
     insert into pagos (cliente_id, usuario_servicio_id, valor)

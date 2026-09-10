@@ -105,7 +105,7 @@ end $$;
 rollback;
 
 -- ---------------------------------------------------------------------------
--- PASO 4: el lector de A VE los pagos de su cliente pero NO escribe
+-- PASO 4: el lector de A YA NO ve pagos (024/M-2) y sigue sin escribir
 -- (ni INSERT directo ni la RPC registrar_pago)
 -- ---------------------------------------------------------------------------
 begin;
@@ -115,11 +115,11 @@ do $$
 declare
   n integer;
 begin
-  -- Por existencia de los 2 IDs originales, no por conteo total (011-dashboard
-  -- agrega más pagos a A a propósito).
+  -- 024 (M-2): se eliminó pagos_lectura (antes de 024 esto esperaba 2, ver
+  -- git log — el lector no necesita ver el recaudo del acueducto).
   select count(*) into n from pagos
     where id in ('d1000000-0000-0000-0000-0000000000a1', 'd1000000-0000-0000-0000-0000000000a2');
-  if n <> 2 then raise exception 'PASO 4 FALLÓ: el lector A no ve sus 2 pagos originales (ve %)', n; end if;
+  if n <> 0 then raise exception 'PASO 4 FALLÓ: el lector A ve % pagos (024 debería dejarlo en 0)', n; end if;
 end $$;
 rollback;
 

@@ -95,7 +95,8 @@ end $$;
 rollback;
 
 -- ---------------------------------------------------------------------------
--- PASO 4: el lector de A LEE la factura de A pero NO puede insertar ni anular
+-- PASO 4: el lector de A YA NO lee facturas (024/M-2) y sigue sin poder
+-- insertar ni anular
 -- ---------------------------------------------------------------------------
 begin;
 set local role authenticated;
@@ -104,10 +105,10 @@ do $$
 declare
   n integer;
 begin
-  -- lee (SELECT sobre facturas de su cliente) — por existencia del ID
-  -- original, no por conteo total (011-dashboard agrega más facturas a A).
+  -- 024 (M-2): se eliminó facturas_lectura — el lector ya no ve facturas,
+  -- ni siquiera la suya (antes de 024 esto esperaba 1, ver git log).
   select count(*) into n from facturas where id = 'ff000000-0000-0000-0000-0000000000a1';
-  if n <> 1 then raise exception 'PASO 4 FALLÓ: lector A no ve la factura original'; end if;
+  if n <> 0 then raise exception 'PASO 4 FALLÓ: lector A ve % facturas (024 debería dejarlo en 0)', n; end if;
 
   -- no puede insertar (RLS: INSERT con with check falla)
   begin
