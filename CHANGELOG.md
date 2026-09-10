@@ -82,18 +82,26 @@ segundo), color inválido (`400`), el enlace del dashboard aparece solo para `ad
 **NO VERIFICADO — requiere Mateo:** el renderizado final del encabezado nuevo con JS ejecutado en un
 navegador real (este entorno sigue sin Chromium/Playwright) — confirmar en pantalla y con `Ctrl+P`.
 
-**Hallazgo colateral, fuera del alcance de 023, reportado sin corregir:** al correr la regresión
-completa de los 17 tests de aislamiento (001-013, 900-903) contra un entorno recién creado con
-todos los fixtures aplicados en secuencia, **5 tests preexistentes fallan** (`001`, `003`, `004`,
-`005`, `007`) — todos por conteos de filas (`usuarios_servicio`, `periodos`, `facturas`, `pagos`)
-mayores a los que esperaban, porque `tests/fixtures/dashboard.sql` (011) reutiliza el cliente A y le
-agrega suscriptores/facturas/pagos de prueba (`DASH-*`) que esos tests más viejos no contemplaban —
-su propio comentario ya dice "NO es idempotente: aplicar sobre una base recién reseteada". No es una
-regresión de 023 (ninguno de los 5 toca `clientes`, RLS de `UPDATE` ni nada de esta feature; los
-tests directamente relevantes — `002`, `006`, `008`-`013`, `900`-`903` — pasan limpio), y no se
-corrigió aquí (cambiar el alcance de un spec aprobado sin volver a `/specify`, CLAUDE.md §12). Queda
-anotado para decidir aparte: separar los fixtures de dashboard a un cliente propio, o aceptar que
-los tests de aislamiento 001-007 solo se corren de forma aislada, no como suite acumulativa completa.
+**Hallazgo colateral, corregido aparte de 023 (commit `96a96be`), a pedido explícito de Mateo.** Al
+correr la regresión completa de los 17 tests de aislamiento (001-013, 900-903) contra un entorno
+recién creado con todos los fixtures aplicados en secuencia, **5 tests preexistentes fallaban**
+(`001`, `003`, `004`, `005`, `007`) por comparar un conteo GLOBAL fijo (p. ej. "admin A ve 2
+usuarios_servicio") contra la realidad, que ya no es esa desde que `tests/fixtures/dashboard.sql`
+(011) reutiliza el cliente A/B y les agrega suscriptores/periodos/facturas/pagos de prueba
+(`DASH-*`) — su propio comentario ya avisaba "NO es idempotente". *Corregido:* los 6 conteos
+globales se reemplazaron por comprobaciones de existencia de los IDs originales de cada fixture
+(prueban lo mismo — RLS deja ver lo propio y oculta lo ajeno — sin depender de cuántas filas
+agregue un fixture posterior).
+
+Un séptimo punto (`001`, PASO 9) resultó ser un efecto real **y correcto** de 023, no un bug:
+"admin A no puede modificar `plan_id`/`estado_cuenta` de su cliente" antes se cumplía solo por RLS
+(0 filas afectadas, sin error); desde el `GRANT UPDATE` por columna de 023, Postgres deniega el
+privilegio ANTES de llegar a RLS — refuerza la misma garantía con una capa más fuerte. Se ajustó el
+test para aceptar explícitamente el nuevo comportamiento, documentando el porqué.
+
+**Verificado:** 17/17 suites en verde, reproducido dos veces en contenedores Postgres 17 nuevos y
+descartables (migraciones + 11 fixtures + aislamiento desde cero cada vez) y contra el Supabase
+local persistente.
 
 
 ### 2026-09-09 — Sesión 036: despliegue automático a Cloudflare (022)
