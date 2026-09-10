@@ -6,6 +6,7 @@
 // Referencia: specs/006-impresion-y-correo-factura/plan.md §4.
 
 import { PDFDocument, StandardFonts, rgb, type PDFImage } from 'pdf-lib';
+import { hexARgb01 } from '../core/color';
 import type { DetalleFacturaRow, FacturaRow } from './facturacion';
 
 export interface DatosAcueductoPdf {
@@ -15,6 +16,8 @@ export interface DatosAcueductoPdf {
   telefono: string | null;
   municipio: string | null;
   logoUrl: string | null;
+  /** Hex #RRGGBB (023) — siempre presente: la columna tiene default y CHECK. */
+  colorAcento: string;
 }
 
 function formatoPeso(valor: number): string {
@@ -61,7 +64,8 @@ export async function generarPdfFactura(input: {
   const helveticaBold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
   const colorTexto = rgb(0.15, 0.15, 0.15);
-  const colorAcento = rgb(0.08, 0.25, 0.55);
+  const { r, g, b } = hexARgb01(acueducto.colorAcento);
+  const colorAcento = rgb(r, g, b);
   const colorGris = rgb(0.45, 0.45, 0.45);
 
   // ---- encabezado del acueducto (personalización) --------------------------

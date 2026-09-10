@@ -12,6 +12,7 @@ const acueducto: DatosAcueductoPdf = {
   telefono: '300 000 0000',
   municipio: 'Soacha',
   logoUrl: null,
+  colorAcento: '#14408C',
 };
 
 const factura: FacturaRow = {
@@ -114,5 +115,19 @@ describe('generarPdfFactura (pdf-lib, D-9)', () => {
 
   it('sin logo (logoUrl null) genera igual sin romper', async () => {
     await expect(generarPdfFactura({ factura, detalles: [detalle], acueducto })).resolves.toBeInstanceOf(Uint8Array);
+  });
+
+  it('dos acueductos con color_acento distinto producen PDF con bytes distintos (023)', async () => {
+    const acueductoRojo: DatosAcueductoPdf = { ...acueducto, colorAcento: '#FF0000' };
+    const bytesAzul = await generarPdfFactura({ factura, detalles: [detalle], acueducto });
+    const bytesRojo = await generarPdfFactura({ factura, detalles: [detalle], acueducto: acueductoRojo });
+    expect(Buffer.from(bytesAzul).equals(Buffer.from(bytesRojo))).toBe(false);
+  });
+
+  it('un color de acento inválido lanza en vez de generar un PDF con datos corruptos', async () => {
+    const acueductoInvalido: DatosAcueductoPdf = { ...acueducto, colorAcento: 'no-es-un-color' };
+    await expect(
+      generarPdfFactura({ factura, detalles: [detalle], acueducto: acueductoInvalido }),
+    ).rejects.toThrow(/inválido/);
   });
 });

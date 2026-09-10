@@ -62,11 +62,17 @@ tolerancia de redondeo de 8 bits por canal — CA-1).
 `hexARgb01(acueducto.colorAcento)`. Test nuevo: dos colores distintos → bytes de PDF distintos.
 **Verificación:** `cd backend && npx vitest run factura-pdf`
 **Resultado esperado:** tests existentes siguen en verde + el caso nuevo pasa.
-**Estado:** Pendiente
+**Estado:** Hecho
 **Evidencia:**
 ```
-(se pega al ejecutar)
+ ✓ tests/unit/factura-pdf.test.ts (6 tests) 232ms
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
 ```
+Nota: hasta T-004/T-005 el resto del proyecto (index.ts, lib/portal.ts) todavía no compila del
+todo con TypeScript estricto porque `DatosAcueductoPdf.colorAcento` pasó a ser obligatorio — es
+esperado en este punto intermedio; T-005 lo cierra y ahí se corre `tsc`/`wrangler deploy --dry-run`
+sobre el proyecto completo.
 **Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-004 — `lib/portal.ts` propaga el color al PDF del portal
