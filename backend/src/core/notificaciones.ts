@@ -31,7 +31,7 @@ export interface ContenidoNotificacion {
 // Los contenidos de abajo son strings HTML (`<p>…</p>`) que salen hacia el
 // buzón del suscriptor firmados con el dominio del acueducto. Varios de los
 // valores interpolados son texto libre que escribe una persona en el panel
-// —`nombreAcueducto` (POST /onboarding) y `motivo` del corte— así que sin
+// —`nombreAcueducto` (POST /plataforma/acueductos, 018) y `motivo` del corte— así que sin
 // escapar permiten inyectar marcado arbitrario en un correo que el suscriptor
 // recibe como legítimo (enlace de pago falso, formulario de phishing). Hallazgo
 // WARNING de Semgrep en queues/cierre-facturacion.ts:298, confirmado real en la

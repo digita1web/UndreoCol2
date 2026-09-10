@@ -1,0 +1,23 @@
+-- =============================================================================
+-- UndreoCol — Cierra el autoservicio de alta de acueductos (M-5, auditoría de
+-- seguridad pre-producción, docs/PLAN-PRODUCCION.md). Decisión de Mateo,
+-- Sesión 041.
+--
+-- crear_tenant_con_admin() (001-fundacion, CA-7) dejaba crear un acueducto
+-- gratis a cualquier usuario autenticado — fue además el peldaño 2 de la
+-- cadena de C-1. La feature 018 (panel de plataforma) ya reemplazó esa
+-- necesidad con un flujo controlado: solo el superadmin (administrador,
+-- membresía sin cliente_id) da de alta acueductos, desde
+-- POST /plataforma/acueductos. Con esa vía en producción, dejar el
+-- autoservicio abierto es superficie de abuso sin ningún beneficio de
+-- producto real (sin autoservicio comercial todavía).
+--
+-- No se elimina la función ni su atomicidad: si el autoservicio se convierte
+-- en un objetivo de producto real, se reactiva con un solo GRANT (mismo
+-- criterio que docs/PLAN-PRODUCCION.md deja escrito para B-1). service_role
+-- no pierde acceso — nunca tuvo un GRANT explícito aquí, lo alcanza por los
+-- default privileges del bootstrap de Supabase, igual que tamano_base_mb()
+-- (tests/aislamiento/001, PASO 13).
+-- =============================================================================
+
+revoke execute on function crear_tenant_con_admin(text, text, text) from authenticated;

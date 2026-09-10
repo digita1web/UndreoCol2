@@ -228,12 +228,48 @@ GET  /plataforma       -> 200, "Panel de plataforma" en el cuerpo
 ```
 Confirmado también visualmente por Mateo en su navegador real.
 
-**M-5 · El registro es público y crear acueducto es gratis.**
-`POST /auth/registro` es abierto y `crear_tenant_con_admin()` está otorgada a `authenticated`:
-cualquiera crea una cuenta y un acueducto. Sin producto de autoservicio todavía, eso es superficie de
-abuso gratuita — y en Supabase Free la base tiene 500 MB (`ARQUITECTURA.md §6`). Fue además el
-peldaño 2 de la cadena de C-1. Con un solo cliente piloto, lo sensato es cerrar el registro o
-ponerle invitación hasta que el autoservicio sea un objetivo real.
+**M-5 · El registro era público y crear acueducto era gratis. — RESUELTO (Sesión 041,
+decisión de Mateo: cerrar el registro).**
+`POST /auth/registro` era abierto y `crear_tenant_con_admin()` estaba otorgada a `authenticated`:
+cualquiera creaba una cuenta y un acueducto gratis — y en Supabase Free la base tiene 500 MB
+(`ARQUITECTURA.md §6`). Fue además el peldaño 2 de la cadena de C-1.
+
+*Resuelto:* la feature 018 (panel de plataforma) ya había reemplazado la necesidad real de este
+flujo con uno controlado — solo el superadmin (`administrador`, membresía sin `cliente_id`) da de
+alta acueductos, desde `POST /plataforma/acueductos`. Con esa vía en producción, el autoservicio
+gratuito no tenía ningún beneficio de producto, solo superficie de abuso. Migración
+`20260922090000`: `revoke execute on function crear_tenant_con_admin(text, text, text) from
+authenticated`. No se elimina la función ni su atomicidad — si el autoservicio se convierte en un
+objetivo de producto real, se reactiva con un solo `GRANT` (mismo criterio que B-1 más abajo).
+`service_role` no pierde acceso (nunca tuvo `GRANT` explícito, lo alcanza por los *default
+privileges* del bootstrap de Supabase, igual que `tamano_base_mb()`).
+
+Se eliminaron del Worker las dos rutas públicas que formaban la cadena de autoservicio:
+`POST /auth/registro` (sin ningún uso legítimo — no había página en el frontend que lo llamara,
+solo era invocable a mano, exactamente como lo usó C-1) y `POST /onboarding` (el formulario de
+autoservicio). La página `/onboarding` del frontend se conserva porque `GET /dashboard` sigue
+redirigiendo ahí a cualquier cuenta sin membresía activa — hoy ese es un borde real: un alta desde
+`/plataforma/acueductos` que falla a mitad de camino (`auth.users` creado, membresía sin
+vincular). Se reemplazó el formulario muerto por un mensaje explicando el estado y un botón de
+salir (reutiliza `BotonSalir`, 021) — mejora aplicada junto con el cierre, a criterio propio: dejar
+el formulario tal cual habría quedado como un botón "Crear acueducto" que siempre falla con un
+error de Postgres sin explicación.
+
+**Deviación de spec documentada:** esto reemplaza el flujo manual CA-11 de `001-fundacion`
+("registro → onboarding → dashboard → logout → login → dashboard") — ese flujo ya no existe, el
+alta de acueductos pasa por 018. CA-7 (atomicidad del onboarding transaccional) no se ve afectado:
+la función conserva su atomicidad, solo cambió quién puede invocarla.
+
+**Verificado:** test `tests/aislamiento/001_fundacion_aislamiento.sql` (PASO 14) actualizado —
+`authenticated` recibe `permission denied` al intentar `crear_tenant_con_admin()`; la atomicidad
+(slug duplicado, "ya tiene acueducto", sin huérfanos) se re-verificó completa como `service_role`,
+el único rol que conserva acceso. Contraprueba: con el `GRANT` reotorgado a mano, el mismo test
+falla exactamente en esa aserción (`PASO 14 FALLÓ: authenticated ejecutó crear_tenant_con_admin
+pese a M-5`) — confirma que mide lo que dice medir. `FUNDACION-AISLAMIENTO OK` contra PostgreSQL
+real (22 migraciones desde cero + fixture). Backend: **217/217 tests en verde** (incluye
+`registro-cerrado.test.ts`, nuevo: confirma `404` real de `app.fetch` en ambas rutas eliminadas).
+Frontend: `npm run build` y `npm run lint` limpios. Backend: `npx wrangler deploy --dry-run`
+exitoso.
 
 **M-6 · `portal_intentos_login` no se purgaba nunca. — RESUELTO (feature 017, T-005).**
 `cron/limpieza.ts` declaraba que la purga llegaba con la feature 015. Cada documento distinto probado
@@ -350,9 +386,6 @@ que se referencia.
 
 ### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
 
-- **M-5 · Registro público y gratis** (`POST /auth/registro` abierto, `crear_tenant_con_admin()`
-  otorgada a `authenticated`). Decisión de producto pendiente: cerrar el registro o dejarlo así
-  hasta tener autoservicio real.
 - **B-1 · `planes` legible por `anon`.** Decisión de producto: exponer el catálogo comercial es
   normal en un SaaS — no se toca sin que Mateo lo pida.
 - **B-5 · `postcss` con 2 vulnerabilidades (transitiva de `next`).** Exige subir a `next@16`
@@ -397,3 +430,25 @@ ya tiene su propia identidad y no se reemplaza por la versión del prototipo.
 La base de producción (`undreocol-produccion`) sigue **vacía**: 0 acueductos, 0 suscriptores. Nadie
 la ha probado con datos reales todavía. El primer cliente piloto es lo que activa el primer gasto
 de infraestructura (`ARQUITECTURA.md §6`).
+
+### Stack local de Supabase (Docker) — requiere `supabase start` de Mateo
+
+Al verificar el cierre de M-5 contra Postgres real esta sesión, `supabase db reset` intentó
+recrear el contenedor de base de datos con una versión de imagen (`postgres:17.6.1.166`) que este
+entorno no tenía cacheada y no pudo descargar (sin acceso de red saliente aquí). El reintento con
+`supabase start` falló también por lo mismo (`storage-api:v1.71.0`, y un tercer contenedor de
+migraciones no identificado) y, al fallar, el propio CLI de Supabase hizo *rollback* completo:
+paró y eliminó **los 13 contenedores del stack local, su volumen de datos y su red de Docker** —
+no solo el de la base de datos. Nada de esto tocó producción (`undreocol-produccion`), que corre en
+Supabase Cloud, no en este Docker local, y que ya estaba vacía.
+
+La verificación de M-5 en sí se completó igual, contra un Postgres real independiente: se levantó un
+contenedor temporal con la imagen `postgres:17.6.1.165` ya cacheada (evidencia completa en el
+hallazgo M-5 arriba), y se eliminó al terminar — no reemplaza ni queda como el stack del proyecto.
+
+**Para restaurar el stack local:** con acceso de red normal, `supabase start` en la raíz del
+repositorio vuelve a descargar las imágenes que falten y recrea los 13 contenedores desde cero
+(igual que como quedó configurado originalmente). No hay ninguna migración ni fixture que reaplicar
+a mano: `supabase start` corre las 22 migraciones de `supabase/migrations/` automáticamente. Las
+imágenes cacheadas de versiones anteriores (`postgres:17.6.1.165`, `storage-api:v1.70.3`, etc.)
+siguen en este equipo y no estorban.

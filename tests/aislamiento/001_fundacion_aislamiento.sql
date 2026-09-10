@@ -386,10 +386,33 @@ end $$;
 rollback;
 
 -- ---------------------------------------------------------------------------
--- PASO 14: onboarding transaccional (CA-7)
+-- PASO 14: onboarding transaccional (CA-7) — ver también M-5 abajo
 -- ---------------------------------------------------------------------------
+-- M-5 (auditoría de seguridad pre-producción, docs/PLAN-PRODUCCION.md,
+-- decisión de Mateo Sesión 041): crear_tenant_con_admin() dejó de estar
+-- otorgada a `authenticated` — el autoservicio se cerró, /plataforma/
+-- acueductos (018) es ahora la única vía de alta de acueductos. La función y
+-- su atomicidad (CA-7) siguen intactas: se re-verifican abajo como
+-- service_role, el único rol que conserva acceso (default privileges del
+-- bootstrap de Supabase, igual que tamano_base_mb() en el PASO 13) por si el
+-- autoservicio se reactiva más adelante.
+
+-- authenticated ya NO puede ejecutar crear_tenant_con_admin (M-5)
 begin;
 set local role authenticated;
+set local request.jwt.claim.sub = 'e0000000-0000-0000-0000-0000000000e1';
+do $$
+begin
+  perform crear_tenant_con_admin('Acueducto Z', 'acueducto-z', 'z@test.local');
+  raise exception 'PASO 14 FALLÓ: authenticated ejecutó crear_tenant_con_admin pese a M-5';
+exception when others then
+  if sqlerrm not like '%permission denied%' then raise; end if;
+end $$;
+rollback;
+
+-- la función conserva su atomicidad para el único rol que aún la alcanza
+begin;
+set local role service_role;
 set local request.jwt.claim.sub = 'e0000000-0000-0000-0000-0000000000e1';
 do $$
 declare
@@ -440,7 +463,7 @@ rollback;
 
 -- un usuario con acueducto no crea otro
 begin;
-set local role authenticated;
+set local role service_role;
 set local request.jwt.claim.sub = 'a0000000-0000-0000-0000-0000000000a1';
 do $$
 begin

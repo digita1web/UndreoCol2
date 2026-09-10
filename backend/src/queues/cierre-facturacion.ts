@@ -320,7 +320,7 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
 
   const numero = String(factura.numero ?? facturaId);
   // El cuerpo es HTML y `acueducto.nombre` es texto libre que escribe una
-  // persona en POST /onboarding: se escapa antes de interpolarlo (fix de la
+  // persona en POST /plataforma/acueductos (018): se escapa antes de interpolarlo (fix de la
   // auditoría pre-producción; hallazgo WARNING de Semgrep en esta línea).
   // El asunto NO se escapa: es texto plano de la cabecera del correo, no HTML.
   const resultado = await enviarFacturaPorCorreo(env, {

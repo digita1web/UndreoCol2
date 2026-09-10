@@ -110,17 +110,6 @@ export function logout(): Promise<{ ok: true }> {
   return peticion<{ ok: true }>('/auth/logout', { method: 'POST' });
 }
 
-export interface RespuestaOnboarding {
-  clienteId: string;
-}
-
-export function crearAcueducto(nombre: string, slug: string): Promise<RespuestaOnboarding> {
-  return peticion<RespuestaOnboarding>('/onboarding', {
-    method: 'POST',
-    body: JSON.stringify({ nombre, slug }),
-  });
-}
-
 // --- Catálogo de servicios y tarifas (002-catalogo-y-tarifas) --------------
 
 export type TipoCalculo = 'por_consumo' | 'fijo';

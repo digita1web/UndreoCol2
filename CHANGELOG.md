@@ -4,6 +4,55 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-10 — Sesión 042: cierre de M-5 (registro público)
+
+Decisión de Mateo: cerrar el autoservicio de alta de acueductos (hallazgo M-5 de la auditoría de
+seguridad pre-producción, `docs/PLAN-PRODUCCION.md`). `POST /auth/registro` estaba abierto y
+`crear_tenant_con_admin()` otorgada a `authenticated`: cualquiera creaba una cuenta y un acueducto
+gratis — fue además el peldaño 2 de la cadena de C-1.
+
+**Implementado:** migración `20260922090000` revoca `execute` sobre `crear_tenant_con_admin()` a
+`authenticated` (no se elimina la función ni su atomicidad: la feature 018, panel de plataforma, ya
+cubre el alta real de acueductos vía `POST /plataforma/acueductos`, gateada a `administrador`; si
+el autoservicio vuelve a ser un objetivo de producto, se reactiva con un `GRANT`). Se eliminaron del
+Worker `POST /auth/registro` (sin ningún uso legítimo — ninguna página del frontend lo llamaba) y
+`POST /onboarding` (el formulario de autoservicio).
+
+**Mejora propia, aplicada junto con el cierre:** la página `/onboarding` del frontend seguía
+recibiendo tráfico real — `GET /dashboard` redirige ahí a cualquier cuenta sin membresía activa, y
+hoy ese es un borde real (un alta desde `/plataforma/acueductos` que falla a mitad de camino). En
+vez de dejar el formulario de autoservicio muerto —un botón "Crear acueducto" que siempre fallaría
+con un error crudo de Postgres—, se reemplazó por un mensaje explicando el estado y un botón de
+salir (reutiliza `BotonSalir`, 021).
+
+**Deviación de spec documentada:** esto reemplaza el flujo manual CA-11 de `001-fundacion`
+("registro → onboarding → dashboard → logout → login → dashboard"), que deja de existir. CA-7
+(atomicidad transaccional) no se ve afectado, solo cambió quién puede invocar la función.
+
+**Verificado contra PostgreSQL real** (22 migraciones desde cero + fixture de `001-fundacion`):
+`tests/aislamiento/001_fundacion_aislamiento.sql` actualizado — `authenticated` recibe `permission
+denied`; la atomicidad (slug duplicado, "ya tiene acueducto", sin huérfanos) se re-verificó completa
+como `service_role`. Contraprueba: con el `GRANT` reotorgado a mano, el mismo test falla exactamente
+en esa aserción — confirma que mide lo que dice medir. `FUNDACION-AISLAMIENTO OK`. Backend:
+**217/217 tests en verde** (incluye `registro-cerrado.test.ts`, nuevo, confirmando `404` real de
+ambas rutas eliminadas). Frontend: `npm run build` y `npm run lint` limpios. Backend:
+`npx wrangler deploy --dry-run` exitoso.
+
+**Incidente en el entorno local, reportado sin recortar alcance:** para correr la verificación
+contra Postgres real, `supabase db reset` intentó recrear el contenedor de base de datos con una
+versión de imagen que este entorno no tenía cacheada y no pudo descargar (sin red saliente aquí). El
+reintento con `supabase start` también falló, y el propio CLI de Supabase hizo *rollback* completo
+al fallar: **eliminó los 13 contenedores del stack local, su volumen de datos y su red de Docker**
+(no solo el de la base de datos). No tocó producción (`undreocol-produccion`, en Supabase Cloud, ya
+vacía). La verificación de M-5 se completó igual contra un contenedor Postgres temporal e
+independiente, eliminado al terminar. Detalle completo y pasos de recuperación (`supabase start`
+con red normal, sin reaplicar nada a mano) en `docs/PLAN-PRODUCCION.md`, sección "Stack local de
+Supabase (Docker)".
+
+**NO VERIFICADO — requiere Mateo:** `supabase start` para restaurar el stack local de Docker (auth,
+REST, storage, studio) — este entorno no tiene acceso de red saliente para descargar las imágenes
+que faltan.
+
 ### 2026-09-10 — Sesión 041: feature 027, re-vestido de /app/dashboard (Panel principal)
 
 Primera pantalla de contenido re-vestida sobre el shell de 026, siguiendo la propuesta de Mateo.

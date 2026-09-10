@@ -118,8 +118,8 @@ describe('contenido* — asunto y cuerpo por tipo de notificación (spec §3.2)'
 // ---------------------------------------------------------------------------
 // Escape de HTML en los cuerpos de correo (fix de la auditoría de seguridad
 // pre-producción, docs/PLAN-PRODUCCION.md — hallazgo WARNING de Semgrep
-// confirmado como real). `nombreAcueducto` (POST /onboarding) y `motivo` del
-// corte son texto libre que escribe una persona; sin escapar permiten inyectar
+// confirmado como real). `nombreAcueducto` (POST /plataforma/acueductos, 018)
+// y `motivo` del corte son texto libre que escribe una persona; sin escapar permiten inyectar
 // marcado en un correo que el suscriptor recibe como legítimo.
 // ---------------------------------------------------------------------------
 describe('escaparHtml — inyección de HTML en el correo del suscriptor', () => {

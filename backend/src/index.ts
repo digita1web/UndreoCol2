@@ -130,24 +130,6 @@ app.get('/salud', async (c) => {
   return c.json({ estado: 'ok' });
 });
 
-// POST /auth/registro — signUp de Supabase Auth. No crea tenant (eso es
-// onboarding). Con confirmación de email desactivada (D-9, dev) la sesión
-// queda lista de inmediato.
-app.post('/auth/registro', async (c) => {
-  const body = await c.req
-    .json<{ email?: string; password?: string }>()
-    .catch(() => ({ email: undefined, password: undefined }));
-  const email = body.email?.trim().toLowerCase();
-  const password = body.password;
-  if (!email || !password || password.length < 8) {
-    return c.json({ error: 'Email inválido o contraseña de menos de 8 caracteres' }, 400);
-  }
-  const supabase = crearClienteAnon(c.env);
-  const { data, error } = await supabase.auth.signUp({ email, password });
-  if (error) return c.json({ error: error.message }, 400);
-  return c.json({ ok: true, usuarioId: data.user?.id }, 201);
-});
-
 // POST /auth/login — signInWithPassword + cookie HttpOnly; devuelve perfil y
 // membresías activas para que el frontend decida onboarding vs dashboard.
 //
@@ -261,38 +243,6 @@ app.get('/auth/sesion', async (c) => {
     return c.json({ error: 'No se pudo leer el perfil' }, 500);
   }
   return c.json({ sesion, perfil, membresias });
-});
-
-// POST /onboarding — crea el acueducto del usuario en UNA transacción vía
-// rpc('crear_tenant_con_admin') (CA-7: sin huérfanos). Requiere sesión.
-app.post('/onboarding', async (c) => {
-  const sesion = await verificarSesionAdministrativa(c);
-  if (!sesion) return c.json({ error: 'No autenticado' }, 401);
-  const body = await c.req
-    .json<{ nombre?: string; slug?: string }>()
-    .catch(() => ({ nombre: undefined, slug: undefined }));
-  const nombre = body.nombre?.trim();
-  const slug = body.slug?.trim().toLowerCase();
-  // Misma regla que clientes.chk_slug.
-  if (!nombre || !slug || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
-    return c.json({ error: 'Nombre requerido y slug en minúsculas, sin espacios ni símbolos' }, 400);
-  }
-  const accessToken = obtenerAccessToken(c);
-  const supabase = crearClienteSuscriptor(c.env, accessToken ?? '');
-  const { data, error } = await supabase.rpc('crear_tenant_con_admin', {
-    p_nombre_cliente: nombre,
-    p_slug: slug,
-    p_email: sesion.email,
-  });
-  if (error) {
-    const msg = error.message.includes('El slug ya está en uso')
-      ? 'El slug ya está en uso'
-      : error.message.includes('El usuario ya tiene un acueducto')
-        ? 'El usuario ya tiene un acueducto'
-        : error.message;
-    return c.json({ error: msg }, 409);
-  }
-  return c.json({ clienteId: data }, 201);
 });
 
 // GET /dashboard — payload de /app/dashboard (spec §4.7): nombre del acueducto,
