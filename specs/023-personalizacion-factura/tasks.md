@@ -18,12 +18,26 @@ psql "$DATABASE_URL" -c "select has_column_privilege('authenticated','clientes',
 ```
 **Resultado esperado:** migración aplica sin error; `color_acento` = `#14408C` en filas existentes;
 `puede_color = t`, `puede_plan = f`.
-**Estado:** Pendiente
+**Estado:** Hecho
 **Evidencia:**
 ```
-(se pega al ejecutar)
+Aplicada contra Postgres 17 (imagen Supabase) descartable, desde cero, junto a las otras 19
+migraciones — sin error.
+
+INSERT (sin especificar color_acento) → color_acento = '#14408C'
+
+has_column_privilege: puede_color=t puede_plan=f puede_estado=f puede_slug=f
+
+INSERT con color_acento = 'rojo':
+  ERROR: new row for relation "clientes" violates check constraint "clientes_color_acento_check"
+
+portal_factura_completa: prosrc contiene 'color_acento' → t
+
+Aplicada también con `supabase migration up --local --yes` sobre el Supabase local con fixtures:
+  clientes.color_acento = '#14408C' en las filas existentes (Acueducto A, Acueducto B)
+  puede_color=t puede_plan=f (mismo resultado)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-002 — `core/color.ts`: validación y conversión, con tests
 **Archivos:** `backend/src/core/color.ts`, `backend/src/core/color.test.ts`
@@ -37,7 +51,7 @@ tolerancia de redondeo de 8 bits por canal — CA-1).
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-003 — `factura-pdf.ts` usa el color del acueducto
 **Archivos:** `backend/src/lib/factura-pdf.ts`, `backend/src/lib/factura-pdf.test.ts`
@@ -50,7 +64,7 @@ tolerancia de redondeo de 8 bits por canal — CA-1).
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-004 — `lib/portal.ts` propaga el color al PDF del portal
 **Archivos:** `backend/src/lib/portal.ts`
@@ -63,7 +77,7 @@ tolerancia de redondeo de 8 bits por canal — CA-1).
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-005 — Rutas `GET /acueducto` y `PATCH /acueducto/color`
 **Archivos:** `backend/src/index.ts`
@@ -85,7 +99,7 @@ con `admin_acueducto` y un hex inválido → 400; con hex válido → 200 y el c
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-006 — Test de aislamiento 013
 **Archivos:** `tests/aislamiento/013_personalizacion_factura_aislamiento.sql`
@@ -101,7 +115,7 @@ se relaja algo a propósito y el paso correspondiente cae, luego se restaura).
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-007 — Frontend: cliente de la API (`lib/api.ts`)
 **Archivos:** `frontend/lib/api.ts`
@@ -113,7 +127,7 @@ se relaja algo a propósito y el paso correspondiente cae, luego se restaura).
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-008 — Frontend: pantalla `/app/configuracion`
 **Archivos:** `frontend/app/app/configuracion/page.tsx`
@@ -128,7 +142,7 @@ patrón que `/app/dashboard`.
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-009 — Frontend: encabezado del acueducto en la vista de impresión
 **Archivos:** `frontend/app/app/facturacion/[facturaId]/page.tsx`
@@ -144,7 +158,7 @@ el encabezado.
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-010 — Frontend: enlace desde el dashboard
 **Archivos:** `frontend/app/app/dashboard/page.tsx`
@@ -157,7 +171,7 @@ el encabezado.
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
 
 ## T-011 — Cierre: CHANGELOG y verificación final completa
 **Archivos:** `CHANGELOG.md`
@@ -174,4 +188,4 @@ cd frontend && npm run build && npm run lint
 ```
 (se pega al ejecutar)
 ```
-**Commit:** —
+**Commit:** se registra en la Bitácora de cierre (T-011)
