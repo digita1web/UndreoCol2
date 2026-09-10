@@ -8,14 +8,18 @@ Una tarea = un commit. Sin evidencia no hay commit. Los hashes van en la Bitáco
 **Archivos:** `frontend/lib/api.ts`
 **Hace:** llama `GET /dashboard` desde el cliente, tipa `{ cliente: { rol, nombre }, perfil }`.
 **Verificación:** `cd frontend && npx tsc --noEmit`
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:** `npx tsc --noEmit` sin errores.
+**Commit:** `26fbe0f`
 
 ## T-002 — `shell-lector.tsx`: encabezado + navegación inferior
 **Archivos:** `frontend/components/lector/shell-lector.tsx`
 **Hace:** header "AquaLectura" (SVG de gota) + indicador en línea/sin conexión (`navigator.onLine`)
 + barra inferior de 4 pestañas.
 **Verificación:** `cd frontend && npx tsc --noEmit && npm run lint`
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:** `tsc --noEmit` sin errores; `ESLint: No issues found`.
+**Commit:** `a4f0893`
 
 ## T-003 — Las 4 vistas del lector
 **Archivos:** `frontend/components/lector/inicio-lector.tsx`,
@@ -23,8 +27,15 @@ Una tarea = un commit. Sin evidencia no hay commit. Los hashes van en la Bitáco
 **Hace:** cada una consume las funciones ya existentes de `lib/api.ts` (`obtenerAcueducto`,
 `listarPeriodos`, `listarSuscriptores`, `listarLecturas`, `crearLectura`). Pendientes no muestra
 botón de acción (CA-4).
-**Verificación:** `cd frontend && npx tsc --noEmit && npm run build`
-**Estado:** Pendiente
+**Verificación:** `cd frontend && npx tsc --noEmit && npm run lint` (el `build` completo se corre en T-004,
+cuando quedan conectadas a `page.tsx` — hasta entonces no las importa nadie)
+**Estado:** Hecho
+**Evidencia:**
+```
+$ npx tsc --noEmit  → sin errores
+$ npm run lint      → ESLint: No issues found
+```
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-004 — `lecturas/page.tsx` decide el shell según el rol
 **Archivos:** `frontend/app/app/lecturas/page.tsx`
