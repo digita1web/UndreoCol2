@@ -17,7 +17,25 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260921090000_pe
 -- admin_acueducto de A: mismos conteos que antes (regresión)
 -- usuarios_servicio_lector(cliente A) desde lector: filas de A, 5 columnas
 ```
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+Aplicada contra Postgres 17 descartable, desde cero, junto a las otras 20 migraciones — sin error.
+
+Lector de A (jwt sub a2): facturas=0, factura_detalles=0, pagos=0, pago_aplicaciones=0, tarifas=0,
+configuracion=0, cortes_reconexiones=0, notificaciones=0, importaciones_suscriptores=0,
+reemplazos_contador=0, usuarios_servicio=0  (11/11 en cero)
+
+Admin de A (jwt sub a1), regresión — mismos conteos que antes de 024:
+  facturas=9, pagos=8, tarifas=1, configuracion=1, usuarios_servicio=6
+
+usuarios_servicio_lector('cliente A') desde lector de A: 6 filas, solo
+  {id, codigo_suscriptor, nombre, contador_actual_id, estado} — sin PII
+usuarios_servicio_lector('cliente B') desde lector de A: 0 filas (aislamiento intacto)
+
+Aplicada también con `supabase migration up --local --yes` sobre el Supabase local con fixtures.
+```
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-002 — Backend: `listarSuscriptores` usa la RPC para `lector`
 **Archivos:** `backend/src/lib/suscriptores.ts`, `backend/src/index.ts`
