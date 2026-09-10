@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UndreoCol · Propuesta UI</title>
+<style>
+:root{
+  --bg:#f7f9fc;--surface:#fff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;
+  --accent:#2563eb;--accent-soft:#eff6ff;--success:#15803d;--success-soft:#f0fdf4;
+  --warning:#b45309;--warning-soft:#fffbeb;--danger:#b91c1c;--danger-soft:#fef2f2;
+  --info:#0369a1;--info-soft:#f0f9ff;--sidebar:#ffffff;--shadow:0 1px 3px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.04);
+  --radius:14px;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.app{display:flex;min-height:100vh}
+.sidebar{position:fixed;inset:0 auto 0 0;width:250px;background:var(--sidebar);border-right:1px solid var(--border);padding:20px 14px;display:flex;flex-direction:column;z-index:5}
+.brand{display:flex;align-items:center;gap:11px;padding:5px 10px 22px}
+.logo{width:38px;height:38px;border-radius:11px;background:var(--accent);color:white;display:grid;place-items:center;font-weight:800;font-size:20px}
+.brand strong{font-size:18px;letter-spacing:-.02em}.brand span{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.nav{display:flex;flex-direction:column;gap:4px}.nav button{border:0;background:transparent;color:#475569;text-align:left;padding:11px 12px;border-radius:10px;display:flex;align-items:center;gap:11px;font-weight:550}.nav button:hover{background:#f8fafc}.nav button.active{background:var(--accent-soft);color:var(--accent);font-weight:700}.ico{width:20px;text-align:center;font-size:17px}
+.sidebar-bottom{margin-top:auto;border-top:1px solid var(--border);padding-top:14px}.operator{display:flex;align-items:center;gap:9px;padding:8px}.avatar{width:34px;height:34px;border-radius:50%;background:#dbeafe;color:#1d4ed8;display:grid;place-items:center;font-weight:700}.operator small{display:block;color:var(--muted);font-size:11px}
+.main{margin-left:250px;width:calc(100% - 250px)}
+.topbar{height:68px;background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 34px;position:sticky;top:0;z-index:4}
+.crumb{color:var(--muted);font-size:13px}.top-actions{display:flex;align-items:center;gap:10px}.online{display:flex;align-items:center;gap:7px;font-size:13px;color:#475569}.dot{width:8px;height:8px;border-radius:50%;background:#22c55e}
+.content{max-width:1420px;margin:0 auto;padding:32px 34px 70px}
+.page-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:25px}.eyebrow{font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.page-head h1{margin:0;font-size:30px;letter-spacing:-.035em}.page-head p{margin:7px 0 0;color:var(--muted)}
+.btn{border:1px solid var(--border);background:white;color:#334155;border-radius:9px;padding:9px 14px;font-weight:650}.btn:hover{background:#f8fafc}.btn.primary{background:var(--accent);border-color:var(--accent);color:white}.btn.secondary{color:var(--accent);border-color:#bfdbfe;background:#fff}.btn.danger{background:#fff;border-color:#fecaca;color:var(--danger)}.btn.sm{padding:7px 10px;font-size:13px}
+.actions{display:flex;gap:9px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}.card h2{font-size:18px;margin:0 0 5px}.card-sub{color:var(--muted);font-size:13px}
+.grid{display:grid;gap:16px}.kpis{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:18px}.kpi{padding:20px}.kpi-top{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px}.kpi-icon{width:34px;height:34px;border-radius:9px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}.kpi-value{font-size:25px;font-weight:780;margin:10px 0 5px;letter-spacing:-.03em}.trend{font-size:12px;color:var(--success);font-weight:650}.dashboard-grid{grid-template-columns:1.65fr 1fr}.chart{height:275px;margin-top:16px;display:flex;align-items:flex-end;gap:12px;padding:15px 5px 0}.bar{flex:1;border-radius:6px 6px 2px 2px;background:linear-gradient(to top,#bfdbfe,#60a5fa);min-height:25px;position:relative}.bar span{position:absolute;bottom:-23px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted)}
+.list{display:flex;flex-direction:column;gap:0}.row{display:grid;grid-template-columns:1.5fr .8fr .75fr .75fr auto;gap:16px;align-items:center;padding:14px 0;border-bottom:1px solid #eef2f7}.row:last-child{border-bottom:0}.row strong{font-size:14px}.row small{display:block;color:var(--muted);margin-top:3px}.table-head{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;padding-bottom:9px}.table-card{overflow:hidden}.filters{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:16px}.input,.select{border:1px solid var(--border);background:white;border-radius:9px;padding:10px 12px;min-height:40px;color:#334155}.input{min-width:240px}.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:750;white-space:nowrap}.badge.success{background:var(--success-soft);color:var(--success)}.badge.warning{background:var(--warning-soft);color:var(--warning)}.badge.danger{background:var(--danger-soft);color:var(--danger)}.badge.info{background:var(--info-soft);color:var(--info)}.badge.gray{background:#f1f5f9;color:#475569}
+.amount{font-weight:750}.muted{color:var(--muted)}
+.notice{padding:12px 14px;border-radius:10px;background:var(--info-soft);color:var(--info);font-size:13px}.warning-box{background:var(--warning-soft);color:var(--warning)}.danger-box{background:var(--danger-soft);color:var(--danger)}
+.split{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:12px;font-weight:700;color:#475569}.field.full{grid-column:1/-1}
+.reading-hero{background:linear-gradient(135deg,#eff6ff,#f8fbff);border:1px solid #dbeafe;padding:24px;border-radius:16px;margin-bottom:17px}.reading-hero h2{font-size:23px;margin:0 0 5px}.reading-hero p{margin:0;color:var(--muted)}.big-action{width:100%;padding:17px;border:0;border-radius:12px;background:#0f9f7a;color:white;font-size:16px;font-weight:750;margin-top:17px}.reading-cards{grid-template-columns:repeat(3,1fr);margin-top:15px}.quick{padding:18px}.quick-icon{font-size:24px;margin-bottom:12px}.quick h3{margin:0 0 5px;font-size:15px}.quick p{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
+.detail-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.invoice-paper{max-width:850px;margin:auto;background:#fff;border:1px solid #dbe1e8;padding:44px;box-shadow:0 8px 35px rgba(15,23,42,.08)}.invoice-brand{display:flex;justify-content:space-between;border-bottom:2px solid var(--accent);padding-bottom:20px}.invoice-brand h2{margin:0;color:var(--accent);font-size:22px}.invoice-total{font-size:27px;color:var(--accent);font-weight:800}.invoice-lines{margin-top:28px}.line{display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid #edf0f3}.total-line{display:flex;justify-content:space-between;padding-top:20px;font-size:20px;font-weight:800;color:var(--accent)}
+.settings-preview{display:grid;grid-template-columns:.9fr 1.1fr;gap:18px}.color-preview{border:1px solid var(--border);border-radius:14px;padding:24px;background:white}.color-swatch{height:54px;border-radius:10px;margin:15px 0}.hex{font-family:ui-monospace,monospace;color:var(--muted);font-size:13px}
+.portal-wrap{min-height:calc(100vh - 68px);display:grid;place-items:center;padding:35px}.portal{width:100%;max-width:460px}.portal .logo{margin-bottom:18px}.portal h1{font-size:28px;margin:0 0 8px}.portal p{color:var(--muted)}.portal-card{margin-top:20px}.portal-card .btn{width:100%;margin-top:8px}.portal-invoice{max-width:820px;margin:auto}.portal-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.unauth{max-width:620px;margin:70px auto;text-align:center}.unauth .big{font-size:60px}
+.screen{display:none}.screen.active{display:block}
+.mobile-preview{max-width:420px;margin:auto;background:#f8fafc;border:1px solid var(--border);border-radius:24px;padding:15px}.mobile-top{background:var(--accent);color:#fff;padding:18px;border-radius:18px;margin-bottom:12px}.mobile-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:10px}.touch-btn{width:100%;padding:16px;border-radius:12px;border:0;background:var(--accent);color:#fff;font-weight:750;font-size:15px}
+@media(max-width:1050px){.sidebar{width:210px}.main{margin-left:210px;width:calc(100% - 210px)}.kpis{grid-template-columns:repeat(2,1fr)}.dashboard-grid,.split,.settings-preview{grid-template-columns:1fr}}
+@media(max-width:760px){.sidebar{position:static;width:100%;height:auto;border-right:0;border-bottom:1px solid var(--border)}.app{display:block}.main{margin-left:0;width:100%}.nav{display:grid;grid-template-columns:repeat(3,1fr)}.sidebar-bottom{display:none}.topbar{position:static;padding:0 16px}.content{padding:22px 16px 50px}.page-head{gap:15px;flex-direction:column}.kpis,.reading-cards,.form-grid{grid-template-columns:1fr}.row{grid-template-columns:1fr 1fr}.row>*:nth-child(n+3){display:none}.invoice-paper{padding:22px}.actions{flex-wrap:wrap}}
+@media print{.sidebar,.topbar,.page-head .actions{display:none!important}.main{margin:0;width:100%}.content{padding:0}.invoice-paper{border:0;box-shadow:none;max-width:none}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="logo">💧</div><div><strong>UndreoCol</strong><span>Gestión de acueductos</span></div></div>
+  <nav class="nav" id="nav">
+    <button data-screen="dashboard" class="active"><span class="ico">⌂</span>Panel</button>
+    <button data-screen="facturacion"><span class="ico">▣</span>Facturación</button>
+    <button data-screen="pagos"><span class="ico">$</span>Cartera</button>
+    <button data-screen="lecturas"><span class="ico">◉</span>Lecturas</button>
+    <button data-screen="suscriptores"><span class="ico">♙</span>Suscriptores</button>
+    <button data-screen="catalogo"><span class="ico">▤</span>Catálogo y tarifas</button>
+    <button data-screen="cortes"><span class="ico">⚡</span>Cortes</button>
+    <button data-screen="notificaciones"><span class="ico">◌</span>Notificaciones</button>
+    <button data-screen="configuracion"><span class="ico">⚙</span>Configuración</button>
+    <button data-screen="portal"><span class="ico">↗</span>Portal público</button>
+    <button data-screen="lector"><span class="ico">▥</span>Vista lector</button>
+  </nav>
+  <div class="sidebar-bottom"><div class="operator"><div class="avatar">AM</div><div><strong style="font-size:13px">Ana Martínez</strong><small>Administradora</small></div></div></div>
+</aside>
+
+<main class="main">
+<header class="topbar"><div class="crumb" id="crumb">Panel principal</div><div class="top-actions"><div class="online"><span class="dot"></span>En línea</div><button class="btn sm">Acueducto A ▾</button></div></header>
+<div class="content">
+
+<section class="screen active" id="dashboard">
+  <div class="page-head"><div><div class="eyebrow">Resumen</div><h1>Buenos días, Ana</h1><p>Así va la operación de <strong>Acueducto A</strong> este periodo.</p></div><div class="actions"><button class="btn">Exportar</button><button class="btn primary" onclick="go('lecturas')">+ Nueva lectura</button></div></div>
+  <div class="grid kpis">
+    <div class="card kpi"><div class="kpi-top">Recaudo del mes <span class="kpi-icon">↗</span></div><div class="kpi-value">$ 8.426.500</div><div class="trend">↑ 12,4% vs. mes anterior</div></div>
+    <div class="card kpi"><div class="kpi-top">Cartera vencida <span class="kpi-icon">!</span></div><div class="kpi-value">$ 1.284.600</div><div class="trend" style="color:var(--danger)">38 suscriptores en mora</div></div>
+    <div class="card kpi"><div class="kpi-top">Por vencer <span class="kpi-icon">◷</span></div><div class="kpi-value">$ 742.300</div><div class="trend" style="color:var(--warning)">21 facturas · próximos 7 días</div></div>
+    <div class="card kpi"><div class="kpi-top">Consumo promedio <span class="kpi-icon">⌁</span></div><div class="kpi-value">18,6 m³</div><div class="trend">↓ 2,1% vs. periodo anterior</div></div>
+  </div>
+  <div class="grid dashboard-grid">
+    <div class="card"><h2>Tendencia de recaudo</h2><div class="card-sub">Últimos 12 meses</div><div class="chart">
+      <div class="bar" style="height:52%"><span>Oct</span></div><div class="bar" style="height:59%"><span>Nov</span></div><div class="bar" style="height:55%"><span>Dic</span></div><div class="bar" style="height:68%"><span>Ene</span></div><div class="bar" style="height:63%"><span>Feb</span></div><div class="bar" style="height:72%"><span>Mar</span></div><div class="bar" style="height:65%"><span>Abr</span></div><div class="bar" style="height:77%"><span>May</span></div><div class="bar" style="height:71%"><span>Jun</span></div><div class="bar" style="height:84%"><span>Jul</span></div><div class="bar" style="height:80%"><span>Ago</span></div><div class="bar" style="height:91%"><span>Sep</span></div>
+    </div></div>
+    <div class="card"><h2>Atención prioritaria</h2><div class="card-sub">Lo que requiere acción hoy</div>
+      <div style="padding:18px 0;border-bottom:1px solid var(--border)"><strong>3 anomalías de lectura</strong><small class="muted" style="display:block;margin-top:5px">Consumo fuera de rango</small><button class="btn secondary sm" style="margin-top:10px" onclick="go('lecturas')">Revisar</button></div>
+      <div style="padding:18px 0;border-bottom:1px solid var(--border)"><strong>12 facturas por enviar</strong><small class="muted" style="display:block;margin-top:5px">Periodo septiembre 2026</small><button class="btn secondary sm" style="margin-top:10px" onclick="go('facturacion')">Ver facturas</button></div>
+      <div style="padding:18px 0"><strong>7 candidatos a corte</strong><small class="muted" style="display:block;margin-top:5px">Más de 60 días de mora</small><button class="btn secondary sm" style="margin-top:10px" onclick="go('cortes')">Gestionar</button></div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="facturacion">
+<div class="page-head"><div><div class="eyebrow">Facturación</div><h1>Facturas</h1><p>Periodo activo · Septiembre 2026</p></div><div class="actions"><button class="btn">Cambiar periodo</button><button class="btn primary">Generar facturación</button></div></div>
+<div class="card table-card"><div class="filters"><input class="input" placeholder="Buscar suscriptor o factura..."><select class="select"><option>Todos los estados</option><option>Pendiente</option><option>Pagada</option><option>Anulada</option></select><button class="btn">Filtrar</button></div>
+<div class="list">
+<div class="row table-head"><span>Suscriptor</span><span>Factura</span><span>Total</span><span>Estado</span><span></span></div>
+<div class="row"><div><strong>Suscriptor A1</strong><small>A-001 · Estrato 3</small></div><span>FAC-2026-00001</span><span class="amount">$ 38.600</span><span class="badge warning">Por vencer</span><button class="btn sm" onclick="go('factura-detail')">Ver</button></div>
+<div class="row"><div><strong>María Rodríguez</strong><small>A-002 · Estrato 2</small></div><span>FAC-2026-00002</span><span class="amount">$ 28.900</span><span class="badge success">Pagada</span><button class="btn sm" onclick="go('factura-detail')">Ver</button></div>
+<div class="row"><div><strong>José Pérez</strong><small>A-003 · Estrato 4</small></div><span>FAC-2026-00003</span><span class="amount">$ 46.200</span><span class="badge danger">Vencida</span><button class="btn sm" onclick="go('factura-detail')">Ver</button></div>
+<div class="row"><div><strong>Rosa Gómez</strong><small>A-004 · Estrato 2</small></div><span>FAC-2026-00004</span><span class="amount">$ 31.400</span><span class="badge gray">Anulada</span><button class="btn sm" onclick="go('factura-detail')">Ver</button></div>
+</div></div></section>
+
+<section class="screen" id="factura-detail">
+<div class="page-head"><div><div class="eyebrow">Detalle de factura</div><h1>FAC-2026-00001</h1><p>Suscriptor A1 · A-001 · Periodo septiembre 2026</p></div><div class="actions"><button class="btn" onclick="window.print()">Imprimir</button><button class="btn secondary">Ver PDF</button><button class="btn secondary">Enviar por correo</button><button class="btn danger">Anular</button></div></div>
+<div class="invoice-paper">
+<div class="invoice-brand"><div><h2>Acueducto A</h2><div class="muted">NIT 900000001-1</div><div class="muted">Factura de servicio público</div></div><div style="text-align:right"><strong>FAC-2026-00001</strong><div class="muted">Emisión: 10/09/2026</div><div class="muted">Vence: 02/10/2026</div></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:25px;margin-top:25px"><div><small class="muted">SUSCRIPTOR</small><div style="font-weight:750;margin-top:4px">Suscriptor A1</div><div class="muted">Código A-001 · Estrato 3</div></div><div><small class="muted">CONTADOR</small><div style="font-weight:750;margin-top:4px">MTR-00482</div><div class="muted">Lectura actual 248 m³</div></div></div>
+<div class="invoice-lines"><div class="line"><span>Acueducto</span><strong>$ 26.400</strong></div><div class="line"><span>Alcantarillado</span><strong>$ 12.200</strong></div><div class="total-line"><span>TOTAL</span><span>$ 38.600</span></div></div>
+<div class="notice" style="margin-top:25px">Estado: <strong>por vencer</strong> · Si ya realizó el pago, conserve el comprobante para la actualización de cartera.</div>
+</div></section>
+
+<section class="screen" id="pagos">
+<div class="page-head"><div><div class="eyebrow">Cartera</div><h1>Suscriptores con deuda</h1><p>Consulta y registra pagos pendientes.</p></div><button class="btn primary">+ Registrar pago</button></div>
+<div class="card table-card"><div class="filters"><input class="input" placeholder="Buscar suscriptor..."><label style="display:flex;align-items:center;gap:8px;padding:0 8px"><input type="checkbox"> Solo morosos</label></div>
+<div class="list"><div class="row table-head"><span>Suscriptor</span><span>Días mora</span><span>Saldo</span><span>Estado</span><span></span></div>
+<div class="row"><div><strong>José Pérez</strong><small>A-003 · Estrato 4</small></div><span>73 días</span><span class="amount">$ 92.400</span><span class="badge danger">Mora</span><button class="btn sm">Registrar</button></div>
+<div class="row"><div><strong>Carmen Díaz</strong><small>A-014 · Estrato 2</small></div><span>44 días</span><span class="amount">$ 54.600</span><span class="badge warning">Vencida</span><button class="btn sm">Registrar</button></div>
+<div class="row"><div><strong>Pedro León</strong><small>A-021 · Estrato 3</small></div><span>12 días</span><span class="amount">$ 28.600</span><span class="badge warning">Por vencer</span><button class="btn sm">Registrar</button></div>
+</div></div></section>
+
+<section class="screen" id="lecturas">
+<div class="page-head"><div><div class="eyebrow">Lecturas</div><h1>Lecturas del periodo</h1><p>Registra lecturas y revisa anomalías antes del cierre.</p></div><div class="actions"><button class="btn">Gestionar periodo</button><button class="btn primary">+ Nueva lectura</button></div></div>
+<div class="reading-hero"><h2>Consulta por periodo</h2><p>Selecciona el periodo para consultar lecturas registradas y pendientes.</p><div style="display:flex;gap:10px;margin-top:17px;flex-wrap:wrap"><select class="select" style="min-width:280px"><option>Septiembre 2026 · Activo</option><option>Agosto 2026</option><option>Julio 2026</option></select><label style="display:flex;align-items:center;gap:7px;padding:10px 0"><input type="checkbox"> Solo anomalías pendientes</label></div></div>
+<div class="grid reading-cards"><div class="card quick"><div class="quick-icon">📷</div><h3>Lector OCR</h3><p>Escanea el contador y detecta automáticamente la lectura cuando sea posible.</p><button class="btn secondary sm" style="margin-top:13px">Escanear contador</button></div><div class="card quick"><div class="quick-icon">⌨</div><h3>Ingreso manual</h3><p>Selecciona un suscriptor y registra la lectura directamente.</p><button class="btn secondary sm" style="margin-top:13px">Ingresar lectura</button></div><div class="card quick"><div class="quick-icon">⚠️</div><h3>Anomalías <span class="badge danger">3</span></h3><p>Consumos altos, bajos o en cero que requieren revisión antes del cierre.</p><button class="btn danger sm" style="margin-top:13px">Revisar anomalías</button></div></div>
+<div class="card" style="margin-top:16px"><h2>Últimas lecturas</h2><div class="card-sub">Septiembre 2026</div><div class="list" style="margin-top:8px"><div class="row table-head"><span>Suscriptor</span><span>Contador</span><span>Lectura</span><span>Consumo</span><span>Estado</span></div><div class="row"><div><strong>Suscriptor A1</strong><small>A-001</small></div><span>MTR-00482</span><strong>248 m³</strong><span>19 m³</span><span class="badge success">Normal</span></div><div class="row"><div><strong>María Rodríguez</strong><small>A-002</small></div><span>MTR-00483</span><strong>190 m³</strong><span>63 m³</span><span class="badge danger">Alto</span></div></div></div>
+</section>
+
+<section class="screen" id="suscriptores">
+<div class="page-head"><div><div class="eyebrow">Suscriptores</div><h1>Suscriptores</h1><p>1.284 suscriptores registrados.</p></div><div class="actions"><button class="btn">Importar Excel / CSV</button><button class="btn primary">+ Nuevo suscriptor</button></div></div>
+<div class="card table-card"><div class="filters"><input class="input" placeholder="Buscar por código o nombre..."><select class="select"><option>Todos los estados</option><option>Activo</option><option>Suspendido</option><option>Cortado</option><option>Inactivo</option></select></div><div class="list">
+<div class="row table-head"><span>Suscriptor</span><span>Estrato</span><span>Contador</span><span>Estado</span><span></span></div>
+<div class="row"><div><strong>Suscriptor A1</strong><small>A-001</small></div><span>3</span><span>MTR-00482</span><span class="badge success">Activo</span><button class="btn sm">Abrir</button></div>
+<div class="row"><div><strong>María Rodríguez</strong><small>A-002</small></div><span>2</span><span>MTR-00483</span><span class="badge success">Activo</span><button class="btn sm">Abrir</button></div>
+<div class="row"><div><strong>José Pérez</strong><small>A-003</small></div><span>4</span><span>MTR-00484</span><span class="badge danger">Cortado</span><button class="btn sm">Abrir</button></div>
+</div></div></section>
+
+<section class="screen" id="catalogo">
+<div class="page-head"><div><div class="eyebrow">Configuración comercial</div><h1>Catálogo y tarifas</h1><p>Las tarifas se versionan; las versiones anteriores nunca se editan.</p></div><button class="btn primary">+ Nueva tarifa</button></div>
+<div class="grid" style="grid-template-columns:repeat(2,1fr)">
+<div class="card"><div style="display:flex;justify-content:space-between"><div><h2>Acueducto</h2><div class="card-sub">Servicio principal</div></div><span class="badge success">Vigente</span></div><div style="font-size:28px;font-weight:800;margin:22px 0">$ 26.400</div><div class="muted">Estrato 3 · Vigencia desde 01/09/2026</div><button class="btn sm" style="margin-top:15px">Ver versiones</button></div>
+<div class="card"><div style="display:flex;justify-content:space-between"><div><h2>Alcantarillado</h2><div class="card-sub">Servicio complementario</div></div><span class="badge success">Vigente</span></div><div style="font-size:28px;font-weight:800;margin:22px 0">$ 12.200</div><div class="muted">Tarifa vigente · 01/09/2026</div><button class="btn sm" style="margin-top:15px">Ver versiones</button></div>
+</div></section>
+
+<section class="screen" id="cortes">
+<div class="page-head"><div><div class="eyebrow">Cortes y reconexión</div><h1>Gestión de cortes</h1><p>Revisa candidatos según días de mora antes de ejecutar.</p></div><button class="btn">Reglas de corte</button></div>
+<div class="notice warning-box" style="margin-bottom:16px">Hay <strong>7 candidatos</strong> que superan los 60 días de mora. Verifica cada caso antes de ejecutar el corte.</div>
+<div class="card table-card"><div class="list"><div class="row table-head"><span>Suscriptor</span><span>Días mora</span><span>Deuda</span><span>Estado</span><span>Acción</span></div>
+<div class="row"><div><strong>José Pérez</strong><small>A-003</small></div><span>73</span><span class="amount">$ 92.400</span><span class="badge warning">Candidato</span><button class="btn danger sm">Ejecutar corte</button></div>
+<div class="row"><div><strong>Carmen Díaz</strong><small>A-014</small></div><span>66</span><span class="amount">$ 71.800</span><span class="badge warning">Candidato</span><button class="btn danger sm">Ejecutar corte</button></div>
+</div></div></section>
+
+<section class="screen" id="notificaciones">
+<div class="page-head"><div><div class="eyebrow">Comunicaciones</div><h1>Notificaciones</h1><p>Historial de envíos de facturas y recordatorios.</p></div></div>
+<div class="card table-card"><div class="list"><div class="row table-head"><span>Destinatario</span><span>Tipo</span><span>Fecha</span><span>Entrega</span><span></span></div>
+<div class="row"><div><strong>Suscriptor A1</strong><small>a1@correo.com</small></div><span>Factura generada</span><span>10/09/2026 08:41</span><span class="badge success">Entregado</span><button class="btn sm">Detalle</button></div>
+<div class="row"><div><strong>María Rodríguez</strong><small>maria@correo.com</small></div><span>Recordatorio de pago</span><span>10/09/2026 08:37</span><span class="badge danger">Fallido</span><button class="btn sm">Detalle</button></div>
+</div></div></section>
+
+<section class="screen" id="configuracion">
+<div class="page-head"><div><div class="eyebrow">Acueducto</div><h1>Configuración</h1><p>Datos del acueducto y personalización de la marca.</p></div><button class="btn primary">Guardar cambios</button></div>
+<div class="settings-preview">
+<div class="card"><h2>Datos del acueducto</h2><div class="form-grid" style="margin-top:18px"><div class="field full"><label>Nombre</label><input class="input" value="Acueducto A"></div><div class="field"><label>NIT</label><input class="input" value="900000001-1"></div><div class="field"><label>Color de acento</label><input class="input" id="colorInput" value="#14408C"></div></div><div class="notice" style="margin-top:18px">El color se usa en el nombre del acueducto y el total de la factura. Debe funcionar con cualquier color elegido.</div></div>
+<div class="color-preview"><div class="eyebrow">Vista previa</div><h2 id="previewName" style="color:#14408C;margin-top:4px">Acueducto A</h2><div class="muted">NIT: 900000001-1</div><div class="color-swatch" id="swatch" style="background:#14408C"></div><div class="hex" id="hex">#14408C</div><div style="border-top:1px solid var(--border);margin-top:20px;padding-top:18px;display:flex;justify-content:space-between"><span>TOTAL</span><strong id="previewTotal" style="color:#14408C">$ 38.600</strong></div></div>
+</div></section>
+
+<section class="screen" id="portal">
+<div class="portal-nav"><div class="brand" style="padding:0"><div class="logo">💧</div><div><strong>Acueducto A</strong><span>Portal del suscriptor</span></div></div><span class="muted">Ayuda</span></div>
+<div class="portal-invoice card"><div class="page-head"><div><div class="eyebrow">Mi factura</div><h1>Septiembre 2026</h1><p>Suscriptor A1 · A-001</p></div><span class="badge warning">Por vencer</span></div><div style="background:#f8fafc;border-radius:12px;padding:20px;display:flex;justify-content:space-between;align-items:end"><div><small class="muted">Saldo pendiente</small><div style="font-size:34px;font-weight:800">$ 38.600</div><small class="muted">Vence el 02/10/2026</small></div><button class="btn primary">Descargar PDF</button></div><div class="grid" style="grid-template-columns:1fr 1fr;margin-top:16px"><div class="card"><h2>Consumo</h2><div style="font-size:25px;font-weight:800">19 m³</div><div class="muted">Septiembre</div></div><div class="card"><h2>Saldo a favor</h2><div style="font-size:25px;font-weight:800">$ 0</div><div class="muted">Sin saldo a favor</div></div></div></div>
+</section>
+
+<section class="screen" id="lector">
+<div class="page-head"><div><div class="eyebrow">Experiencia de campo · PWA</div><h1>Vista del lector</h1><p>Diseño optimizado para Android, táctil y offline-first.</p></div><span class="badge success">● Sincronizado</span></div>
+<div class="mobile-preview">
+<div class="mobile-top"><div style="font-size:12px;opacity:.8">ACUEDUCTO A · SEPTIEMBRE 2026</div><h2 style="margin:7px 0 3px">Tomar lectura</h2><div style="opacity:.85;font-size:13px">24 lecturas registradas · 8 pendientes</div></div>
+<div class="mobile-card"><div class="muted" style="font-size:12px">BUSCAR SUSCRIPTOR</div><input class="input" style="width:100%;margin-top:7px" placeholder="Código o nombre..."></div>
+<div class="mobile-card"><div style="display:flex;justify-content:space-between"><div><strong>A-001 · Suscriptor A1</strong><div class="muted" style="margin-top:4px">Contador MTR-00482</div></div><span class="badge success">Pendiente</span></div><button class="touch-btn" style="margin-top:15px">📷 Escanear contador</button><button class="touch-btn" style="margin-top:8px;background:white;color:var(--accent);border:1px solid #bfdbfe">Ingresar lectura manual</button></div>
+<div class="mobile-card"><div class="muted" style="font-size:12px">LECTURA ANTERIOR</div><div style="font-size:27px;font-weight:800;margin:4px 0">229 m³</div><div class="muted">Agosto 2026</div></div>
+<div class="notice" style="text-align:center">✓ Puedes trabajar sin conexión. Los cambios se sincronizarán al volver a tener internet.</div>
+</div></section>
+
+<section class="screen" id="login">
+<div class="portal-wrap"><div class="portal"><div class="logo">💧</div><h1>Consulta tu factura</h1><p>Ingresa los datos que aparecen en tu recibo impreso.</p><div class="card portal-card"><div class="field"><label>Número de documento</label><input class="input" placeholder="Ej. 1234567890"></div><div class="field" style="margin-top:14px"><label>Código de suscriptor</label><input class="input" placeholder="Ej. A-001"></div><button class="btn primary" onclick="go('portal')">Ingresar al portal</button><div class="muted" style="font-size:12px;text-align:center;margin-top:12px">No necesitas crear una contraseña.</div></div></div></div>
+</section>
+
+</div></main></div>
+
+<script>
+const names={
+dashboard:'Panel principal',facturacion:'Facturación', 'factura-detail':'Detalle de factura',pagos:'Cartera',lecturas:'Lecturas',
+suscriptores:'Suscriptores',catalogo:'Catálogo y tarifas',cortes:'Cortes y reconexión',notificaciones:'Notificaciones',
+configuracion:'Configuración',portal:'Portal público',lector:'Vista del lector',login:'Ingreso del portal'
+};
+function go(id){
+ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+ const el=document.getElementById(id); if(el) el.classList.add('active');
+ document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.screen===id));
+ document.getElementById('crumb').textContent=names[id]||id;
+ window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>go(b.dataset.screen)));
+const colorInput=document.getElementById('colorInput');
+colorInput?.addEventListener('input',e=>{
+ let c=e.target.value.trim();
+ if(!/^#[0-9a-fA-F]{6}$/.test(c)) return;
+ document.getElementById('swatch').style.background=c;
+ document.getElementById('previewName').style.color=c;
+ document.getElementById('previewTotal').style.color=c;
+ document.getElementById('hex').textContent=c.toUpperCase();
+});
+</script>
+</body>
+</html>
