@@ -1,17 +1,20 @@
 # PLAN — 028: rol-secretaria
 
 **Spec aprobado:** 2026-09-10
+**Corrección de implementación aprobada:** 2026-09-10 — además de RLS, las funciones SECURITY INVOKER que escriben durante el flujo deben aceptar el rol `secretaria` explícitamente.
 
 ## 1. Archivos
 
 | Archivo | Acción | Propósito |
 |---|---|---|
 | `supabase/migrations/20260923090000_rol-secretaria.sql` | Nuevo | `rol_usuario` +`secretaria`, `es_staff_de()`, políticas nuevas/ajustadas, trigger de `facturas` actualizado |
-| `backend/src/index.ts` | Modificado | Guard explícito `ctx.rol === 'admin_acueducto'` en `POST /facturas/:id/anular` y `POST /pagos/:id/anular` (RLS ya lo exige; el guard da un `403` claro en vez de dejar pasar el error crudo del trigger) |
+| `backend/src/index.ts` | Modificado | Guards explícitos `ctx.rol === 'admin_acueducto'` en anulación de factura/pago y ejecución de corte/reconexión |
 | `frontend/components/panel/sidebar-panel.tsx` | Modificado | Oculta "Configuración" cuando `rol === 'secretaria'` |
-| `frontend/app/app/pagos/page.tsx`, `.../[suscriptorId]/page.tsx` | Modificado | Oculta "Anular pago" para `secretaria` |
-| `frontend/app/app/facturacion/[facturaId]/page.tsx` | Modificado | Oculta "Anular factura" y "Generar facturación" para `secretaria` |
-| `frontend/app/app/cortes/page.tsx` | Modificado | Oculta "Ejecutar corte"/"Reconectar" para `secretaria` |
+| `frontend/app/app/pagos/page.tsx`, `.../[suscriptorId]/page.tsx` | Modificado | Mantiene el registro de pagos y oculta "Anular pago" para `secretaria` |
+| `frontend/app/app/facturacion/page.tsx` | Modificado | Oculta simulación/emisión masiva para `secretaria`; mantiene consulta y correo |
+| `frontend/app/app/facturacion/[facturaId]/page.tsx` | Modificado | Oculta "Anular factura" y "Anular pago" para `secretaria` |
+| `frontend/app/app/suscriptores/[id]/page.tsx` | Modificado | Oculta corte/reconexión; mantiene la gestión administrativa del suscriptor y contador |
+| `frontend/app/app/lecturas/page.tsx` | Modificado | Oculta "Marcar revisada" para `secretaria`; mantiene lectura y carga manual |
 | `tests/aislamiento/015_rol_secretaria_aislamiento.sql` | Nuevo | Toda la matriz de §3.2 del spec, contra PostgreSQL real |
 | `CHANGELOG.md` | Modificado | Entrada de la sesión |
 
@@ -23,11 +26,18 @@
 alter type rol_usuario add value 'secretaria';
 
 create or replace function es_staff_de(p_cliente_id uuid) returns boolean
-language sql stable as $$
+language sql stable security definer set search_path = public as $$
   select es_admin_plataforma()
-      or tiene_rol(p_cliente_id, array['admin_acueducto','secretaria']::rol_usuario[]);
+      or tiene_rol(p_cliente_id, array['admin_acueducto']::rol_usuario[])
+      or exists (
+        select 1 from membresias
+        where perfil_id = auth.uid() and cliente_id = p_cliente_id
+          and activo and rol::text = 'secretaria'
+      );
 $$;
 ```
+La comparación de `rol::text` es deliberada: PostgreSQL no permite usar el nuevo valor de un
+enum dentro de una función creada en la misma transacción que hace `ALTER TYPE ... ADD VALUE`.
 `es_admin_de()` no se toca — sigue siendo exclusivamente `admin_acueducto` + superadmin.
 
 ### Solo lectura ampliada a staff (política SELECT nueva; la escritura existente no cambia)
@@ -67,6 +77,13 @@ alter policy pagos_admin on pagos for update, delete using (es_admin_de(cliente_
 create policy pago_aplicaciones_staff_lectura on pago_aplicaciones for select using (es_staff_de(cliente_id));
 create policy pago_aplicaciones_staff_insert on pago_aplicaciones for insert with check (es_staff_de(cliente_id));
 ```
+Además, `registrar_pago()` se redefine para usar `es_staff_de(p_cliente_id)` en su guarda interna.
+`anular_pago()` conserva `es_admin_de(p_cliente_id)`.
+
+Las funciones `importar_suscriptores()` y `reemplazar_contador()` también se redefinen con
+`es_staff_de()`: ambas son SECURITY INVOKER y su guarda interna habría bloqueado a `secretaria`
+aunque RLS permitiera el acceso. La política de `contadores` se amplía a staff porque el reemplazo
+actualiza el contador anterior, inserta el nuevo y cambia `usuarios_servicio.contador_actual_id`.
 
 ### `facturas.total_pagado`: por qué no es un `GRANT` de columna (a diferencia de 023)
 
@@ -103,6 +120,8 @@ rechaza por rol antes de llegar siquiera a pedir el motivo.
 |---|---|
 | `POST /facturas/:id/anular` | + guard `ctx.rol === 'admin_acueducto'` → `403` explícito (RLS/trigger ya lo bloquean; esto da un mensaje claro en vez del error crudo de Postgres) |
 | `POST /pagos/:id/anular` | + mismo guard, mismo motivo |
+| `POST /suscriptores/:id/corte` | + guard `ctx.rol === 'admin_acueducto'` → `403` explícito |
+| `POST /suscriptores/:id/reconexion` | + guard `ctx.rol === 'admin_acueducto'` → `403` explícito |
 | El resto de rutas ya tocadas (`GET /dashboard/indicadores`, las 4 de facturación por cola de 024, `PATCH /acueducto/color`) | Sin cambios — ya exigen `admin_acueducto` explícito, `secretaria` queda excluida automáticamente |
 
 ## 4. Contratos de core/
@@ -112,8 +131,9 @@ Ninguno — sin lógica de negocio nueva.
 ## 5. Decisiones técnicas
 
 | Decisión | Alternativa descartada | Razón |
-|---|---|---|
 | Rol nuevo (`secretaria`) + función `es_staff_de()` que incluye a ambos | Reutilizar `admin_acueducto` con una bandera `ve_finanzas boolean` en `membresias` | Un enum de rol es el mismo patrón que ya usa todo el proyecto (`tiene_rol`, `es_admin_de`) — una bandera aparte sería un segundo mecanismo de permisos paralelo al que ya existe |
+| Comparar `rol::text` para `secretaria` dentro de la migración | Referenciar `'secretaria'::rol_usuario` inmediatamente después de `ALTER TYPE` | PostgreSQL rechaza el uso del nuevo valor del enum hasta hacer commit; la migración de Supabase es transaccional |
+| Cambiar las guardas internas de `registrar_pago`, `importar_suscriptores` y `reemplazar_contador` | Cambiar solo políticas RLS | Las tres funciones son SECURITY INVOKER y sus guardas `es_admin_de()` bloquearían a `secretaria` antes de que RLS pudiera autorizarla |
 | El trigger de `facturas` gana la guarda de rol para anular, en vez de un `GRANT` de columna | `GRANT UPDATE (total_pagado)` a `authenticated`, `REVOKE` del resto | Un `GRANT`/`REVOKE` de columna no distingue `admin_acueducto` de `secretaria` (mismo rol de Postgres) — no puede expresar "uno sí, el otro no" para la misma columna. El trigger sí sabe quién llama (`es_admin_de`) |
 | `pagos`/`pago_aplicaciones`: `INSERT` para staff, `UPDATE`/`DELETE` solo admin, en políticas separadas | Una sola política `ALL` con una condición compuesta (`es_staff_de` para insert, `es_admin_de` para update) | Postgres no permite condicionar una misma política `ALL` de forma distinta por comando — hay que separarlas, mismo patrón que `lecturas` ya usa (`lecturas_inserta` separada de `lecturas_admin`) |
 | Guard de ruta explícito en `/facturas/:id/anular` y `/pagos/:id/anular`, aunque RLS/trigger ya lo bloquean | Confiar solo en el error de Postgres | Mismo criterio que el resto del proyecto: la API nunca deja pasar un error crudo de base de datos como respuesta — se traduce a un `403` con mensaje claro |
