@@ -961,3 +961,26 @@ export function crearAcueductoPlataforma(datos: DatosAltaAcueducto): Promise<Res
     body: JSON.stringify(datos),
   });
 }
+
+// ---- Configuración del acueducto (023) ------------------------------------
+
+export interface Acueducto {
+  nombre: string;
+  nit: string | null;
+  direccion: string | null;
+  telefono: string | null;
+  municipio: string | null;
+  logoUrl: string | null;
+  colorAcento: string;
+}
+
+export function obtenerAcueducto(): Promise<{ acueducto: Acueducto }> {
+  return peticion('/acueducto');
+}
+
+export function actualizarColorAcentoAcueducto(colorAcento: string): Promise<{ colorAcento: string }> {
+  return peticion('/acueducto/color', {
+    method: 'PATCH',
+    body: JSON.stringify({ color_acento: colorAcento }),
+  });
+}

@@ -170,10 +170,11 @@ Se restauró el grant correcto (revoke update / grant update (color_acento))
 **Hace:** tipo `Acueducto`, `obtenerAcueducto()`, `actualizarColorAcentoAcueducto(hex: string)`.
 **Verificación:** `cd frontend && npx tsc --noEmit`
 **Resultado esperado:** sin errores de tipos.
-**Estado:** Pendiente
+**Estado:** Hecho
 **Evidencia:**
 ```
-(se pega al ejecutar)
+$ npx tsc --noEmit
+(sin salida — sin errores)
 ```
 **Commit:** se registra en la Bitácora de cierre (T-011)
 
