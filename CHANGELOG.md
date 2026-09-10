@@ -4,6 +4,44 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-10 — Sesión 040: feature 026, shell del panel admin (primera fase del rediseño)
+
+Mateo trajo un prototipo HTML completo (`undreocol_ui_propuesta.html`, 15 pantallas navegables)
+pidiendo evaluar si era viable aplicarlo. Se acordó en conversación: es un rediseño de 15
+pantallas, demasiado grande para una sola feature — se secuencia empezando por el marco
+compartido (esta feature, `specs/026-shell-panel-admin/`, prototipo reubicado ahí para quedar
+versionado junto a los specs que lo van a usar), dejando el re-vestido de cada pantalla de
+contenido para specs futuros, una por una. AquaLectura (025) se mantiene tal cual para el rol
+lector, en vez de la versión más simple del prototipo.
+
+**Implementado:** tokens de color nuevos (`--accent`, `--success`, `--warning`, `--danger`,
+`--info`, cada uno con su fondo "soft") agregados a los de shadcn existentes, sin reemplazarlos —
+ningún componente actual cambió de color. Dos componentes reutilizables (`Badge`, `KpiCard`) listos
+para cuando se re-vista cada pantalla. Barra lateral (`SidebarPanel`) con los 9 enlaces reales del
+panel + operador + Salir, y cabecera superior (`TopbarPanel`, en línea/sin conexión + nombre del
+acueducto) reemplazando el header simple que se había agregado hace unas sesiones. Tipografía Inter
+vía `next/font/google`, acotada a `/app/*`.
+
+**Dos mejoras propias, a pedido explícito de Mateo:**
+- Los 9 íconos del menú son SVG en línea, no los glifos Unicode del prototipo — uno de ellos (♙,
+  un peón de ajedrez para "Suscriptores") resultó ser un accidente de la fuente de emoji del
+  navegador donde se armó la demo, no una elección real; los glifos tampoco tienen etiqueta
+  accesible ni se ven igual en todos los sistemas operativos.
+- El enlace activo de la barra lateral se calcula con `usePathname()` por prefijo de ruta real
+  (`/app/facturacion` cubre también `/app/facturacion/[facturaId]`), no un estado fijo como en el
+  prototipo — necesario porque la app real tiene sub-páginas que la demo de una sola pantalla no
+  tenía que resolver. Verificado contra producción real que ambos casos (ruta exacta y sub-página)
+  resaltan la sección correcta.
+
+**Verificado:** 215/215 tests del backend (sin cambios, feature puramente de frontend), `npm run
+build`/`npm run lint` limpios (18/18 páginas). Contra `wrangler dev`/`next dev` reales con sesión
+de `admin_acueducto`: las 9 pantallas + 5 sub-páginas responden `200` dentro del shell nuevo; el
+HTML servido contiene los 9 enlaces reales, la marca y "Salir"; el enlace activo es el correcto
+tanto en la ruta exacta como en una sub-página.
+
+**NO VERIFICADO — requiere Mateo:** el colapso responsivo de la barra lateral en pantalla angosta
+y el aspecto final de Inter en un navegador real (este entorno sigue sin Chromium/Playwright).
+
 ### 2026-09-10 — Sesión 039: feature 025, "AquaLectura" — rediseño móvil de /app/lecturas para el lector
 
 Mateo trajo un mockup de Figma ("AquaLectura": gota, encabezado azul, navegación lateral, tarjetas

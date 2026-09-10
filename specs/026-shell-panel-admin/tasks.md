@@ -58,4 +58,57 @@ $ npm run lint     → ESLint: No issues found
 + `next dev`, confirma estado activo correcto en sub-páginas, "Salir" funcional, regresión de las
 9 pantallas. Cierra con CHANGELOG, Bitácora y checklist de CLAUDE.md §11.
 **Verificación:** curl real + navegación de las 9 rutas; `npm run build && npm run lint` finales.
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+Contra wrangler dev + next dev reales, sesión de admin_acueducto:
+  Las 9 pantallas + 5 sub-páginas (facturación/[id], pagos/[id], lecturas/periodo,
+  suscriptores/[id], suscriptores/importar) -> HTTP 200
+
+  HTML servido en /app/dashboard contiene: UndreoCol, Gestión de acueductos, los 9 enlaces
+  reales, En línea, Salir.
+
+  Estado activo verificado en el HTML real (no solo en teoría):
+    /app/dashboard                                     -> <a href="/app/dashboard" class="...
+                                                            bg-accent-soft font-bold text-accent">
+    /app/facturacion/ff000000-...-0a1 (sub-página)     -> <a href="/app/facturacion" class="...
+                                                            bg-accent-soft font-bold text-accent">
+  (la mejora propia de detección por prefijo de ruta funciona en ambos casos)
+
+$ cd backend && npm test                → 215 passed (sin cambios, feature de frontend)
+$ npx wrangler deploy --dry-run         → EXIT=0
+$ cd frontend && npm run build          → 18/18 páginas
+$ npm run lint                          → ESLint: No issues found
+CHANGELOG.md: Sesión 040.
+```
+**Commit:** este commit (cierre)
+
+## Bitácora de cierre
+
+| Tarea | Commit | Estado |
+|---|---|---|
+| T-001 tokens de color nuevos | `572f66a` | COMPLETADO |
+| T-002 `Badge` y `KpiCard` | `91e529e` | COMPLETADO |
+| T-003 9 íconos SVG (mejora propia) | `90535ca` | COMPLETADO |
+| T-004 `SidebarPanel` con estado activo por ruta real | `16056d2` | COMPLETADO |
+| T-005 `layout.tsx` usa el shell nuevo | `256ffd2` | COMPLETADO |
+| T-006 cierre | este commit | COMPLETADO |
+
+### Checklist de `CLAUDE.md §11`
+
+- [x] Hace lo que dice el spec, ni más ni menos — solo el marco compartido, ninguna pantalla de
+      contenido se re-vistió (confirmado: CA-2, las 14 rutas responden 200 sin cambios internos)
+- [x] `npm run build` (frontend) sin errores ni warnings de TypeScript
+- [x] `npx wrangler deploy --dry-run` (backend) exitoso — sin cambios de backend
+- [x] `npm run lint` limpio
+- [x] Tests en verde — 215/215 backend (sin cambios), build/lint frontend
+- [x] Si toca base de datos: no aplica
+- [x] Si toca `core/`: no aplica
+- [x] Evidencia pegada en la conversación y en este documento
+- [x] `CHANGELOG.md` actualizado (Sesión 040)
+- [x] Commit hecho por tarea verificada; sin `push` salvo autorización expresa (§9.1)
+
+### Desviaciones respecto del plan, señaladas en su commit
+
+1. **T-005:** `topbar-panel.tsx` no estaba en la lista de archivos de `plan.md` — se separó en su
+   propio componente cliente para que `layout.tsx` siguiera siendo Server Component.
