@@ -43,7 +43,13 @@ Aplicada también con `supabase migration up --local --yes` sobre el Supabase lo
 `usuarios_servicio_lector` en vez de `.from('usuarios_servicio')`, mapea a la forma `Suscriptor`
 con los campos sensibles en `null`. `GET /suscriptores` pasa `ctx.rol === 'lector'`.
 **Verificación:** `cd backend && npx tsc --noEmit && npx vitest run`
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+$ npx tsc --noEmit   → sin errores
+$ npx vitest run     → 215 passed (20 archivos)
+```
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-003 — Backend: guard de rol en las 4 rutas de facturación por cola
 **Archivos:** `backend/src/index.ts`

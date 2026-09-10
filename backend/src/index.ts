@@ -649,7 +649,12 @@ app.get('/suscriptores', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
   try {
-    const suscriptores = await listarSuscriptores(ctx.supabase, ctx.clienteId, c.req.query('estado'));
+    const suscriptores = await listarSuscriptores(
+      ctx.supabase,
+      ctx.clienteId,
+      c.req.query('estado'),
+      ctx.rol === 'lector',
+    );
     return c.json({ suscriptores });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'Error al listar suscriptores' }, 500);

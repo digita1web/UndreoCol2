@@ -25,11 +25,52 @@ export interface Suscriptor {
 const COLUMNAS_SUSCRIPTOR =
   'id, cliente_id, codigo_suscriptor, nombre, estado, tipo_documento, numero_documento, telefono, email, direccion, sector, categoria, contador_actual_id, fecha_vinculacion, notas';
 
+// El lector (024) no lee la tabla completa — solo tiene EXECUTE sobre
+// usuarios_servicio_lector(), que expone 5 columnas sin PII (id,
+// codigo_suscriptor, nombre, contador_actual_id, estado). El resto de
+// Suscriptor queda en null para que el tipo no cambie por rol.
+interface FilaSuscriptorLector {
+  id: string;
+  codigo_suscriptor: string;
+  nombre: string;
+  contador_actual_id: string | null;
+  estado: 'activo' | 'suspendido' | 'cortado' | 'inactivo';
+}
+
+function aSuscriptorAcotado(fila: FilaSuscriptorLector, clienteId: string): Suscriptor {
+  return {
+    id: fila.id,
+    cliente_id: clienteId,
+    codigo_suscriptor: fila.codigo_suscriptor,
+    nombre: fila.nombre,
+    estado: fila.estado,
+    contador_actual_id: fila.contador_actual_id,
+    tipo_documento: null,
+    numero_documento: null,
+    telefono: null,
+    email: null,
+    direccion: null,
+    sector: null,
+    categoria: null,
+    fecha_vinculacion: '',
+    notas: null,
+  };
+}
+
 export async function listarSuscriptores(
   supabase: SupabaseClient,
   clienteId: string,
   estado?: string,
+  soloLector = false,
 ): Promise<Suscriptor[]> {
+  if (soloLector) {
+    const { data, error } = await supabase.rpc('usuarios_servicio_lector', {
+      p_cliente_id: clienteId,
+      p_estado: estado ?? null,
+    });
+    if (error) throw new Error(`No se pudieron listar los suscriptores: ${error.message}`);
+    return ((data ?? []) as FilaSuscriptorLector[]).map((f) => aSuscriptorAcotado(f, clienteId));
+  }
   let query = supabase.from('usuarios_servicio').select(COLUMNAS_SUSCRIPTOR).eq('cliente_id', clienteId);
   if (estado) query = query.eq('estado', estado);
   const { data, error } = await query.order('nombre', { ascending: true });
