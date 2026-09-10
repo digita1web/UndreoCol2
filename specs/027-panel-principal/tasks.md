@@ -28,7 +28,27 @@ cifras coinciden con la respuesta cruda de `GET /dashboard/indicadores`, la vari
 coincide con el cálculo manual sobre esos mismos datos; sesión de `lector` — sigue viendo "No
 autorizado" sin ninguna cifra (regresión).
 **Verificación:** curl real comparado contra el cálculo esperado.
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+GET /dashboard/indicadores real (admin_acueducto):
+  recaudoMes=362000, carteraVencida=290000, usuariosEnMora=2, carteraPendiente=178600
+  tendencia: ...mes 8=120000, mes 9=362000 (los 2 últimos)
+
+Cálculo manual: (362000-120000)/120000*100 = 201,6667% -> "↑ 201,7% vs. mes anterior"
+
+HTML servido real (SSR) contiene exactamente:
+  KpiCard Recaudo del mes: variacion="↑ 201,7% vs. mes anterior", variacionColor="success"
+  KpiCard Cartera vencida: valor="$ 290.000", variacion="2 suscriptores en mora",
+    variacionColor="danger", href="/app/pagos"
+  KpiCard Por vencer: valor="$ 178.600", href="/app/pagos"
+  Eyebrow "Resumen" presente; saludo SSR = "Hola, Admin A" (se corrige a Buenos
+    días/tardes/noches en el cliente tras hidratar, sin parpadeo — diseño a propósito)
+
+Sesión de lector (regresión): "No autorizado" presente; ninguna de "Recaudo del mes",
+"Cartera vencida", "Por vencer" aparece en el HTML.
+```
+**Commit:** se registra en la Bitácora de cierre (T-004)
 
 ## T-004 — Cierre: CHANGELOG y checklist completo
 **Archivos:** `CHANGELOG.md`
