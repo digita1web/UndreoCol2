@@ -59,7 +59,26 @@ después, mismo procedimiento aprendido en la Sesión 037/038 para no repetir el
 datos reales (acueducto, periodo, suscriptores, lecturas); sesión de `admin_acueducto` ve
 `/app/lecturas` sin cambios.
 **Verificación:** curl real + confirmación de las respuestas que cada pestaña consume.
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+Contra wrangler dev + next dev reales, sesión de lector (lector-a@test.local):
+  GET /dashboard    -> rol: "lector" (decide VistaLector)
+  GET /acueducto    -> nombre: "Acueducto A" (pestaña Inicio)
+  GET /periodos     -> 3 periodos, incluido "September 2026" (abierto) (Nueva/Historial)
+  GET /suscriptores -> 6 (dropdown de Nueva lectura)
+  GET /lecturas?periodo_id=<abierto> -> 1 lectura, revision=normal (Inicio/Pendientes)
+  GET /app/lecturas (next dev) -> HTTP 200
+
+Sesión de admin_acueducto (regresión):
+  GET /dashboard      -> rol: "admin_acueducto" (decide VistaAdmin, sin cambios)
+  GET /app/lecturas   -> HTTP 200
+
+Hallazgo colateral de 024, corregido en el camino (commit 2f080be): GET /dashboard contaba
+usuarios_servicio con SELECT directo, que para lector daba 0 desde 024 — cambiado a la RPC
+usuarios_servicio_lector() (024), correcto para ambos roles (verificado: lector 0->6, admin 6->6).
+```
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-006 — Cierre: CHANGELOG y checklist completo
 **Archivos:** `CHANGELOG.md`
