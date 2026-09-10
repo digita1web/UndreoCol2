@@ -9,6 +9,7 @@ import { ReconexionForm } from '@/components/reconexion-form';
 import {
   historialCortes,
   matrizTarifas,
+  obtenerContextoUsuario,
   obtenerSuscriptor,
   regenerarCodigoSuscriptor,
   type Contador,
@@ -30,6 +31,7 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
   const [sinTarifaConfigurada, setSinTarifaConfigurada] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [rol, setRol] = useState<string | null>(null);
 
   function recargar() {
     setError(null);
@@ -64,6 +66,12 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
   }
 
   useEffect(recargar, [id]);
+
+  useEffect(() => {
+    obtenerContextoUsuario()
+      .then((r) => setRol(r.cliente.rol))
+      .catch(() => setRol('admin_acueducto'));
+  }, []);
 
   // Advertencia (nunca bloqueo, spec.md §3.1): la categoría del suscriptor no
   // tiene ningún servicio con tarifa vigente configurada. El bloqueo real es
@@ -101,12 +109,12 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
           <p>Dirección: {suscriptor?.direccion}</p>
           <p>Categoría: {suscriptor?.categoria}</p>
           <p>Estado: {suscriptor?.estado}</p>
-          <button
+          {rol === 'admin_acueducto' && <button
             className="mt-3 h-9 w-fit rounded-md border border-blue-300 px-4 text-sm font-medium text-blue-700 hover:bg-blue-50"
             onClick={alRegenerarCodigo}
           >
             Regenerar código del portal
-          </button>
+          </button>}
         </CardContent>
       </Card>
 
@@ -115,10 +123,14 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
           <CardTitle>Corte y reconexión</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {suscriptor?.estado === 'cortado' ? (
-            <ReconexionForm suscriptorId={id} onReconectado={recargar} />
+          {rol === 'admin_acueducto' ? (
+            suscriptor?.estado === 'cortado' ? (
+              <ReconexionForm suscriptorId={id} onReconectado={recargar} />
+            ) : (
+              <CorteForm suscriptorId={id} onCortado={recargar} />
+            )
           ) : (
-            <CorteForm suscriptorId={id} onCortado={recargar} />
+            <p className="text-sm text-muted-foreground">Solo el administrador del acueducto puede ejecutar cortes o reconexiones.</p>
           )}
         </CardContent>
       </Card>

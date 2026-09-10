@@ -414,12 +414,12 @@ ya tiene su propia identidad y no se reemplaza por la versión del prototipo.
 
 ### Roadmap — features grandes sin empezar
 
-- **Rol `secretaria` dentro del acueducto** (descrito por Mateo en la Sesión 041, ver
-  `specs/027-panel-principal/spec.md` §2): un `admin_acueducto` que ve balances/recaudos
-  (`administrador` del acueducto) vs. uno que solo hace lo administrativo, sin verlos
-  (`secretaria`). **No existe como rol todavía** (`rol_usuario` verificado real: solo
-  `administrador`, `admin_acueducto`, `lector`). Del mismo tamaño que 024 — política RLS nueva por
-  tabla + decidir exactamente qué ve cada uno.
+- **Rol `secretaria` — implementado en 028:** migración `20260923090000_rol-secretaria.sql`,
+  políticas RLS y guardas de funciones verificadas contra PostgreSQL real; `secretaria` puede hacer
+  la operación administrativa permitida y registrar pagos, pero no puede ver indicadores ni anular,
+  ejecutar cortes/reconexiones, cambiar tarifas o configuración. Test `015` en verde y regresión de
+  `admin_acueducto` en verde. Pendiente únicamente la integración HTTP contra Workers y la inspección
+  visual en navegador real.
 - **Feature 015 (QR + OCR del contador)** — diferenciador tecnológico principal del roadmap
   original, marcado "requiere máximo rigor de precisión", sin empezar.
 - **Asignación de rutas/zonas al lector** (`ESPECIFICACION-FUNCIONAL.md §2.14.1`) — dejada fuera de

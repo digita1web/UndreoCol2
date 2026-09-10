@@ -38,7 +38,7 @@ export default function LecturasPage() {
     return <main className="mx-auto max-w-3xl p-8 text-sm text-muted-foreground">Cargando…</main>;
   }
   if (rol === 'lector') return <VistaLector />;
-  return <VistaAdmin />;
+  return <VistaAdmin rol={rol} />;
 }
 
 function VistaLector() {
@@ -87,7 +87,7 @@ function VistaLector() {
   );
 }
 
-function VistaAdmin() {
+function VistaAdmin({ rol }: { rol: string }) {
   const [periodos, setPeriodos] = useState<Periodo[] | null>(null);
   const [suscriptores, setSuscriptores] = useState<Suscriptor[] | null>(null);
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState<string>('');
@@ -197,7 +197,7 @@ function VistaAdmin() {
                   {l.revision !== 'normal' && ` · revisión: ${l.revision}`}
                 </p>
               </div>
-              {l.revision !== 'normal' && !l.revisada && (
+              {rol === 'admin_acueducto' && l.revision !== 'normal' && !l.revisada && (
                 <button
                   className="h-8 w-fit rounded-md border border-border px-3 text-xs font-medium hover:bg-muted"
                   onClick={() => alRevisar(l.id)}

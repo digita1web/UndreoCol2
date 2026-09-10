@@ -38,6 +38,7 @@ function esSeccionActiva(pathname: string, href: string): boolean {
 
 const ETIQUETA_ROL: Record<string, string> = {
   admin_acueducto: 'Administrador',
+  secretaria: 'Secretaria',
   lector: 'Lector',
   administrador: 'Superadmin',
 };
@@ -73,7 +74,7 @@ export function SidebarPanel() {
       </div>
 
       <nav className="grid grid-cols-3 gap-1 sm:flex sm:flex-col">
-        {SECCIONES.map(({ href, etiqueta, Icono }) => {
+        {SECCIONES.filter(({ href }) => href !== '/app/configuracion' || operador?.rol !== 'secretaria').map(({ href, etiqueta, Icono }) => {
           const activa = esSeccionActiva(pathname, href);
           return (
             <Link

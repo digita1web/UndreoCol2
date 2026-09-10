@@ -104,6 +104,7 @@ async function obtenerIndicadores(): Promise<IndicadoresDashboard> {
 
 function etiquetaRol(rol: string): string {
   if (rol === 'admin_acueducto') return 'Administrador del acueducto';
+  if (rol === 'secretaria') return 'Secretaria';
   if (rol === 'lector') return 'Lector';
   return rol;
 }

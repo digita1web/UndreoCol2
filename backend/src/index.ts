@@ -917,6 +917,9 @@ app.get('/facturas/:id', async (c) => {
 app.post('/facturas/:id/anular', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede anular facturas' }, 403);
+  }
   const body = await c.req.json<{ motivo?: string }>().catch(() => ({ motivo: undefined }));
   const motivo = body.motivo?.trim();
   if (!motivo) return c.json({ error: 'El motivo de anulación es obligatorio' }, 400);
@@ -1249,6 +1252,9 @@ app.post('/pagos', async (c) => {
 app.post('/pagos/:id/anular', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede anular pagos' }, 403);
+  }
   const body = await c.req.json<{ motivo?: string }>().catch(() => ({ motivo: undefined }));
   if (!body.motivo || !body.motivo.trim()) {
     return c.json({ error: 'El motivo de anulación es obligatorio' }, 400);
@@ -1347,6 +1353,9 @@ app.get('/cortes/candidatos', async (c) => {
 app.post('/suscriptores/:id/corte', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede ejecutar cortes' }, 403);
+  }
   const body = await c.req.json<{ motivo?: string }>().catch(() => ({ motivo: undefined }));
   const motivo = body.motivo?.trim();
   if (!motivo) {
@@ -1366,6 +1375,9 @@ app.post('/suscriptores/:id/corte', async (c) => {
 app.post('/suscriptores/:id/reconexion', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede ejecutar reconexiones' }, 403);
+  }
   const body = await c.req
     .json<{ motivo_excepcion?: string }>()
     .catch(() => ({ motivo_excepcion: undefined }));

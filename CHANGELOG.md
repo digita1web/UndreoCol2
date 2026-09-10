@@ -4,6 +4,30 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-10 — Sesión 044: feature 028, rol `secretaria`
+
+Implementado el rol administrativo `secretaria` dentro del acueducto, separado de
+`admin_acueducto`. La migración `20260923090000_rol-secretaria.sql` agrega el enum, `es_staff_de()`,
+políticas RLS de lectura/escritura y la separación de permisos de pagos.
+
+**Reglas verificadas contra PostgreSQL real:** `secretaria` puede consultar la operación de su
+acueducto, gestionar suscriptores/importaciones/contadores y registrar un pago completo (INSERT en
+`pagos`, INSERT en `pago_aplicaciones` y UPDATE de `facturas.total_pagado`). No puede anular pagos ni
+facturas, ejecutar cortes/reconexiones, crear tarifas ni cambiar configuración/color. El trigger de
+inmutabilidad exige `es_admin_de()` en la rama de anulación; `admin_acueducto` conserva la regresión.
+
+**Backend/frontend:** guards 403 explícitos en anulaciones, cortes y reconexiones; UI sin indicadores,
+Configuración ni acciones exclusivas para `secretaria`, conservando las tareas permitidas.
+
+**Evidencia real:** reset local desde cero con la migración 028, fixtures 001-006 y
+`tests/aislamiento/015_rol_secretaria_aislamiento.sql` → `ROL-SECRETARIA-AISLAMIENTO OK`.
+Backend: **217/217 tests**, build, lint y `wrangler deploy --dry-run` en verde. Frontend: lint,
+TypeScript y build en verde.
+
+**Pendiente manual de Mateo:** curl de integración contra `wrangler dev`/`next dev` con sesión real de
+`secretaria` y `admin_acueducto`, además de la revisión visual en navegador real. No se aplicó la
+migración a producción ni se ejecutó `git push`.
+
 ### 2026-09-10 — Sesión 042: cierre de M-5 (registro público)
 
 Decisión de Mateo: cerrar el autoservicio de alta de acueductos (hallazgo M-5 de la auditoría de

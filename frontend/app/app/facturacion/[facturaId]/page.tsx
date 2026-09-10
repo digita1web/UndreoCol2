@@ -10,6 +10,7 @@ import {
   enviarCorreoFactura,
   obtenerAcueducto,
   obtenerFactura,
+  obtenerContextoUsuario,
   obtenerPagosDeFactura,
   urlPdfFactura,
   type Acueducto,
@@ -40,6 +41,7 @@ export default function DetalleFacturaPage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [rol, setRol] = useState<string | null>(null);
 
   const recargar = useCallback(() => {
     if (!facturaId) return;
@@ -62,6 +64,12 @@ export default function DetalleFacturaPage({ params }: PageProps) {
     obtenerAcueducto()
       .then((r) => setAcueducto(r.acueducto))
       .catch((e) => console.error('No se pudo cargar el encabezado del acueducto', e));
+  }, []);
+
+  useEffect(() => {
+    obtenerContextoUsuario()
+      .then((r) => setRol(r.cliente.rol))
+      .catch(() => setRol('admin_acueducto'));
   }, []);
 
   async function alAnularPago(pagoId: string) {
@@ -256,7 +264,7 @@ export default function DetalleFacturaPage({ params }: PageProps) {
                 <p className="text-xs text-muted-foreground">{p.fecha_pago} · registrado por {p.recibido_por ?? '—'}</p>
                 {p.anulado && <p className="text-xs text-red-600">Anulado: {p.motivo_anulacion}</p>}
               </div>
-              {!p.anulado && (
+              {rol === 'admin_acueducto' && !p.anulado && (
                 <button
                   className="h-8 w-fit rounded-md border border-red-300 px-3 text-xs font-medium text-red-600 hover:bg-red-50"
                   onClick={() => alAnularPago(p.id)}
@@ -269,7 +277,7 @@ export default function DetalleFacturaPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {factura.estado !== 'anulada' && (
+      {rol === 'admin_acueducto' && factura.estado !== 'anulada' && (
         <button
           className="h-9 w-fit rounded-md border border-red-300 px-4 text-sm font-medium text-red-600 hover:bg-red-50 print:hidden"
           onClick={alAnular}

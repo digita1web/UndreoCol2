@@ -8,6 +8,7 @@ import {
   enviarCorreoPeriodo,
   listarFacturasDePeriodo,
   listarPeriodos,
+  obtenerContextoUsuario,
   simularPeriodo,
   type Factura,
   type Periodo,
@@ -23,9 +24,13 @@ export default function FacturacionPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
+  const [rol, setRol] = useState<string | null>(null);
 
   useEffect(() => {
     listarPeriodos().then((r) => setPeriodos(r.periodos)).catch(() => setPeriodos([]));
+    obtenerContextoUsuario()
+      .then((r) => setRol(r.cliente.rol))
+      .catch(() => setRol('admin_acueducto'));
   }, []);
 
   async function cargarFacturas(pid: string) {
@@ -128,24 +133,26 @@ export default function FacturacionPage() {
               </option>
             ))}
           </select>
-          <div className="flex gap-3">
-            <button
-              className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              onClick={alSimular}
-              disabled={!periodoId || trabajando}
-            >
-              {trabajando ? 'Procesando…' : 'Simular periodo'}
-            </button>
-            {simulado && (
+          {rol === 'admin_acueducto' && (
+            <div className="flex gap-3">
               <button
-                className="h-9 w-fit rounded-md bg-green-700 px-4 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
-                onClick={alEmitir}
-                disabled={trabajando}
+                className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                onClick={alSimular}
+                disabled={!periodoId || trabajando}
               >
-                Confirmar emisión
+                {trabajando ? 'Procesando…' : 'Simular periodo'}
               </button>
-            )}
-          </div>
+              {simulado && (
+                <button
+                  className="h-9 w-fit rounded-md bg-green-700 px-4 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
+                  onClick={alEmitir}
+                  disabled={trabajando}
+                >
+                  Confirmar emisión
+                </button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
