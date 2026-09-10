@@ -1,18 +1,22 @@
 // Layout del área protegida /app/* (middleware.ts exige la cookie de sesión
-// administrativa antes de llegar aquí).
-import Link from 'next/link';
-import { BotonSalir } from '@/components/boton-salir';
+// administrativa antes de llegar aquí). 026: reemplaza el header simple por
+// la barra lateral + cabecera del prototipo de Mateo — el enlace "Panel" de
+// la barra lateral ya cubre lo que antes hacía "← Inicio".
+import type { ReactNode } from 'react';
+import { Inter } from 'next/font/google';
+import { SidebarPanel } from '@/components/panel/sidebar-panel';
+import { TopbarPanel } from '@/components/panel/topbar-panel';
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+const inter = Inter({ subsets: ['latin'], display: 'swap' });
+
+export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="flex items-center justify-between border-b border-border px-8 py-3 print:hidden">
-        <Link href="/app/dashboard" className="text-sm font-medium text-blue-600 hover:underline">
-          ← Inicio
-        </Link>
-        <BotonSalir />
-      </header>
-      {children}
+    <div className={`${inter.className} min-h-screen bg-background`}>
+      <SidebarPanel />
+      <div className="sm:ml-[250px]">
+        <TopbarPanel />
+        {children}
+      </div>
     </div>
   );
 }

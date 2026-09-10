@@ -35,11 +35,22 @@ por prefijo (cubre sub-páginas), operador + botón Salir al pie.
 **Estado:** Pendiente
 
 ## T-005 — `app/app/layout.tsx` usa el shell nuevo
-**Archivos:** `frontend/app/app/layout.tsx`
-**Hace:** reemplaza el header simple por `<SidebarPanel>` + cabecera superior; carga Inter con
-`next/font/google`, acotado a este layout.
+**Archivos:** `frontend/app/app/layout.tsx`, `frontend/components/panel/topbar-panel.tsx` (no
+estaba en plan.md — la cabecera superior se separó en su propio componente cliente para que
+`layout.tsx` siga siendo Server Component, en vez de escribirla en línea)
+**Hace:** reemplaza el header simple ("← Inicio"/Salir, ya cubierto por el enlace "Panel" de la
+barra lateral) por `<SidebarPanel>` + `<TopbarPanel>` (en línea/sin conexión + nombre del
+acueducto); carga Inter con `next/font/google`, acotado a este layout.
 **Verificación:** `cd frontend && npm run build && npm run lint`
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+$ npx tsc --noEmit → sin errores
+$ npm run build    → 18/18 páginas, sin errores
+$ npm run lint     → ESLint: No issues found
+```
+.next limpiado y next dev reiniciado después del build.
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-006 — Verificación de integración real + cierre
 **Archivos:** `CHANGELOG.md`
