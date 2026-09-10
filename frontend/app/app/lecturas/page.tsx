@@ -1,20 +1,93 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HistorialLector } from '@/components/lector/historial-lector';
+import { InicioLector } from '@/components/lector/inicio-lector';
+import { NuevaLecturaLector } from '@/components/lector/nueva-lectura-lector';
+import { PendientesLector } from '@/components/lector/pendientes-lector';
+import { ShellLector, type PestanaLector } from '@/components/lector/shell-lector';
 import {
   crearLectura,
   listarLecturas,
   listarPeriodos,
   listarSuscriptores,
+  obtenerAcueducto,
+  obtenerContextoUsuario,
   revisarLectura,
+  type Acueducto,
   type Lectura,
   type Periodo,
   type Suscriptor,
 } from '@/lib/api';
 
+// 025: /app/lecturas se ve distinto según el rol. admin_acueducto sigue
+// exactamente como estaba (VistaAdmin, sin tocar); lector ve el shell móvil
+// "AquaLectura" (VistaLector) — es la misma ruta, no dos páginas separadas.
 export default function LecturasPage() {
+  const [rol, setRol] = useState<string | null>(null);
+
+  useEffect(() => {
+    obtenerContextoUsuario()
+      .then((r) => setRol(r.cliente.rol))
+      .catch(() => setRol('admin_acueducto')); // ante un error de red, se degrada a la vista actual
+  }, []);
+
+  if (rol === null) {
+    return <main className="mx-auto max-w-3xl p-8 text-sm text-muted-foreground">Cargando…</main>;
+  }
+  if (rol === 'lector') return <VistaLector />;
+  return <VistaAdmin />;
+}
+
+function VistaLector() {
+  const [pestana, setPestana] = useState<PestanaLector>('inicio');
+  const [periodos, setPeriodos] = useState<Periodo[] | null>(null);
+  const [suscriptores, setSuscriptores] = useState<Suscriptor[] | null>(null);
+  const [lecturasAbiertas, setLecturasAbiertas] = useState<Lectura[] | null>(null);
+  const [acueducto, setAcueducto] = useState<Acueducto | null>(null);
+
+  const periodoAbierto = (periodos ?? []).find((p) => p.estado === 'abierto') ?? null;
+
+  useEffect(() => {
+    listarPeriodos().then((r) => setPeriodos(r.periodos)).catch(() => setPeriodos([]));
+    listarSuscriptores().then((r) => setSuscriptores(r.suscriptores)).catch(() => setSuscriptores([]));
+    obtenerAcueducto()
+      .then((r) => setAcueducto(r.acueducto))
+      .catch((e) => console.error('No se pudo cargar el acueducto', e));
+  }, []);
+
+  const recargarLecturasAbiertas = useCallback(() => {
+    if (!periodoAbierto) return;
+    listarLecturas({ periodoId: periodoAbierto.id })
+      .then((r) => setLecturasAbiertas(r.lecturas))
+      .catch((e) => console.error('No se pudieron cargar las lecturas del periodo abierto', e));
+  }, [periodoAbierto]);
+
+  useEffect(recargarLecturasAbiertas, [recargarLecturasAbiertas]);
+
+  const pendientesCount = (lecturasAbiertas ?? []).filter((l) => l.revision !== 'normal' && !l.revisada).length;
+
+  return (
+    <ShellLector pestana={pestana} onPestanaChange={setPestana} pendientesCount={pendientesCount}>
+      {pestana === 'inicio' && (
+        <InicioLector nombreAcueducto={acueducto?.nombre ?? null} lecturasAbiertas={lecturasAbiertas} />
+      )}
+      {pestana === 'nueva' && (
+        <NuevaLecturaLector
+          suscriptores={suscriptores}
+          periodoAbiertoId={periodoAbierto?.id ?? null}
+          onCreada={recargarLecturasAbiertas}
+        />
+      )}
+      {pestana === 'pendientes' && <PendientesLector lecturas={lecturasAbiertas} />}
+      {pestana === 'historial' && <HistorialLector periodos={periodos} />}
+    </ShellLector>
+  );
+}
+
+function VistaAdmin() {
   const [periodos, setPeriodos] = useState<Periodo[] | null>(null);
   const [suscriptores, setSuscriptores] = useState<Suscriptor[] | null>(null);
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState<string>('');
@@ -178,4 +251,3 @@ export default function LecturasPage() {
     </main>
   );
 }
-

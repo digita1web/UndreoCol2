@@ -42,7 +42,16 @@ $ npm run lint      → ESLint: No issues found
 **Hace:** pide el rol al montar; `lector` → `<ShellLector />`; cualquier otro rol → el JSX actual,
 sin cambios.
 **Verificación:** `cd frontend && npm run build && npm run lint`
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+$ npx tsc --noEmit → sin errores
+$ npm run build    → 18/18 páginas, /app/lecturas 5.83 kB (antes 3.51 kB — el shell nuevo)
+$ npm run lint     → ESLint: No issues found
+```
+Nota: `npm run build` se corrió con `next dev` activo — se limpió `.next` y se reinició `next dev`
+después, mismo procedimiento aprendido en la Sesión 037/038 para no repetir el error de MIME type.
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-005 — Verificación de integración real
 **Archivos:** ninguno
