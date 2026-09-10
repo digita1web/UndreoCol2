@@ -283,13 +283,12 @@ feature 015": el roadmap la numera 016.
 
 #### BAJO — documentados, sin corregir
 
-**B-1 · `planes` es legible por `anon`. — NO SE CORRIGE: es una decisión de producto, no un bug.** (`planes_lectura ... using (true)`). Expone el catálogo
-comercial de UndreoCol (nombres de plan y `valor_suscriptor`) a cualquiera. Es la única tabla de las
-22 legible sin sesión. **Decisión de Mateo pendiente:** que el catálogo comercial de UndreoCol sea
-público es normal en un SaaS, así que esto no se toca por iniciativa propia. Verificado que hoy
-**nada lo lee salvo `GET /salud`**, que lo usa como prueba de conectividad — y seguiría funcionando
-igual si se restringiera, porque RLS devuelve 0 filas sin error. Si Mateo decide que no debe ser
-público, el cambio es de una línea:
+**B-1 · `planes` es legible por `anon`. — CERRADO, decisión consciente de Mateo (Sesión 042): queda
+público.** (`planes_lectura ... using (true)`). Expone el catálogo comercial de UndreoCol (nombres
+de plan y `valor_suscriptor`) a cualquiera. Es la única tabla de las 22 legible sin sesión. Que el
+catálogo comercial de un SaaS sea público es normal — no se toca. Verificado que hoy **nada lo lee
+salvo `GET /salud`**, que lo usa como prueba de conectividad. Si en el futuro cambia de opinión, el
+cambio sigue siendo de una línea:
 `alter policy planes_lectura on planes using (auth.uid() is not null);`
 más actualizar el comentario de `/salud`, que hoy dice "planes es lectura pública".
 
@@ -378,16 +377,17 @@ No todo fue hallazgos. Verificado con evidencia, no supuesto:
 
 ---
 
-## Estado general — qué queda pendiente (actualizado 2026-09-10, Sesión 041)
+## Estado general — qué queda pendiente (actualizado 2026-09-10, Sesión 043)
 
 Consolidado de todo lo abierto a esta fecha, para no tener que reconstruirlo de memoria en la
 próxima sesión. Cada punto tiene su detalle completo en el hallazgo, spec o entrada de CHANGELOG
 que se referencia.
 
+**Cerrados desde la última actualización (Sesión 042, en otra conversación):** M-5 (registro
+público) y B-1 (`planes` público — Mateo confirmó dejarlo así, decisión consciente, no pendiente).
+
 ### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
 
-- **B-1 · `planes` legible por `anon`.** Decisión de producto: exponer el catálogo comercial es
-  normal en un SaaS — no se toca sin que Mateo lo pida.
 - **B-5 · `postcss` con 2 vulnerabilidades (transitiva de `next`).** Exige subir a `next@16`
   (cambio mayor). Sin ruta de explotación real en este sistema.
 - **"Leaked password protection" de Supabase Auth** — un toggle en el dashboard, nunca activado.
@@ -448,7 +448,20 @@ hallazgo M-5 arriba), y se eliminó al terminar — no reemplaza ni queda como e
 
 **Para restaurar el stack local:** con acceso de red normal, `supabase start` en la raíz del
 repositorio vuelve a descargar las imágenes que falten y recrea los 13 contenedores desde cero
-(igual que como quedó configurado originalmente). No hay ninguna migración ni fixture que reaplicar
-a mano: `supabase start` corre las 22 migraciones de `supabase/migrations/` automáticamente. Las
-imágenes cacheadas de versiones anteriores (`postgres:17.6.1.165`, `storage-api:v1.70.3`, etc.)
-siguen en este equipo y no estorban.
+(igual que como quedó configurado originalmente). `supabase start` corre las 22 migraciones de
+`supabase/migrations/` automáticamente — **eso sí es automático**. Las imágenes cacheadas de
+versiones anteriores (`postgres:17.6.1.165`, `storage-api:v1.70.3`, etc.) siguen en este equipo y
+no estorban.
+
+**Corrección (Sesión 043):** los `tests/fixtures/*.sql` (los datos de prueba — Acueducto A,
+`admin-a@test.local`, `lector-a@test.local`, las facturas de prueba, etc.) **no** los reaplica
+`supabase start` — son fixtures de test, separados de las migraciones versionadas, y siempre se
+aplicaron a mano (`psql -f tests/fixtures/*.sql`, en orden). Hace falta ese paso aparte después de
+`supabase start` para volver a tener los mismos logins/datos que se venían usando.
+
+**Estado a esta fecha (Sesión 043): sigue caído.** Confirmado de nuevo: `docker ps -a` sin
+contenedores, puerto 54322 sin responder, `public.ecr.aws` sin resolver por DNS desde este entorno
+— el mismo bloqueo de red del incidente original, verificado otra vez antes de intentar nada. No se
+reintentó `supabase start`/`db reset` acá para no repetir el rollback destructivo que borró el stack
+la primera vez. Pendiente que Mateo corra `supabase start` con su propia red; al confirmarlo, se
+reaplican los fixtures.
