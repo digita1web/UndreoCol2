@@ -5,8 +5,8 @@
 // gráficos). Nunca importa @supabase/* (CLAUDE.md §5.2).
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { KpiCard } from '@/components/ui/kpi-card';
 
 export interface TendenciaMes {
   anio: number;
@@ -33,15 +33,23 @@ const formatearPesos = (valor: number): string =>
 const etiquetaMes = (anio: number, mes: number): string =>
   `${MESES_CORTOS[mes - 1] ?? ''} ${String(anio).slice(2)}`;
 
-function Tarjeta({ titulo, children }: { titulo: string; children: ReactNode }) {
-  return (
-    <Card>
-      <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{titulo}</CardTitle>
-      </CardHeader>
-      <CardContent className="p-4 pt-1 text-2xl font-semibold">{children}</CardContent>
-    </Card>
-  );
+/**
+ * 027 (mejora propia): variación real del recaudo contra el mes anterior,
+ * calculada de los dos últimos meses de `tendencia` (ya se pide para el
+ * gráfico — sin llamada nueva). Sin línea si el mes anterior fue $0: un
+ * porcentaje contra cero no informa nada real, y este es un panel de dinero
+ * real. Las otras 3 tarjetas no tienen serie histórica en la respuesta de
+ * hoy, así que no se les inventa una variación.
+ */
+function variacionRecaudo(tendencia: TendenciaMes[]): { texto: string; color: 'success' | 'danger' } | null {
+  if (tendencia.length < 2) return null;
+  const actual = tendencia[tendencia.length - 1].total;
+  const anterior = tendencia[tendencia.length - 2].total;
+  if (anterior <= 0) return null;
+  const variacion = ((actual - anterior) / anterior) * 100;
+  const flecha = variacion >= 0 ? '↑' : '↓';
+  const texto = `${flecha} ${Math.abs(variacion).toLocaleString('es-CO', { maximumFractionDigits: 1 })}% vs. mes anterior`;
+  return { texto, color: variacion >= 0 ? 'success' : 'danger' };
 }
 
 function GraficoTendencia({ tendencia }: { tendencia: TendenciaMes[] }) {
@@ -53,7 +61,7 @@ function GraficoTendencia({ tendencia }: { tendencia: TendenciaMes[] }) {
         return (
           <div key={`${b.anio}-${b.mes}`} className="flex flex-1 flex-col items-center gap-1">
             <div
-              className="w-full rounded-t bg-blue-600"
+              className="w-full rounded-t bg-accent"
               style={{ height: `${alto}%` }}
               title={`${etiquetaMes(b.anio, b.mes)}: ${formatearPesos(b.total)}`}
             />
@@ -73,40 +81,33 @@ export function DashboardIndicadores({ indicadores }: { indicadores: Indicadores
     { clave: 'inactivo', texto: 'Inactivos' },
   ];
 
+  const variacion = variacionRecaudo(indicadores.tendencia);
+
   return (
     <section className="flex flex-col gap-6" aria-label="Indicadores del acueducto">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Tarjeta titulo="Recaudo del mes">
-          <p className="text-2xl font-semibold">{formatearPesos(indicadores.recaudoMes)}</p>
-        </Tarjeta>
-        <Tarjeta titulo="Cartera">
-          <div className="flex flex-col gap-1 text-sm">
-            <span>
-              Por vencer:{' '}
-              <Link href="/app/pagos" className="font-semibold text-blue-600 hover:underline">
-                {formatearPesos(indicadores.carteraPendiente)}
-              </Link>
-            </span>
-            <span>
-              Vencida:{' '}
-              <Link href="/app/pagos" className="font-semibold text-blue-600 hover:underline">
-                {formatearPesos(indicadores.carteraVencida)}
-              </Link>
-            </span>
-          </div>
-        </Tarjeta>
-        <Tarjeta titulo="Usuarios en mora">
-          <Link href="/app/pagos" className="text-2xl font-semibold text-blue-600 hover:underline">
-            {indicadores.usuariosEnMora}
-          </Link>
-        </Tarjeta>
-        <Tarjeta titulo="Consumo promedio (último periodo)">
-          <p className="text-2xl font-semibold">
-            {indicadores.consumoPromedioUltimoPeriodo === null
+        <KpiCard
+          etiqueta="Recaudo del mes"
+          valor={formatearPesos(indicadores.recaudoMes)}
+          variacion={variacion?.texto}
+          variacionColor={variacion?.color}
+        />
+        <KpiCard
+          etiqueta="Cartera vencida"
+          valor={formatearPesos(indicadores.carteraVencida)}
+          variacion={`${indicadores.usuariosEnMora} suscriptores en mora`}
+          variacionColor="danger"
+          href="/app/pagos"
+        />
+        <KpiCard etiqueta="Por vencer" valor={formatearPesos(indicadores.carteraPendiente)} href="/app/pagos" />
+        <KpiCard
+          etiqueta="Consumo promedio"
+          valor={
+            indicadores.consumoPromedioUltimoPeriodo === null
               ? '—'
-              : `${indicadores.consumoPromedioUltimoPeriodo.toLocaleString('es-CO', { maximumFractionDigits: 1 })} m³`}
-          </p>
-        </Tarjeta>
+              : `${indicadores.consumoPromedioUltimoPeriodo.toLocaleString('es-CO', { maximumFractionDigits: 1 })} m³`
+          }
+        />
       </div>
 
       <Card>
@@ -134,7 +135,7 @@ export function DashboardIndicadores({ indicadores }: { indicadores: Indicadores
               <Link
                 key={clave}
                 href="/app/suscriptores"
-                className="flex flex-col rounded-md border border-border p-3 hover:border-blue-600"
+                className="flex flex-col rounded-md border border-border p-3 hover:border-accent"
               >
                 <span className="text-2xl font-semibold">{e[clave]}</span>
                 <span className="text-sm text-muted-foreground">{texto}</span>
