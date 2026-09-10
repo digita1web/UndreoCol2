@@ -4,6 +4,58 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-10 — Sesión 038: enlace de navegación compartido + feature 024 (M-2/M-2b resueltos)
+
+**Enlace "Inicio" en el layout compartido de `/app/*`.** Casi ninguna pantalla principal del panel
+tenía forma de volver al dashboard salvo el botón atrás del navegador — solo las páginas de detalle
+volvían a su propia lista. Se agregó una sola vez en `frontend/app/app/layout.tsx` (mismo lugar que
+ya tiene el botón "Salir" de 021), así aparece en las 15 pantallas del panel de una vez. De paso se
+corrigió que esa cabecera no tenía `print:hidden` y aparecía en la hoja al imprimir una factura —
+contradecía 006 §3.1.
+
+**Feature 024 — permisos-lector**, completa por SDD, con checkpoints aprobados por Mateo en cada
+fase (`specs/024-permisos-lector/`). Cierra M-2 y un hallazgo más grave encontrado en el camino
+(M-2b), ambos en `docs/PLAN-PRODUCCION.md`.
+
+- **M-2 — el `lector` leía lo mismo que `admin_acueducto`.** Diez tablas (`facturas`,
+  `factura_detalles`, `pagos`, `pago_aplicaciones`, `tarifas`, `configuracion`,
+  `cortes_reconexiones`, `notificaciones`, `importaciones_suscriptores`, `reemplazos_contador`)
+  tenían una política RLS `_lectura` separada y más amplia que la `_admin`/`_escritura` que ya las
+  protegía correctamente — esa política de más era el único camino que dejaba pasar al lector. Se
+  eliminó en las 10 (cero políticas nuevas: la que ya existía cubre a `admin_acueducto` sin
+  cambios). `usuarios_servicio` es la excepción: el lector sí necesita elegir un suscriptor en
+  `/app/lecturas`, así que se le dio `usuarios_servicio_lector()` (`SECURITY DEFINER`), que expone
+  solo 5 columnas sin PII (nada de cédula, teléfono, email, dirección o notas).
+- **M-2b — hallazgo nuevo, más grave, encontrado auditando M-2 antes de planear (a pedido explícito
+  de Mateo, "audita más para que quede todo bien").** `POST /facturacion/periodos/:id/emitir` no
+  tenía ningún guard de rol y no escribía ninguna tabla protegida por RLS antes de encolar el
+  trabajo: **un `lector` con sesión real podía disparar la emisión de facturas reales de todo el
+  acueducto**, porque el consumidor de la cola crea las facturas con `service_role`, sin pasar por
+  RLS. La afirmación de M-2 de que "la escritura está bien acotada" era cierta para INSERT/UPDATE
+  directos, no para esta vía. Tres rutas hermanas (`.../simular`, y los dos `enviar-correo`) tenían
+  el mismo patrón de fondo, aunque las de correo ya fallaban de hecho (en silencio) porque insertan
+  en `notificaciones`, que sí exige `admin_acueducto`. *Resuelto:* guard de rol explícito en las 4,
+  mismo patrón que ya usaba `GET /dashboard/indicadores`.
+
+**Corrección colateral, encontrada en la regresión completa, no prevista en el plan:** 4 suites de
+aislamiento más viejas (005, 006, 007, 011) tenían su propio "el lector LEE X pero no escribe" —
+correcto en su momento, obsoleto a propósito porque 024 le quita esa lectura. Se actualizaron para
+reflejar el comportamiento nuevo (no es una regresión real, es una aserción desactualizada).
+
+**Verificado:** 215/215 tests del backend, `tsc` sin errores, `wrangler deploy --dry-run` OK,
+`npm run build`/`npm run lint` del frontend limpios. Las 18 suites de aislamiento (incluida la
+`014` nueva) en verde, reproducido dos veces desde cero en Postgres 17 descartables y contra el
+Supabase local. Contra `wrangler dev`/`next dev` reales con sesiones de `admin_acueducto` y
+`lector`: las 4 rutas de facturación dan `403` al lector (incluida `/emitir`, la más grave) y
+siguen en `200` para admin; `GET /suscriptores` del lector trae solo 5 campos reales;
+`/app/lecturas` sigue armando su desplegable igual que antes.
+
+**Aparte, corregido en el camino (no relacionado a 023/024):** `npm run build` (producción) pisó la
+carpeta `.next` mientras `next dev` seguía corriendo, causando errores de MIME type en el navegador
+de Mateo (`text/plain` en vez de `text/css`/`application/javascript`). Se limpió `.next` y se
+reinició `next dev` — apuntado para no repetir: no correr `next build` mientras `next dev` esté
+activo sobre el mismo directorio.
+
 ### 2026-09-09 — Sesión 037: consolidación local, PDF y portal verificados de punta a punta, fix de una colisión de migraciones, y feature 023 (color de acento + encabezado de factura)
 
 **Consolidación de carpetas locales.** Existían dos checkouts del proyecto en la máquina de

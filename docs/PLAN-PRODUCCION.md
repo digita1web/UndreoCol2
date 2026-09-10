@@ -150,39 +150,47 @@ validan que el mensaje traiga `clienteId`. Test nuevo `cierre-facturacion-tenant
 con un cliente de Supabase falso cuyo `.eq()` filtra de verdad; quitando solo los filtros el test
 pasa a 3 failed | 2 passed, así que mide lo que dice medir.
 
-**M-2 · El `lector` ve todo el negocio del acueducto, no solo lecturas. — EN CORRECCIÓN (spec
-`specs/024-permisos-lector/`).**
-Verificado: el lector de A ve exactamente lo mismo que el admin de A en `facturas` (9), `pagos` (8),
-`usuarios_servicio` (6), `tarifas`, `cartera` y `configuracion` — y, en una segunda pasada de
-auditoría (023→024), también en `cortes_reconexiones`, `notificaciones`,
+**M-2 · El `lector` ve todo el negocio del acueducto, no solo lecturas. — RESUELTO
+(`specs/024-permisos-lector/`, commit `f5b2953`).**
+Verificado que el problema existía: el lector de A veía exactamente lo mismo que el admin de A en
+`facturas` (9), `pagos` (8), `usuarios_servicio` (6), `tarifas`, `cartera` y `configuracion` — y,
+en una segunda pasada de auditoría (023→024), también en `cortes_reconexiones`, `notificaciones`,
 `importaciones_suscriptores` y `reemplazos_contador` (mismo patrón, no se habían revisado antes).
 `ESPECIFICACION-FUNCIONAL.md §3` dice que el lector "solo puede crear y ver lecturas" y "ver y
-ejecutar órdenes **asignadas a él**". La escritura **directa** a tablas sí está bien acotada (no
-puede insertar pagos, anular facturas, tocar tarifas ni configuración; verificado) — pero ver M-2b
-para una vía de escritura indirecta que sí existe. Es sobre-exposición **dentro** del tenant: el
-celular Android de un fontanero, perdido o robado en campo, entrega el registro completo de
-suscriptores con cédula y dirección, y todo el histórico de facturación y recaudo. La asignación de
-rutas al lector (`ESPECIFICACION-FUNCIONAL.md §2.14.1`, "**no existe como feature todavía**") queda
-fuera de 024 a propósito — no bloquea cerrar la sobre-exposición de lectura.
+ejecutar órdenes **asignadas a él**". *Resuelto:* se eliminaron las 10 políticas `_lectura`
+sobre-amplias (`cliente_id IN mis_clientes()`, sin filtrar rol) — la política `_admin`/`_escritura`
+(`ALL`, `es_admin_de`) que cada tabla ya tenía sigue cubriendo a `admin_acueducto`/`administrador`
+sin cambios. Para `usuarios_servicio`, que el lector sí necesita parcialmente (armar el desplegable
+de `/app/lecturas`), se agregó `usuarios_servicio_lector()` (`SECURITY DEFINER`): expone solo
+`id, codigo_suscriptor, nombre, contador_actual_id, estado` — sin cédula, teléfono, email,
+dirección ni notas. Verificado contra PostgreSQL real, dos veces reproducido desde cero
+(`tests/aislamiento/014`): lector en 0 en las 11 tablas; `admin_acueducto` sin cambios; la función
+nueva no expone columnas sensibles (falla con `undefined_column` si se le piden). La asignación de
+rutas al lector (`ESPECIFICACION-FUNCIONAL.md §2.14.1`, "**no existe como feature todavía**") quedó
+fuera de 024 a propósito, tal como se documentó — no bloqueaba cerrar la sobre-exposición de
+lectura.
 
-**M-2b · El `lector` puede disparar la emisión REAL de facturas de todo el acueducto. — EN
-CORRECCIÓN (spec `specs/024-permisos-lector/` §3.4), hallazgo nuevo, encontrado auditando M-2 más a
-fondo antes de planear su corrección.**
-`POST /facturacion/periodos/:id/emitir` no tiene guard de rol (a diferencia de
-`GET /dashboard/indicadores`, que sí lo tiene). No escribe ninguna tabla protegida por RLS antes de
-encolar: lee tarifas/consumo con el JWT del llamante y encola un mensaje `emitir_factura` por
+**M-2b · El `lector` podía disparar la emisión REAL de facturas de todo el acueducto. — RESUELTO
+(`specs/024-permisos-lector/` §3.4, commit `1e767b6`), hallazgo nuevo encontrado auditando M-2 más
+a fondo antes de planear su corrección.**
+`POST /facturacion/periodos/:id/emitir` no tenía guard de rol (a diferencia de
+`GET /dashboard/indicadores`, que sí lo tiene). No escribía ninguna tabla protegida por RLS antes de
+encolar: leía tarifas/consumo con el JWT del llamante y encolaba un mensaje `emitir_factura` por
 suscriptor a `FACTURACION_COLA`; el consumidor de esa cola (`queues/cierre-facturacion.ts`) escribe
 con `service_role`, **sin pasar por RLS en absoluto**. Es decir: la afirmación de M-2 de que "la
-escritura está bien acotada" es cierta para INSERT/UPDATE directos vía RLS, pero no cubre esta vía
-indirecta por cola — hoy, con una sesión real de `lector`, se puede encolar la emisión de facturas
-de todo el acueducto. Dos rutas hermanas (`.../simular`, y los dos `enviar-correo`) tienen el mismo
-patrón de fondo (sin guard); las de correo ya fallan de hecho hoy porque insertan en
-`notificaciones` con el JWT del llamante y esa tabla sí exige `admin_acueducto` — pero fallan en
-silencio (`202` con `encoladas: 0`), no con un error claro. *No es cruce de tenant* (el lector solo
-afecta su propio acueducto, no otros) y *requiere una cuenta de lector real* (no es explotable de
-forma anónima), por eso se clasifica ALTO y no CRÍTICO — mismo nivel que M-2, del cual es la
-contraparte de escritura. *Corrección:* guard de rol (`ctx.rol === 'admin_acueducto'`) en las 4
-rutas, mismo patrón ya usado en `/dashboard/indicadores`.
+escritura está bien acotada" era cierta para INSERT/UPDATE directos vía RLS, pero no cubría esta vía
+indirecta por cola — antes de este commit, con una sesión real de `lector`, se podía encolar la
+emisión de facturas de todo el acueducto. Dos rutas hermanas (`.../simular`, y los dos
+`enviar-correo`) tenían el mismo patrón de fondo (sin guard); las de correo ya fallaban de hecho
+porque insertan en `notificaciones` con el JWT del llamante y esa tabla sí exige `admin_acueducto`
+— pero fallaban en silencio (`202` con `encoladas: 0`), no con un error claro. *No era cruce de
+tenant* (el lector solo afectaba su propio acueducto, no otros) y *requería una cuenta de lector
+real* (no era explotable de forma anónima), por eso se clasifica ALTO y no CRÍTICO — mismo nivel que
+M-2, del cual es la contraparte de escritura. *Resuelto:* guard de rol
+(`ctx.rol === 'admin_acueducto'`) en las 4 rutas, mismo patrón ya usado en
+`/dashboard/indicadores`. Verificado contra `wrangler dev` real, con sesiones reales de
+`admin_acueducto` y `lector`: las 4 rutas dan `403` al lector (incluida `/emitir`); `admin_acueducto`
+no pierde nada.
 
 **M-3 · `ALLOWED_ORIGIN = "http://localhost:3000"` estaba versionado en `backend/wrangler.toml`. — RESUELTO (`f98850a`).**
 Confirmado en la salida real de `wrangler deploy --dry-run`: el binding se despliega con ese valor.

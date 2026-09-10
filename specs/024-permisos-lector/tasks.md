@@ -126,4 +126,51 @@ cd backend && npm test && npx wrangler deploy --dry-run
 cd frontend && npm run build && npm run lint
 psql "$DATABASE_URL" -f (las 18 suites de aislamiento, regresión completa)
 ```
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+$ npm test                        → 215 passed (20 archivos)
+$ npx wrangler deploy --dry-run   → EXIT=0
+$ npm run build (frontend)        → 18/18 páginas, sin errores
+$ npm run lint (frontend)         → ESLint: No issues found
+18/18 suites de aislamiento en verde, reproducido dos veces en Postgres 17 descartables desde
+cero, y contra el Supabase local persistente.
+docs/PLAN-PRODUCCION.md: M-2 y M-2b marcados RESUELTO con su evidencia y el hash del commit.
+CHANGELOG.md: Sesión 038.
+```
+**Commit:** este commit (cierre)
+
+## Bitácora de cierre
+
+| Tarea | Commit | Estado |
+|---|---|---|
+| T-001 migración: 10 DROP POLICY + usuarios_servicio_lector() | `f5b2953` | COMPLETADO |
+| T-002 listarSuscriptores usa la vista mínima para el lector | `24ca2f5` | COMPLETADO |
+| T-003 guard de rol en 4 rutas de facturación por cola (M-2b) | `1e767b6` | COMPLETADO |
+| T-004 test de aislamiento 014 + corrección de 4 suites obsoletas | `277f869` | COMPLETADO |
+| T-005 verificación de integración real | `cabe256` | COMPLETADO |
+| T-006 cierre | este commit | COMPLETADO |
+
+### Checklist de `CLAUDE.md §11`
+
+- [x] Hace lo que dice el spec, ni más ni menos — alcance ampliado explícitamente con Mateo en el
+      checkpoint de `/specify` (M-2b), no por iniciativa propia
+- [x] `npm run build` (frontend) sin errores ni warnings de TypeScript
+- [x] `npx wrangler deploy --dry-run` (backend) exitoso
+- [x] `npm run lint` limpio en ambos proyectos
+- [x] Tests de la tarea en verde, con la salida pegada — 215/215 backend, build/lint frontend
+- [x] Migración versionada + test de aislamiento en verde —
+      `20260921090000_permisos-lector.sql`, `tests/aislamiento/014`, verificado que el test SIRVE
+- [x] Si toca `core/`: no aplica — sin lógica de negocio nueva (plan §4)
+- [x] Evidencia pegada en la conversación y en este documento
+- [x] `CHANGELOG.md` actualizado (Sesión 038)
+- [x] Commit hecho por tarea verificada; sin `push` salvo autorización expresa (§9.1)
+
+### Desviaciones respecto del plan, todas señaladas en su commit
+
+1. **Alcance ampliado antes de `/plan`:** una segunda auditoría (pedida explícitamente por Mateo)
+   encontró 4 tablas más sin revisar (mismo patrón) y M-2b (emisión de facturas sin guard,
+   más grave que M-2). El spec se actualizó y se re-presentó para aprobación antes de continuar.
+2. **T-004:** la regresión completa reveló 4 suites de aislamiento viejas (005, 006, 007, 011) con
+   aserciones que verificaban el comportamiento ANTERIOR a esta feature ("el lector lee X") —
+   corregidas para reflejar el comportamiento nuevo, no es una regresión real.
