@@ -924,6 +924,10 @@ app.patch('/lecturas/:id/revisar', async (c) => {
 app.post('/facturacion/periodos/:id/simular', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
+  // 024 (M-2b): calcula montos de facturación completos — solo admin_acueducto.
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede simular el cierre' }, 403);
+  }
   try {
     const resumen = await simularPeriodo(ctx.supabase, ctx.clienteId, c.req.param('id'));
     return c.json({ resumen });
@@ -977,6 +981,12 @@ app.post('/facturas/:id/anular', async (c) => {
 app.post('/facturacion/periodos/:id/emitir', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
+  // 024 (M-2b, CRÍTICO del hallazgo): sin este guard, cualquier rol podía
+  // encolar la emisión REAL de facturas de todo el acueducto — el consumidor
+  // de la cola escribe con service_role, sin pasar por RLS en absoluto.
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede emitir facturas' }, 403);
+  }
   const cola = c.env.FACTURACION_COLA;
   if (!cola) return c.json({ error: 'La cola de facturación no está configurada' }, 500);
   const periodoId = c.req.param('id');
@@ -1018,6 +1028,11 @@ app.post('/facturacion/periodos/:id/emitir', async (c) => {
 app.post('/facturas/:id/enviar-correo', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
+  // 024 (M-2b): ya fallaba para el lector (notificaciones_admin exige
+  // admin_acueducto), pero en silencio — este guard da un 403 explícito.
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede enviar la factura por correo' }, 403);
+  }
   const cola = c.env.FACTURACION_COLA;
   if (!cola) return c.json({ error: 'La cola de facturación no está configurada' }, 500);
   const facturaId = c.req.param('id');
@@ -1066,6 +1081,11 @@ app.post('/facturas/:id/enviar-correo', async (c) => {
 app.post('/facturacion/periodos/:id/enviar-correo', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
+  // 024 (M-2b): ya fallaba para el lector (notificaciones_admin exige
+  // admin_acueducto), pero en silencio — este guard da un 403 explícito.
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede enviar las facturas por correo' }, 403);
+  }
   const cola = c.env.FACTURACION_COLA;
   if (!cola) return c.json({ error: 'La cola de facturación no está configurada' }, 500);
   const periodoId = c.req.param('id');

@@ -57,7 +57,24 @@ $ npx vitest run     → 215 passed (20 archivos)
 /facturas/:id/enviar-correo`: `if (ctx.rol !== 'admin_acueducto') return c.json({error:...}, 403)`,
 mismo patrón que `GET /dashboard/indicadores`.
 **Verificación:** `cd backend && npx tsc --noEmit && npx vitest run && npx wrangler deploy --dry-run`
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+$ npx tsc --noEmit               → sin errores
+$ npx vitest run                 → 215 passed
+$ npx wrangler deploy --dry-run  → EXIT=0
+
+Contra wrangler dev real, con sesiones reales de admin-a@test.local y lector-a@test.local:
+  POST /facturacion/periodos/:id/emitir        (lector) -> 403  <- el hallazgo más grave (M-2b)
+  POST /facturacion/periodos/:id/simular       (lector) -> 403
+  POST /facturacion/periodos/:id/enviar-correo (lector) -> 403
+  POST /facturas/:id/enviar-correo             (lector) -> 403
+  POST /facturacion/periodos/:id/simular       (admin)  -> 200  (regresión: sigue funcionando)
+  GET  /suscriptores (lector) -> solo 5 campos reales (id, codigo_suscriptor, nombre, estado,
+       contador_actual_id); numero_documento/telefono/email/direccion/notas en null
+  GET  /suscriptores (admin)  -> los 15 campos completos, sin cambios
+```
+**Commit:** se registra en la Bitácora de cierre (T-006)
 
 ## T-004 — Test de aislamiento 014
 **Archivos:** `tests/aislamiento/014_permisos_lector_aislamiento.sql`
