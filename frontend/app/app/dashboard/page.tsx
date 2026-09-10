@@ -131,7 +131,12 @@ export default async function DashboardPage() {
       </dl>
 
       {datos.cliente.rol === 'admin_acueducto' && indicadores ? (
-        <DashboardIndicadores indicadores={indicadores} />
+        <>
+          <DashboardIndicadores indicadores={indicadores} />
+          <Link href="/app/configuracion" className="text-sm text-blue-600 hover:underline">
+            Configuración del acueducto →
+          </Link>
+        </>
       ) : (
         <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-lg font-semibold">No autorizado</p>

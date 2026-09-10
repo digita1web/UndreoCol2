@@ -235,10 +235,15 @@ encabezado en pantalla Y con `Ctrl+P` (vista de impresión real).
 (mismo bloque donde ya está el enlace a `/app/lecturas`) — el `lector` no lo ve.
 **Verificación:** `cd frontend && npm run build && npm run lint`
 **Resultado esperado:** limpio; verificación manual: con sesión de `lector`, el enlace no aparece.
-**Estado:** Pendiente
+**Estado:** Hecho
 **Evidencia:**
 ```
-(se pega al ejecutar)
+$ npm run build && npm run lint  → limpio (ESLint: No issues found)
+
+Contra wrangler dev + next dev reales (DashboardPage es Server Component, se puede
+verificar el HTML real con curl sin necesitar navegador):
+  GET /app/dashboard con sesión admin_acueducto → contiene "Configuración del acueducto"
+  GET /app/dashboard con sesión lector          → NO contiene "Configuración del acueducto"
 ```
 **Commit:** se registra en la Bitácora de cierre (T-011)
 
