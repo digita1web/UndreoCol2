@@ -12,6 +12,7 @@
 | `backend/src/lib/factura-pdf.ts` | Modificado | `DatosAcueductoPdf.colorAcento: string`; `colorAcento` fijo (`rgb(0.08,0.25,0.55)`) se reemplaza por `hexARgb01(acueducto.colorAcento)` |
 | `backend/src/lib/factura-pdf.test.ts` | Modificado | Caso nuevo: dos acueductos con colores distintos producen bytes de PDF distintos en el bloque de color |
 | `backend/src/lib/portal.ts` | Modificado | `DatosAcueductoPdf` mapeado desde `portal_factura_completa` incluye `colorAcento` |
+| `backend/src/queues/cierre-facturacion.ts` | Modificado *(no estaba en el plan original — encontrado con `tsc --noEmit` en T-004)* | Tercer lugar que arma `DatosAcueductoPdf` (envío por correo del cierre masivo, 006); mismo ajuste mecánico |
 | `backend/src/index.ts` | Modificado | Nuevas rutas `GET /acueducto`, `PATCH /acueducto/color`; `GET /facturas/:id/pdf` y `GET /portal/facturas/:id/pdf` pasan `color_acento` a `generarPdfFactura` |
 | `frontend/lib/api.ts` | Modificado | `obtenerAcueducto()`, `actualizarColorAcentoAcueducto(hex)`, tipo `Acueducto` |
 | `frontend/app/app/configuracion/page.tsx` | Nuevo | Pantalla de configuración (solo lectura + color) |

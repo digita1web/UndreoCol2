@@ -133,7 +133,7 @@ export async function obtenerFacturaCompletaPortal(
   const completa = data as {
     factura: FacturaRow;
     detalles: DetalleFacturaRow[];
-    acueducto: { nombre: string; nit: string | null; direccion: string | null; telefono: string | null; municipio: string | null; logo_url: string | null };
+    acueducto: { nombre: string; nit: string | null; direccion: string | null; telefono: string | null; municipio: string | null; logo_url: string | null; color_acento: string };
   };
   return {
     factura: completa.factura,
@@ -145,6 +145,7 @@ export async function obtenerFacturaCompletaPortal(
       telefono: completa.acueducto?.telefono ?? null,
       municipio: completa.acueducto?.municipio ?? null,
       logoUrl: completa.acueducto?.logo_url ?? null,
+      colorAcento: completa.acueducto?.color_acento ?? '#14408C',
     },
   };
 }

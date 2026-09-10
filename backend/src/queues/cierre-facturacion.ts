@@ -282,7 +282,7 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
 
   const { data: acueductoRow } = await supabase
     .from('clientes')
-    .select('nombre, nit, direccion, telefono, municipio, logo_url')
+    .select('nombre, nit, direccion, telefono, municipio, logo_url, color_acento')
     .eq('id', clienteId)
     .single();
 
@@ -305,6 +305,7 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
     telefono: acueductoRow?.telefono ?? null,
     municipio: acueductoRow?.municipio ?? null,
     logoUrl: acueductoRow?.logo_url ?? null,
+    colorAcento: acueductoRow?.color_acento ?? '#14408C',
   };
 
   // genera el PDF y lo sube a R2 (la primera vez); pdf_url queda en la factura

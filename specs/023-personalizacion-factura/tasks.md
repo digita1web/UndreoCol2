@@ -75,16 +75,28 @@ esperado en este punto intermedio; T-005 lo cierra y ahí se corre `tsc`/`wrangl
 sobre el proyecto completo.
 **Commit:** se registra en la Bitácora de cierre (T-011)
 
-## T-004 — `lib/portal.ts` propaga el color al PDF del portal
-**Archivos:** `backend/src/lib/portal.ts`
+## T-004 — `lib/portal.ts` y `queues/cierre-facturacion.ts` propagan el color
+**Archivos:** `backend/src/lib/portal.ts`, `backend/src/queues/cierre-facturacion.ts`
 **Hace:** el mapeo de `completa.acueducto` a `DatosAcueductoPdf` incluye `colorAcento` desde
 `color_acento` (ya presente en el JSON de `portal_factura_completa` tras T-001).
-**Verificación:** `cd backend && npx vitest run portal`
-**Resultado esperado:** tests existentes en verde (ninguno debería requerir cambio, solo el tipo).
-**Estado:** Pendiente
+**Desviación del plan (encontrada con `tsc --noEmit`, no en el plan original):**
+`queues/cierre-facturacion.ts` es un TERCER lugar que arma `DatosAcueductoPdf` (el envío por
+correo del cierre masivo, 006) — el plan solo listaba `lib/portal.ts` e `index.ts`. Mismo ajuste
+mecánico (agregar `color_acento` al `.select()` y al objeto), sin cambiar comportamiento ni
+alcance — se corrige aquí en vez de abrir una tarea aparte.
+**Verificación:** `cd backend && npx tsc --noEmit && npx vitest run cierre-facturacion`
+**Resultado esperado:** el único error de tipos restante es en `index.ts` (T-005, ya esperado);
+tests de `cierre-facturacion` en verde.
+**Estado:** Hecho
 **Evidencia:**
 ```
-(se pega al ejecutar)
+$ npx tsc --noEmit
+src/index.ts(1093,13): error TS2741: Property 'colorAcento' is missing... (esperado, T-005)
+
+$ npx vitest run cierre-facturacion
+ ✓ tests/unit/cierre-facturacion-tenant.test.ts (5 tests) 9ms
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
 ```
 **Commit:** se registra en la Bitácora de cierre (T-011)
 
