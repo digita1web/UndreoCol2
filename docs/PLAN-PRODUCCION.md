@@ -339,3 +339,61 @@ No todo fue hallazgos. Verificado con evidencia, no supuesto:
   `^[a-z0-9]+(-[a-z0-9]+)*$` el grupo interno empieza por `-`, que no pertenece a `[a-z0-9]`, así que
   no hay ambigüedad para el backtracker. 50.000 caracteres del peor caso clásico → **0,288 ms**,
   tiempo lineal. No requiere acción.
+
+---
+
+## Estado general — qué queda pendiente (actualizado 2026-09-10, Sesión 041)
+
+Consolidado de todo lo abierto a esta fecha, para no tener que reconstruirlo de memoria en la
+próxima sesión. Cada punto tiene su detalle completo en el hallazgo, spec o entrada de CHANGELOG
+que se referencia.
+
+### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
+
+- **M-5 · Registro público y gratis** (`POST /auth/registro` abierto, `crear_tenant_con_admin()`
+  otorgada a `authenticated`). Decisión de producto pendiente: cerrar el registro o dejarlo así
+  hasta tener autoservicio real.
+- **B-1 · `planes` legible por `anon`.** Decisión de producto: exponer el catálogo comercial es
+  normal en un SaaS — no se toca sin que Mateo lo pida.
+- **B-5 · `postcss` con 2 vulnerabilidades (transitiva de `next`).** Exige subir a `next@16`
+  (cambio mayor). Sin ruta de explotación real en este sistema.
+- **"Leaked password protection" de Supabase Auth** — un toggle en el dashboard, nunca activado.
+  No es de código; es un clic de Mateo.
+- **Feature 019** (invitar admins de acueducto por correo, en vez de contraseña temporal) — sin
+  empezar, sin fecha.
+
+### Verificación en navegador real — pendiente de Mateo (este entorno no tiene Chromium/Playwright)
+
+- **023** — encabezado + color de acento de la factura, imprimiendo de verdad (`Ctrl+P`).
+- **025 (AquaLectura)** — el shell del lector en un celular real (o modo responsivo del navegador).
+- **026** — colapso de la barra lateral en pantalla angosta, aspecto final de la tipografía Inter.
+- **027** — aspecto visual final del Panel principal re-vestido.
+- **Portal del suscriptor y descarga de PDF** — de punta a punta contra producción real (ya
+  verificado en local, sesión de PDF/portal de esta misma sesión de trabajo).
+
+### Rediseño visual — en curso, 2 de 15 pantallas
+
+`specs/026-shell-panel-admin/propuesta-referencia.html` es la referencia completa. Hecho: el marco
+compartido (026) y el Panel principal (027). Faltan, cada una su propio spec cuando se decida
+seguir: Facturación, Detalle de factura, Cartera, Lecturas (vista admin), Suscriptores (lista +
+ficha + importar), Catálogo y tarifas, Cortes, Notificaciones. AquaLectura (025, vista del lector)
+ya tiene su propia identidad y no se reemplaza por la versión del prototipo.
+
+### Roadmap — features grandes sin empezar
+
+- **Rol `secretaria` dentro del acueducto** (descrito por Mateo en la Sesión 041, ver
+  `specs/027-panel-principal/spec.md` §2): un `admin_acueducto` que ve balances/recaudos
+  (`administrador` del acueducto) vs. uno que solo hace lo administrativo, sin verlos
+  (`secretaria`). **No existe como rol todavía** (`rol_usuario` verificado real: solo
+  `administrador`, `admin_acueducto`, `lector`). Del mismo tamaño que 024 — política RLS nueva por
+  tabla + decidir exactamente qué ve cada uno.
+- **Feature 015 (QR + OCR del contador)** — diferenciador tecnológico principal del roadmap
+  original, marcado "requiere máximo rigor de precisión", sin empezar.
+- **Asignación de rutas/zonas al lector** (`ESPECIFICACION-FUNCIONAL.md §2.14.1`) — dejada fuera de
+  024 y 025 a propósito ("no existe como feature todavía"), sigue sin empezar.
+
+### Producción real
+
+La base de producción (`undreocol-produccion`) sigue **vacía**: 0 acueductos, 0 suscriptores. Nadie
+la ha probado con datos reales todavía. El primer cliente piloto es lo que activa el primer gasto
+de infraestructura (`ARQUITECTURA.md §6`).
