@@ -84,4 +84,48 @@ usuarios_servicio_lector() (024), correcto para ambos roles (verificado: lector 
 **Archivos:** `CHANGELOG.md`
 **Hace:** entrada de la sesión, Bitácora de cierre con los commits, checklist de CLAUDE.md §11.
 **Verificación:** `npm run build && npm run lint` (frontend) limpios.
-**Estado:** Pendiente
+**Estado:** Hecho
+**Evidencia:**
+```
+$ cd backend && npm test                → 215 passed
+$ npx wrangler deploy --dry-run         → EXIT=0
+$ cd frontend && npm run build          → 18/18 páginas
+$ npm run lint                          → ESLint: No issues found
+docs/PLAN-PRODUCCION.md: no aplica (sin hallazgo de seguridad en esta feature).
+CHANGELOG.md: Sesión 039.
+```
+**Commit:** este commit (cierre)
+
+## Bitácora de cierre
+
+| Tarea | Commit | Estado |
+|---|---|---|
+| T-001 `obtenerContextoUsuario()` en `lib/api.ts` | `26fbe0f` | COMPLETADO |
+| T-002 `shell-lector.tsx` | `a4f0893` | COMPLETADO |
+| T-003 las 4 vistas del lector | `2a8da7d` | COMPLETADO |
+| T-004 `lecturas/page.tsx` decide el shell según el rol | `1c25ab2` | COMPLETADO |
+| — fix colateral de 024 (conteo de `GET /dashboard`), encontrado en T-005 | `2f080be` | COMPLETADO |
+| T-005 verificación de integración real | `48c7ee8` | COMPLETADO |
+| T-006 cierre | este commit | COMPLETADO |
+
+### Checklist de `CLAUDE.md §11`
+
+- [x] Hace lo que dice el spec, ni más ni menos — alcance acotado con Mateo antes de escribir el
+      spec (sin OCR, sin zonas, sin Reportes/Configuración)
+- [x] `npm run build` (frontend) sin errores ni warnings de TypeScript
+- [x] `npx wrangler deploy --dry-run` (backend) exitoso — sin cambios de infraestructura
+- [x] `npm run lint` limpio en ambos proyectos
+- [x] Tests en verde — 215/215 backend (sin lógica nueva, el fix colateral no rompió nada),
+      build/lint frontend
+- [x] Si toca base de datos: no aplica — cero cambios de esquema o RLS
+- [x] Si toca `core/`: no aplica — sin lógica de negocio nueva
+- [x] Evidencia pegada en la conversación y en este documento
+- [x] `CHANGELOG.md` actualizado (Sesión 039)
+- [x] Commit hecho por tarea verificada; sin `push` salvo autorización expresa (§9.1)
+
+### Desviaciones respecto del plan, señaladas en su commit
+
+1. **T-005:** se encontró y corrigió un efecto colateral real de 024 (`GET /dashboard` contaba
+   `usuarios_servicio` con una consulta que el lector ya no puede hacer desde 024) — no estaba en
+   el plan de 025, se corrigió en el momento por ser un bug real descubierto verificando esta
+   misma feature, con su propio commit separado (`2f080be`).

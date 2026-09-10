@@ -4,6 +4,42 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-10 — Sesión 039: feature 025, "AquaLectura" — rediseño móvil de /app/lecturas para el lector
+
+Mateo trajo un mockup de Figma ("AquaLectura": gota, encabezado azul, navegación lateral, tarjetas
+de consulta y de nueva lectura) pidiendo que la app del lector se viera así en su celular. Antes de
+tocar código se acotó el alcance en conversación: sin escaneo/OCR real (eso es la Feature 015,
+marcada "requiere máximo rigor de precisión" — el botón lleva al formulario manual que ya existe),
+sin zona/ruta asignada al lector (exactamente lo que 024 dejó fuera a propósito), sin las
+pantallas "Reportes"/"Configuración" del mockup (sin función ni sentido para ese rol). La barra
+lateral del mockup se reemplazó por navegación inferior de pestañas — no entra en un celular real.
+
+**Completa por SDD** (`specs/025-app-lector-movil/`), cero cambios de backend: reutiliza rutas que
+ya existían (`GET /dashboard` para el rol, `GET /acueducto`, `/periodos`, `/suscriptores`,
+`/lecturas`). `/app/lecturas` decide el shell según el rol al montar — `admin_acueducto` ve
+exactamente la pantalla de siempre (sin tocar); `lector` ve el shell nuevo con 4 pestañas (Inicio,
+Nueva lectura, Pendientes, Historial). Investigado antes de construir: `PATCH
+/lecturas/:id/revisar` exige `admin_acueducto` por RLS, así que "Pendientes" para el lector es de
+solo lectura, sin el botón "Marcar revisada" que le fallaría. Iconos SVG a mano, sin librería
+(mismo criterio de cero dependencias de 023).
+
+**Hallazgo colateral de 024, corregido en el camino:** `GET /dashboard` contaba
+`usuarios_servicio` con un `SELECT` directo bajo el JWT del llamante — desde que 024 le quitó esa
+lectura al `lector`, el conteo le mostraba "0 usuarios de servicio" en vez del real. Se cambió a
+`usuarios_servicio_lector()` (024), que revalida pertenencia al acueducto, no rol, así que sirve
+para cualquiera. Verificado: lector pasó de ver 0 a ver 6 (el conteo real); admin sin cambios.
+
+**Verificado:** 215/215 tests del backend (sin cambios de lógica, solo la función que llama el
+conteo), `tsc` sin errores, `wrangler deploy --dry-run` OK, `npm run build`/`npm run lint` del
+frontend limpios (`/app/lecturas` pasó de 3.51 kB a 5.83 kB). Contra `wrangler dev`/`next dev`
+reales: sesión de `lector` resuelve el rol correcto y cada pestaña trae datos reales del fixture
+(acueducto, periodo abierto, 6 suscriptores, lecturas); sesión de `admin_acueducto` sin cambios
+(regresión).
+
+**NO VERIFICADO — requiere Mateo:** el renderizado final del shell en un navegador real (este
+entorno sigue sin Chromium/Playwright) — confirmar que se ve bien en un celular real o en modo
+responsivo del navegador, con la sesión de `lector-a@test.local`.
+
 ### 2026-09-10 — Sesión 038: enlace de navegación compartido + feature 024 (M-2/M-2b resueltos)
 
 **Enlace "Inicio" en el layout compartido de `/app/*`.** Casi ninguna pantalla principal del panel
