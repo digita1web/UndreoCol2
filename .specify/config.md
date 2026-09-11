@@ -64,6 +64,7 @@ En `specs/plantillas/`. Se copian al crear cada feature nueva.
 | 026 | shell-panel-admin (tokens de diseño + barra lateral/cabecera, primera fase del rediseño de `undreocol_ui_propuesta.html`) | 018, 021, 023 | **Implementada** — marco compartido (sidebar con 9 enlaces reales y estado activo por ruta, topbar, tipografía Inter, tokens de color, Badge/KpiCard sin usar todavía). AquaLectura (025) se mantiene tal cual para el lector. Colapso responsivo y aspecto final de Inter en navegador real: NO VERIFICADO, requiere Mateo |
 | 027 | panel-principal (re-viste /app/dashboard con KpiCard/Badge de 026 — segunda pantalla del rediseño) | 011, 026 | **Implementada** — cero datos nuevos (usa GET /dashboard/indicadores tal como existe). "Recaudo del mes" gana una variación real vs. mes anterior, calculada de datos ya existentes. Aspecto visual final en navegador real: NO VERIFICADO, requiere Mateo |
 | 028 | rol-secretaria (nuevo rol dentro del acueducto: trabajo administrativo sin ver el panel financiero) | 001, 024, 026 | **Implementada** — RLS + guards de API + UI: gestiona operación administrativa y registro de pagos, sin indicadores ni acciones consecuentes; integración HTTP/navegador real pendiente de Mateo |
+| 029 | autorizacion-tarifas-secretaria (delegación temporal, específica y de un solo uso para cambiar tarifas) | 002, 028 | **Implementada** — autorización con expiración, revocación, bitácora inmutable y uso único; selector multiacueducto visual del superadmin queda separado |
 
 ## Regla de git
 
