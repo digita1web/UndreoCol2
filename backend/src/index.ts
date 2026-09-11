@@ -20,9 +20,13 @@ import {
   actualizarServicio,
   crearServicio,
   crearTarifa,
+  crearAutorizacionTarifa,
+  listarAutorizacionesTarifa,
   listarServicios,
   listarTarifas,
   matrizTarifas,
+  revocarAutorizacionTarifa,
+  usarAutorizacionTarifa,
   validarCamposEditables as validarCamposEditablesServicio,
 } from './lib/catalogo';
 import {
@@ -558,6 +562,9 @@ app.get('/catalogo/tarifas', async (c) => {
 app.post('/catalogo/tarifas', async (c) => {
   const { ctx, respuesta } = await requerirClienteActivo(c);
   if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Use una autorización vigente del administrador para cambiar tarifas' }, 403);
+  }
   const body = await c.req
     .json<{
       servicio_id?: string; categoria?: string; cargo_fijo?: number;
@@ -575,6 +582,10 @@ app.post('/catalogo/tarifas', async (c) => {
   ) {
     return c.json({ error: 'servicio_id, categoria, cargo_fijo, limite_basico_m3, precio_basico_m3 y precio_no_basico_m3 son requeridos' }, 400);
   }
+  const valores = [cargo_fijo, limite_basico_m3, precio_basico_m3, precio_no_basico_m3];
+  if (valores.some((v) => !Number.isFinite(v) || v < 0)) {
+    return c.json({ error: 'Los valores de la tarifa deben ser números finitos no negativos' }, 400);
+  }
   try {
     const tarifaId = await crearTarifa(ctx.supabase, {
       servicio_id, categoria, cargo_fijo, limite_basico_m3, precio_basico_m3, precio_no_basico_m3,
@@ -582,6 +593,92 @@ app.post('/catalogo/tarifas', async (c) => {
     return c.json({ tarifaId }, 201);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'Error al crear la tarifa' }, 400);
+  }
+});
+
+app.get('/catalogo/autorizaciones-tarifa', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const autorizaciones = await listarAutorizacionesTarifa(ctx.supabase, ctx.clienteId);
+    return c.json({ autorizaciones });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron listar las autorizaciones' }, 500);
+  }
+});
+
+app.post('/catalogo/autorizaciones-tarifa', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede autorizar cambios de tarifas' }, 403);
+  }
+  const body = await c.req.json<{
+    servicio_id?: string; categoria?: string; motivo?: string; expira_en?: string;
+  }>().catch(() => ({
+    servicio_id: undefined, categoria: undefined, motivo: undefined, expira_en: undefined,
+  }));
+  if (!body.servicio_id || !body.categoria || !body.motivo?.trim() || !body.expira_en) {
+    return c.json({ error: 'servicio_id, categoria, motivo y expira_en son requeridos' }, 400);
+  }
+  try {
+    const id = await crearAutorizacionTarifa(ctx.supabase, {
+      servicio_id: body.servicio_id,
+      categoria: body.categoria,
+      motivo: body.motivo.trim(),
+      expira_en: body.expira_en,
+    });
+    return c.json({ id }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo crear la autorización' }, 400);
+  }
+});
+
+app.post('/catalogo/autorizaciones-tarifa/:id/revocar', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede revocar autorizaciones' }, 403);
+  }
+  try {
+    await revocarAutorizacionTarifa(ctx.supabase, c.req.param('id'));
+    return c.json({ ok: true });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo revocar la autorización' }, 400);
+  }
+});
+
+app.post('/catalogo/tarifas/autorizada', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  if (ctx.rol !== 'secretaria') {
+    return c.json({ error: 'Esta ruta es exclusiva para secretaria con autorización vigente' }, 403);
+  }
+  const body = await c.req.json<{
+    autorizacion_id?: string; cargo_fijo?: number; limite_basico_m3?: number;
+    precio_basico_m3?: number; precio_no_basico_m3?: number;
+  }>().catch(() => ({
+    autorizacion_id: undefined, cargo_fijo: undefined, limite_basico_m3: undefined,
+    precio_basico_m3: undefined, precio_no_basico_m3: undefined,
+  }));
+  const valores = [body.cargo_fijo, body.limite_basico_m3, body.precio_basico_m3, body.precio_no_basico_m3];
+  if (!body.autorizacion_id || valores.some((v) => v === undefined)) {
+    return c.json({ error: 'autorizacion_id y todos los valores de la tarifa son requeridos' }, 400);
+  }
+  if (valores.some((v) => !Number.isFinite(v) || (v as number) < 0)) {
+    return c.json({ error: 'Los valores de la tarifa deben ser números finitos no negativos' }, 400);
+  }
+  try {
+    const tarifaId = await usarAutorizacionTarifa(ctx.supabase, {
+      autorizacion_id: body.autorizacion_id,
+      cargo_fijo: body.cargo_fijo as number,
+      limite_basico_m3: body.limite_basico_m3 as number,
+      precio_basico_m3: body.precio_basico_m3 as number,
+      precio_no_basico_m3: body.precio_no_basico_m3 as number,
+    });
+    return c.json({ tarifaId }, 201);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo aplicar la autorización' }, 400);
   }
 });
 

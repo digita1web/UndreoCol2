@@ -5,7 +5,7 @@ import { useHidratado } from '@/lib/use-hidratado';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { crearTarifa } from '@/lib/api';
+import { crearTarifa, usarAutorizacionTarifa } from '@/lib/api';
 
 const CATEGORIAS = [
   'estrato_1', 'estrato_2', 'estrato_3', 'estrato_4', 'estrato_5', 'estrato_6',
@@ -15,12 +15,14 @@ const CATEGORIAS = [
 interface TarifaFormProps {
   servicioId: string;
   onCreada: () => void;
+  categoria?: string;
+  autorizacionId?: string;
 }
 
 // Deja explícito en la UI (plan.md §3.4) que esto CIERRA la tarifa vigente
 // de la categoría elegida y crea una nueva — nunca la edita.
-export function TarifaForm({ servicioId, onCreada }: TarifaFormProps) {
-  const [categoria, setCategoria] = useState<string>('estrato_3');
+export function TarifaForm({ servicioId, onCreada, categoria: categoriaInicial, autorizacionId }: TarifaFormProps) {
+  const [categoria, setCategoria] = useState<string>(categoriaInicial ?? 'estrato_3');
   const [cargoFijo, setCargoFijo] = useState('');
   const [limiteBasico, setLimiteBasico] = useState('');
   const [precioBasico, setPrecioBasico] = useState('');
@@ -34,14 +36,20 @@ export function TarifaForm({ servicioId, onCreada }: TarifaFormProps) {
     setError(null);
     setCargando(true);
     try {
-      await crearTarifa({
-        servicio_id: servicioId,
-        categoria,
+      const valores = {
         cargo_fijo: Number(cargoFijo),
         limite_basico_m3: Number(limiteBasico),
         precio_basico_m3: Number(precioBasico),
         precio_no_basico_m3: Number(precioNoBasico),
-      });
+      };
+      if (Object.values(valores).some((v) => !Number.isFinite(v) || v < 0)) {
+        throw new Error('Los valores deben ser números finitos no negativos');
+      }
+      if (autorizacionId) {
+        await usarAutorizacionTarifa({ autorizacion_id: autorizacionId, ...valores });
+      } else {
+        await crearTarifa({ servicio_id: servicioId, categoria, ...valores });
+      }
       setCargoFijo('');
       setLimiteBasico('');
       setPrecioBasico('');
@@ -57,7 +65,9 @@ export function TarifaForm({ servicioId, onCreada }: TarifaFormProps) {
   return (
     <form onSubmit={alEnviar} className="flex flex-col gap-4">
       <p className="text-xs text-muted-foreground">
-        Esto cierra la tarifa vigente de la categoría elegida y crea una nueva. Una tarifa nunca se edita.
+        {autorizacionId
+          ? 'Aplicará una autorización temporal de un solo uso. La tarifa vigente se cierra y se crea una nueva.'
+          : 'Esto cierra la tarifa vigente de la categoría elegida y crea una nueva. Una tarifa nunca se edita.'}
       </p>
       <div className="flex flex-col gap-2">
         <Label htmlFor="categoria">Categoría</Label>
@@ -66,6 +76,7 @@ export function TarifaForm({ servicioId, onCreada }: TarifaFormProps) {
           name="categoria"
           className="h-9 rounded-md border border-border bg-background px-3 text-sm"
           value={categoria}
+          disabled={Boolean(autorizacionId)}
           onChange={(e) => setCategoria(e.target.value)}
         >
           {CATEGORIAS.map((c) => (
@@ -91,7 +102,7 @@ export function TarifaForm({ servicioId, onCreada }: TarifaFormProps) {
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Button type="submit" disabled={!hidratado || cargando}>
-        {cargando ? 'Guardando…' : 'Crear nueva versión de tarifa'}
+              {cargando ? 'Guardando…' : autorizacionId ? 'Aplicar autorización' : 'Crear nueva versión de tarifa'}
       </Button>
     </form>
   );

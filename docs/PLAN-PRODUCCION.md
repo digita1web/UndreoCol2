@@ -420,6 +420,10 @@ ya tiene su propia identidad y no se reemplaza por la versión del prototipo.
   ejecutar cortes/reconexiones, cambiar tarifas o configuración. Test `015` en verde y regresión de
   `admin_acueducto` en verde. Pendiente únicamente la integración HTTP contra Workers y la inspección
   visual en navegador real.
+- **Autorización temporal de tarifas para `secretaria` — implementada en 029:** `admin_acueducto`
+  autoriza servicio+categoría con motivo y expiración; la autorización es de un solo uso, revocable
+  y queda en bitácora inmutable. Suite SQL 016 en verde. El superadmin conserva permisos globales
+  de base de datos; la selección visual de cliente desde el panel maestro queda como mejora separada.
 - **Feature 015 (QR + OCR del contador)** — diferenciador tecnológico principal del roadmap
   original, marcado "requiere máximo rigor de precisión", sin empezar.
 - **Asignación de rutas/zonas al lector** (`ESPECIFICACION-FUNCIONAL.md §2.14.1`) — dejada fuera de

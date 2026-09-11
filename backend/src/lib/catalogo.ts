@@ -138,6 +138,82 @@ export async function crearTarifa(supabase: SupabaseClient, datos: DatosCrearTar
   return data as string;
 }
 
+export interface AutorizacionTarifa {
+  id: string;
+  cliente_id: string;
+  servicio_id: string;
+  categoria: string;
+  autorizado_por: string;
+  motivo: string;
+  expira_en: string;
+  usada_en: string | null;
+  usada_por: string | null;
+  revocada_en: string | null;
+  revocada_por: string | null;
+  created_at: string;
+}
+
+const COLUMNAS_AUTORIZACION =
+  'id, cliente_id, servicio_id, categoria, autorizado_por, motivo, expira_en, usada_en, usada_por, revocada_en, revocada_por, created_at';
+
+export async function listarAutorizacionesTarifa(
+  supabase: SupabaseClient,
+  clienteId: string,
+): Promise<AutorizacionTarifa[]> {
+  const { data, error } = await supabase
+    .from('autorizaciones_tarifa')
+    .select(COLUMNAS_AUTORIZACION)
+    .eq('cliente_id', clienteId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(`No se pudieron listar las autorizaciones: ${error.message}`);
+  return (data ?? []) as AutorizacionTarifa[];
+}
+
+export async function crearAutorizacionTarifa(
+  supabase: SupabaseClient,
+  datos: { servicio_id: string; categoria: string; motivo: string; expira_en: string },
+): Promise<string> {
+  const { data, error } = await supabase.rpc('crear_autorizacion_tarifa', {
+    p_servicio_id: datos.servicio_id,
+    p_categoria: datos.categoria,
+    p_motivo: datos.motivo,
+    p_expira_en: datos.expira_en,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function revocarAutorizacionTarifa(
+  supabase: SupabaseClient,
+  autorizacionId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('revocar_autorizacion_tarifa', {
+    p_autorizacion_id: autorizacionId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function usarAutorizacionTarifa(
+  supabase: SupabaseClient,
+  datos: {
+    autorizacion_id: string;
+    cargo_fijo: number;
+    limite_basico_m3: number;
+    precio_basico_m3: number;
+    precio_no_basico_m3: number;
+  },
+): Promise<string> {
+  const { data, error } = await supabase.rpc('usar_autorizacion_tarifa', {
+    p_autorizacion_id: datos.autorizacion_id,
+    p_cargo_fijo: datos.cargo_fijo,
+    p_limite_basico_m3: datos.limite_basico_m3,
+    p_precio_basico_m3: datos.precio_basico_m3,
+    p_precio_no_basico_m3: datos.precio_no_basico_m3,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
 export interface FilaMatrizTarifas {
   servicio_id: string;
   servicio_codigo: string;

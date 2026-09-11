@@ -4,6 +4,27 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-10 — Sesión 045: feature 029, autorización temporal de tarifas
+
+Implementada la opción A solicitada: `admin_acueducto` puede autorizar a `secretaria` a cambiar una
+tarifa concreta por servicio y categoría, con motivo y expiración máxima de 30 días.
+
+**Mejora adicional:** autorización de un solo uso y bitácora inmutable con autorizador, ejecutor,
+motivo, valores aplicados y tarifa creada. Se impiden autorizaciones abiertas solapadas y existe
+revocación antes del uso.
+
+Migración: `20260924090000_autorizacion-tarifas-secretaria.sql`.
+Evidencia PostgreSQL real: `tests/aislamiento/016_autorizacion_tarifas_aislamiento.sql` →
+`AUTORIZACION-TARIFAS-AISLAMIENTO OK`.
+
+Backend: 217/217 tests, build, lint y Wrangler dry-run en verde. Frontend: lint, TypeScript y build
+en verde. La UI permite crear/revocar autorizaciones como admin y aplicar autorizaciones como
+secretaria.
+
+El superadmin mantiene sus permisos globales RLS. La navegación visual multiacueducto desde el panel
+maestro no se mezcla en esta feature y queda como mejora independiente. No se aplicó a producción ni
+se ejecutó `git push`.
+
 ### 2026-09-10 — Sesión 044: feature 028, rol `secretaria`
 
 Implementado el rol administrativo `secretaria` dentro del acueducto, separado de

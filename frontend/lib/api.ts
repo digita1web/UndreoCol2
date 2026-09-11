@@ -196,6 +196,54 @@ export function crearTarifa(datos: DatosCrearTarifa): Promise<{ tarifaId: string
   });
 }
 
+export interface AutorizacionTarifa {
+  id: string;
+  cliente_id: string;
+  servicio_id: string;
+  categoria: string;
+  autorizado_por: string;
+  motivo: string;
+  expira_en: string;
+  usada_en: string | null;
+  usada_por: string | null;
+  revocada_en: string | null;
+  revocada_por: string | null;
+  created_at: string;
+}
+
+export function listarAutorizacionesTarifa(): Promise<{ autorizaciones: AutorizacionTarifa[] }> {
+  return peticion<{ autorizaciones: AutorizacionTarifa[] }>('/catalogo/autorizaciones-tarifa');
+}
+
+export function crearAutorizacionTarifa(datos: {
+  servicio_id: string;
+  categoria: string;
+  motivo: string;
+  expira_en: string;
+}): Promise<{ id: string }> {
+  return peticion<{ id: string }>('/catalogo/autorizaciones-tarifa', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
+
+export function revocarAutorizacionTarifa(id: string): Promise<{ ok: true }> {
+  return peticion<{ ok: true }>(`/catalogo/autorizaciones-tarifa/${id}/revocar`, { method: 'POST' });
+}
+
+export function usarAutorizacionTarifa(datos: {
+  autorizacion_id: string;
+  cargo_fijo: number;
+  limite_basico_m3: number;
+  precio_basico_m3: number;
+  precio_no_basico_m3: number;
+}): Promise<{ tarifaId: string }> {
+  return peticion<{ tarifaId: string }>('/catalogo/tarifas/autorizada', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
+
 export interface FilaMatrizTarifas {
   servicio_id: string;
   servicio_codigo: string;
