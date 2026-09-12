@@ -434,13 +434,14 @@ desarrollo de `wrangler`, sin ruta de explotación en el Worker real — ver B-5
 - **Portal del suscriptor y descarga de PDF** — de punta a punta contra producción real (ya
   verificado en local, sesión de PDF/portal de esta misma sesión de trabajo).
 
-### Rediseño visual — en curso, 4 de 15 pantallas
+### Rediseño visual — en curso, 5 de 15 pantallas
 
 `specs/026-shell-panel-admin/propuesta-referencia.html` es la referencia completa. Hecho: el marco
-compartido (026), el Panel principal (027), Facturación — lista (030) y Detalle de factura (031) —
-las últimas dos redactadas por Luna vía el flujo Luna/Claude, auditadas y corregidas contra
-`next build`/`lint` reales antes de cerrar. Faltan, cada una su propio spec cuando se decida
-seguir: Cartera, Lecturas (vista admin), Suscriptores (lista + ficha + importar), Catálogo y
+compartido (026), el Panel principal (027), Facturación — lista (030), Detalle de factura (031) y
+Cartera (032) — las últimas tres redactadas por Luna vía el flujo Luna/Claude, auditadas y
+corregidas contra `next build`/`lint` reales antes de cerrar. `PagoForm` (compartido por las 3
+pantallas de dinero) quedó re-vestido en su contenedor, sin tocar su lógica. Faltan, cada una su
+propio spec cuando se decida seguir: Lecturas (vista admin), Suscriptores (lista + ficha + importar), Catálogo y
 tarifas, Cortes, Notificaciones.
 AquaLectura (025, vista del lector) ya tiene su propia identidad y no se reemplaza por la versión
 del prototipo.

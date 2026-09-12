@@ -380,4 +380,9 @@ Más inspección manual contra `next dev` real, sesión de `admin_acueducto`, y 
 `PagoForm` sigue funcionando igual en las otras 2 pantallas que lo usan
 (`facturacion/page.tsx`, `facturacion/[facturaId]/page.tsx`) — regresión, no solo esta pantalla.
 
-**Estado:** pendiente — arranca cuando llegue el código de T-001.
+**Estado:** COMPLETADO — auditoría real sin bloqueantes de compilación. 1 problema de diseño
+corregido: el formulario de pago quedó desconectado de su fila al pasar a tabla (spec pedía
+"expandir/cerrar inline"); se insertó como fila de tabla (`<tr><td colSpan>`) justo debajo de la
+fila correspondiente. `npm run build`/`lint` verificados en verde. Regresión confirmada:
+`PagoForm` sigue intacto en `facturacion/page.tsx` y `facturacion/[facturaId]/page.tsx`.
+Verificación visual en navegador real (CA-1 a CA-6) queda pendiente de Mateo.

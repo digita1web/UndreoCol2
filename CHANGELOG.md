@@ -4,6 +4,35 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-12 — Sesión 050: feature 032, re-vestido de /app/pagos (Cartera)
+
+Quinta pantalla del rediseño, tercera vía el flujo Luna/Claude. Cierra el cabo suelto de `PagoForm`
+que 030/031 dejaron fuera de alcance a propósito: acá se re-vistió su contenedor (borde, fondo,
+sombra) sin tocar una sola línea de su lógica (`useHidratado()`, validaciones, `registrarPago`
+intactos) — compartido por las 3 pantallas de dinero.
+
+**Implementado por Luna (T-001):** encabezado con el patrón real (`text-[28px] font-bold`, sin
+repetir el error de `page-head`), tabla con las 4 cifras reales de cartera (por vencer, vencida,
+total adeudado, saldo a favor — no reducidas a una sola columna como la propuesta), búsqueda
+cliente-side, `Badge` de urgencia (En mora / Por vencer / Saldo a favor) calculado sobre cifras ya
+reales.
+
+**Mejora propia, a pedido de Mateo:** orden por urgencia (más vencida primero, sobre la cartera
+completa) y resumen agregado en el encabezado ("N suscriptores en mora · $X vencido en total"),
+mismo criterio que 030.
+
+**Auditoría (T-002, Claude) — sin bloqueantes de compilación, 1 problema de diseño real
+corregido:** `npm run build`/`lint` pasaron a la primera. Hallazgo: al pasar de tarjetas a tabla,
+el formulario de "Registrar pago" quedó en una lista aparte **debajo de toda la tabla**, desconectado
+visualmente de la fila que lo abrió — el spec pedía "mismo patrón de expandir/cerrar inline que ya
+existe". Corregido insertándolo como fila de tabla (`<tr><td colSpan>`) justo debajo de la fila
+correspondiente, con `React.Fragment` + `key` para que React no se queje. Verificado que las otras
+2 pantallas que usan `PagoForm` (`facturacion/page.tsx`, `facturacion/[facturaId]/page.tsx`) siguen
+intactas — el cambio de contenedor no las tocó.
+
+**NO VERIFICADO — requiere Mateo:** aspecto visual final y flujo de registro de pago en navegador
+real, con sesión de `admin_acueducto`.
+
 ### 2026-09-12 — Sesión 049: feature 031, re-vestido de /app/facturacion/[facturaId] (detalle)
 
 Cuarta pantalla del rediseño, segunda vía el flujo Luna/Claude. A diferencia de 030, esta pantalla
