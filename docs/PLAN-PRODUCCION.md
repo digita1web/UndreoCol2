@@ -397,7 +397,7 @@ No todo fue hallazgos. Verificado con evidencia, no supuesto:
 
 ---
 
-## Estado general — qué queda pendiente (actualizado 2026-09-12, Sesión 051)
+## Estado general — qué queda pendiente (actualizado 2026-09-12, Sesión 052)
 
 Consolidado de todo lo abierto a esta fecha, para no tener que reconstruirlo de memoria en la
 próxima sesión. Cada punto tiene su detalle completo en el hallazgo, spec o entrada de CHANGELOG
@@ -420,6 +420,19 @@ corregido durante la auditoría: `auth.updateUser()` necesita `setSession()` con
 cookie, no alcanza con el `access_token` como header (patrón que sí sirve para las consultas
 PostgREST del resto del sistema, pero no para el módulo `auth.*`) — las pruebas unitarias con mocks
 no lo detectaban, solo se vio corriendo la ruta real.
+
+**Sesión 052:** feature 034 (completar recuperación de contraseña) — cierra el flujo de "olvidé mi
+contraseña" que 033 dejó a medias: el correo se enviaba pero el enlace no llevaba a ninguna página
+funcional. Investigación previa confirmó que el flujo PKCE no sirve para este caso (quien pide la
+recuperación y quien hace clic en el correo casi nunca comparten navegador) — se fijó
+`flowType: 'implicit'` explícito. **Dos bugs reales encontrados en la auditoría, ninguno visible en
+build/lint/tests con mocks, solo siguiendo el enlace real de punta a punta:** (1) `redirectTo`
+usaba `ALLOWED_ORIGIN` tal cual, sin ruta — el correo llevaba a la raíz del sitio, no a
+`/restablecer-contrasena`; (2) `supabase/config.toml` no tenía esa URL en su lista blanca de
+redirects — Supabase Auth la rechazaba en silencio y caía al `site_url` por defecto (que además
+usaba `127.0.0.1` mientras el resto del proyecto usa `localhost`, inconsistencia previa a esta
+sesión). Los dos corregidos y reverificados contra el enlace real del correo, no contra una
+suposición de cómo debía verse.
 
 ### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
 
@@ -480,7 +493,10 @@ como trabajo en curso.
    email del `admin_acueducto` de cada uno, restablecer su contraseña. **Verificado de punta a
    punta contra `wrangler dev` real (Sesión 051)**: `GET /plataforma` devuelve el `adminEmail`
    correcto por acueducto; "Restablecer contraseña" dispara el correo real de Supabase Auth
-   (confirmado en Mailpit) y no revela si una cuenta existe o no.
+   (confirmado en Mailpit) y no revela si una cuenta existe o no. **El enlace de ese correo
+   funciona de punta a punta desde 034** (antes llevaba a la raíz del sitio sin completar nada):
+   verificado siguiendo el enlace real hasta `/restablecer-contrasena`, definiendo la contraseña
+   nueva y confirmando el login con ella.
 2. **Mi cuenta / Seguridad** — implementado en 033: el superadmin cambia su propia contraseña, con
    aviso por correo al cambiar. **Verificado de punta a punta (Sesión 051)**: login → cambiar
    contraseña → logout → la vieja falla, la nueva funciona; el correo de aviso se generó con el

@@ -154,3 +154,45 @@ export async function cerrarSesion(c: Context<{ Bindings: Env }>): Promise<void>
   }
   deleteCookie(c, NOMBRE_COOKIE_SESION);
 }
+
+// Completa la recuperación de contraseña usando los tokens entregados por
+// Supabase Auth en el fragmento del enlace de recuperación.
+export async function completarRecuperacion(
+  c: Context<{ Bindings: Env }>,
+  accessToken: string,
+  refreshToken: string,
+  passwordNueva: string,
+): Promise<ResultadoInicioSesion> {
+  const supabase = crearClienteAnon(c.env);
+  const { error: eSet } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+  if (eSet) {
+    throw new Error('Enlace de recuperación inválido o vencido');
+  }
+
+  const { error: eUpdate } = await supabase.auth.updateUser({ password: passwordNueva });
+  if (eUpdate) {
+    throw new Error(eUpdate.message);
+  }
+
+  const { data: s, error: eSesion } = await supabase.auth.getSession();
+  if (eSesion || !s.session || !s.session.user) {
+    throw new Error('No se pudo confirmar la sesión tras el cambio de contraseña');
+  }
+
+  escribirCookie(c, {
+    at: s.session.access_token,
+    rt: s.session.refresh_token,
+    exp: s.session.expires_at ?? 0,
+  });
+  return {
+    sesion: {
+      tipo: 'administrativa',
+      perfilId: s.session.user.id,
+      email: s.session.user.email ?? '',
+    },
+    accessToken: s.session.access_token,
+  };
+}

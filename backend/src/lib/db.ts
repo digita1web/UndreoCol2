@@ -47,7 +47,7 @@ export interface MensajeFacturaCierre {
 // usuario: auth.uid() = null y las políticas de RLS aplican para el rol anon.
 export function crearClienteAnon(env: Env): SupabaseClient {
   return createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: { persistSession: false, autoRefreshToken: false, flowType: 'implicit' },
   });
 }
 

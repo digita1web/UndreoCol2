@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { crearClienteAnon, crearClienteSuscriptor, type Env } from './lib/db';
 import {
   cerrarSesion,
+  completarRecuperacion,
   iniciarSesion,
   obtenerAccessToken,
   obtenerTokensSesion,
@@ -222,11 +223,61 @@ app.post('/auth/recuperar', async (c) => {
   const email = body.email?.trim().toLowerCase();
   if (!email) return c.json({ error: 'Email requerido' }, 400);
   const supabase = crearClienteAnon(c.env);
+  // El enlace debe caer en /restablecer-contrasena (034), no en la raíz — ahí
+  // es donde se lee el fragmento #access_token=...&type=recovery. Mismo
+  // criterio de "primer origen de la lista" que ya usa CORS (B-4): ALLOWED_ORIGIN
+  // puede traer varios separados por coma, concatenar la cadena entera
+  // produciría una URL inválida.
+  const primerOrigen = c.env.ALLOWED_ORIGIN.split(',')[0]?.trim() ?? '';
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: c.env.ALLOWED_ORIGIN,
+    redirectTo: `${primerOrigen}/restablecer-contrasena`,
   });
   if (error) return c.json({ error: error.message }, 400);
   return c.json({ ok: true });
+});
+
+// POST /auth/completar-recuperacion — valida el enlace de recuperación,
+// cambia la contraseña y deja activa la sesión administrativa resultante.
+app.post('/auth/completar-recuperacion', async (c) => {
+  const body = await c.req
+    .json<{ accessToken?: string; refreshToken?: string; passwordNueva?: string }>()
+    .catch(() => ({ accessToken: undefined, refreshToken: undefined, passwordNueva: undefined }));
+  const accessToken = body.accessToken ?? '';
+  const refreshToken = body.refreshToken ?? '';
+  const passwordNueva = body.passwordNueva ?? '';
+
+  if (passwordNueva.length < 8) {
+    return c.json({ error: 'La contraseña debe tener al menos 8 caracteres' }, 400);
+  }
+
+  let resultado: Awaited<ReturnType<typeof completarRecuperacion>>;
+  try {
+    resultado = await completarRecuperacion(c, accessToken, refreshToken, passwordNueva);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'Enlace de recuperación inválido o vencido' }, 401);
+  }
+
+  const supabase = crearClienteSuscriptor(c.env, resultado.accessToken);
+  const { data: perfil, error: errPerfil } = await supabase
+    .from('perfiles')
+    .select('id, nombre, email')
+    .eq('id', resultado.sesion.perfilId)
+    .maybeSingle();
+  const { data: membresias, error: errMembresias } = await supabase
+    .from('membresias')
+    .select('id, cliente_id, rol')
+    .eq('perfil_id', resultado.sesion.perfilId)
+    .eq('activo', true);
+  if (errPerfil || errMembresias) {
+    console.error('auth/completar-recuperacion: no se pudo leer perfil/membresías', {
+      perfilId: resultado.sesion.perfilId,
+      errPerfil: errPerfil?.message,
+      errMembresias: errMembresias?.message,
+    });
+    return c.json({ error: 'Contraseña actualizada pero no se pudo leer el perfil' }, 500);
+  }
+
+  return c.json({ sesion: resultado.sesion, perfil, membresias });
 });
 
 // POST /auth/cambiar-contrasena — el usuario de la sesión activa cambia su

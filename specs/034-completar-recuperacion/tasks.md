@@ -376,4 +376,12 @@ Más, contra `wrangler dev` + `next dev` + Mailpit reales:
    en blanco ni un 500 (CA-2).
 4. `grep` para confirmar que ninguna ruta nueva usa `service_role`.
 
-**Estado:** pendiente — arranca cuando llegue el código de T-001 y T-002.
+**Estado:** COMPLETADO — auditoría real encontró 2 bugs invisibles en build/lint/tests con mocks,
+solo detectables siguiendo el enlace real del correo: (1) `redirectTo` sin ruta en
+`POST /auth/recuperar`, corregido con el primer origen de `ALLOWED_ORIGIN` + `/restablecer-
+contrasena`; (2) `supabase/config.toml` sin esa URL en su lista blanca de redirects — Supabase Auth
+la rechazaba en silencio, corregido junto con una inconsistencia previa (`site_url` en `127.0.0.1`
+en vez de `localhost`). Plantilla de correo en español agregada. Verificado de punta a punta con el
+enlace real (Mailpit → GoTrue verify → fragmento real → `POST /auth/completar-recuperacion` →
+sesión real → login con la contraseña nueva). 225/225 tests, `build`/`lint`/`wrangler deploy
+--dry-run` limpios. Verificación visual en navegador real queda pendiente de Mateo.

@@ -4,6 +4,52 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-12 — Sesión 052: feature 034, completar recuperación de contraseña
+
+Cierra un flujo que 033 dejó a medias: el botón "Restablecer contraseña" mandaba un correo real,
+pero el enlace no llevaba a ninguna página funcional. Investigación previa (comunidad + docs de
+Supabase) descartó el flujo PKCE para este caso de uso (quien pide la recuperación y quien hace
+clic en el correo casi nunca comparten navegador/verificador) — se fijó `flowType: 'implicit'`
+explícito en `crearClienteAnon()`.
+
+**Implementado por Luna (T-001 backend, T-002 frontend):** `completarRecuperacion()` nueva en
+`lib/auth.ts` (junto a `iniciarSesion`/`cerrarSesion`, reutiliza `escribirCookie()` privada del
+módulo) — valida el token de recuperación con `setSession()`, cambia la contraseña con
+`updateUser()`, y deja a la persona logueada. Ruta nueva `POST /auth/completar-recuperacion`,
+misma forma de respuesta que `POST /auth/login`. Página nueva `/restablecer-contrasena` (cliente,
+lee `window.location.hash`), con el mismo criterio de tres estados (cargando/inválido/formulario)
+para no mostrar "enlace inválido" antes de tiempo mientras se procesa el fragmento.
+
+**Dos bugs reales encontrados en la auditoría (T-003) — ninguno visible en build, lint ni tests con
+mocks, solo siguiendo el enlace real del correo de punta a punta:**
+1. `POST /auth/recuperar` pasaba `redirectTo: c.env.ALLOWED_ORIGIN` tal cual, sin ruta — el correo
+   llevaba a la raíz del sitio, nunca a `/restablecer-contrasena`. Corregido: primer origen de
+   `ALLOWED_ORIGIN` (mismo criterio ya usado en CORS, B-4) + la ruta específica.
+2. Incluso corregido lo anterior, `supabase/config.toml` no tenía esa URL en su
+   `additional_redirect_urls` — Supabase Auth la rechazaba en silencio y caía al `site_url` por
+   defecto (que además usaba `127.0.0.1` mientras el resto del proyecto usa `localhost`,
+   inconsistencia previa a esta sesión, nunca antes había importado porque nada seguía ese enlace
+   de punta a punta). Corregido: `site_url` alineado a `localhost`, `additional_redirect_urls` con
+   la URL exacta de la página nueva.
+
+**Plantilla del correo en español** (`supabase/templates/recovery.html`,
+`[auth.email.template.recovery]` en `config.toml`) — antes usaba la de Supabase por defecto, en
+inglés. La plantilla de producción se configura aparte, desde el dashboard de Supabase Auth (un
+clic de Mateo, no código) — queda anotado, fuera de esta tarea.
+
+**Verificado de punta a punta con el enlace real, no con una suposición de cómo debía verse:**
+`POST /auth/recuperar` → correo real en Mailpit, en español, con el enlace correcto → seguido el
+enlace real (`curl` contra el endpoint `verify` de GoTrue, inspeccionando el `Location` de la
+redirección) → tokens reales extraídos del fragmento → `POST /auth/completar-recuperacion` con
+esos tokens reales → `200`, cookie de sesión real emitida → login posterior con la contraseña
+nueva → `200`. También verificado: enlace sin tokens no rompe la página (`200`, no `500`);
+contraseña corta rechazada antes de tocar Supabase Auth; token inválido/vencido responde `401` con
+mensaje claro. 225/225 tests backend, `build`/`lint`/`wrangler deploy --dry-run` limpios en ambos
+proyectos.
+
+**NO VERIFICADO — requiere Mateo:** aspecto visual final en navegador real; configurar la plantilla
+de correo de producción desde el dashboard de Supabase Auth.
+
 ### 2026-09-12 — Sesión 051: feature 033, credenciales del panel maestro
 
 Primera feature de backend real vía el flujo Luna/Claude (030/031/032 fueron re-vestidos de

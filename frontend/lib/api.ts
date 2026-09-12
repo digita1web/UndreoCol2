@@ -1016,6 +1016,17 @@ export function cambiarContrasena(passwordNueva: string): Promise<{ ok: true }> 
   });
 }
 
+export function completarRecuperacion(
+  accessToken: string,
+  refreshToken: string,
+  passwordNueva: string,
+): Promise<{ sesion: unknown; perfil: unknown; membresias: unknown[] }> {
+  return peticion('/auth/completar-recuperacion', {
+    method: 'POST',
+    body: JSON.stringify({ accessToken, refreshToken, passwordNueva }),
+  });
+}
+
 // ---- Configuración del acueducto (023) ------------------------------------
 
 export interface Acueducto {
