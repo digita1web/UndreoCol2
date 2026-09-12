@@ -447,7 +447,7 @@ y la red del stack local por un desfase de versión de imágenes) quedó atrás:
 (`docker ps`: los 13 contenedores, `supabase_db_UndreoCol2` sano, con los 24 migraciones aplicadas).
 Nada de esto tocó nunca `undreocol-produccion` (Supabase Cloud, stack separado).
 
-### Sincronización de `undreocol-produccion` — esquema al día, código pendiente de desplegar
+### Sincronización de `undreocol-produccion` — RESUELTO (esquema + código)
 
 **Esquema: sincronizado.** `undreocol-produccion` estaba aplicada solo hasta `panel_plataforma`
 (equivalente a `20260919090000`, feature 018). Esta sesión se le aplicaron, en orden, las 5
@@ -465,15 +465,18 @@ aceptado en la auditoría (`SECURITY DEFINER` con guarda interna, igual que `es_
 `tarifa_vigente`) más los dos ítems ya conocidos de esta lista (leaked password protection,
 `_keepalive` sin política por diseño).
 
-**Código: sin desplegar — esto es lo que falta para que sirva de algo.** El Worker real
-`undreocol-api` no tiene ni una línea de 028/029: verificado contra el bundle desplegado
-(`workers_get_worker_code`), cero coincidencias de `es_staff_de`/`autorizaciones_tarifa`/
-`usar_autorizacion_tarifa`. Última modificación del Worker: 2026-09-10T10:04Z, **antes** de los
-commits `33d610f`/`a278bae`/`052f000`/`16b7ee0`/`43d0591` que implementan rol secretaria y
-autorización de tarifas. `undreocol-frontend` tiene el mismo timestamp de última modificación, así
-que probablemente le pasa lo mismo. **Conclusión: la base de datos de producción ya sabe qué es
-`secretaria`, pero ningún Worker desplegado lo sabe todavía — nadie puede usar el rol en producción
-hasta el próximo `wrangler deploy`/deploy del frontend.**
+**Código: RESUELTO, por el pipeline automático (022), no a mano.** Al detectar el desfase (el
+Worker desplegado no tenía ni una línea de 028/029: 0 coincidencias contra el bundle real), se
+decidió deliberadamente **no** correr `wrangler deploy` desde acá — `.github/workflows/deploy-
+backend.yml`/`deploy-frontend.yml` (feature 022) ya disparan solos con cualquier push a `main` que
+toque `backend/**`/`frontend/**`, con su propio dry-run, sus verificaciones (paquete sin
+`.env.production` colado, sin llamadas cruzando dominio) y smoke test — saltárselos con un deploy
+manual es exactamente el patrón que causó los incidentes de las Sesiones 021 y 035. El `git push
+origin main` de esta sesión disparó ambos workflows automáticamente. Verificado después, contra la
+API real de Cloudflare y HTTP real (no supuesto): `undreocol-api` y `undreocol-frontend` muestran
+`modified_on` de hoy; el bundle desplegado de `undreocol-api` ya contiene `es_staff_de`/
+`autorizaciones_tarifa`/`usar_autorizacion_tarifa` (0 → 3 coincidencias); `GET /salud` → `200`,
+`GET /login` → `200`. Rol secretaria y autorización de tarifas ya son usables en producción real.
 
 **Bookkeeping pendiente (cosmético, no bloquea nada):** las 5 migraciones se aplicaron pegando el
 SQL a mano en el SQL Editor del dashboard (ver la mejora de abajo, "Cómo aplicar migraciones a
