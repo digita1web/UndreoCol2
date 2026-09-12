@@ -6,6 +6,7 @@ import {
   cerrarSesion,
   iniciarSesion,
   obtenerAccessToken,
+  obtenerTokensSesion,
   verificarSesionAdministrativa,
 } from './lib/auth';
 import { resolverClienteActivo } from './lib/tenant';
@@ -14,8 +15,10 @@ import {
   asignarAdminAcueducto,
   crearAcueductoBase,
   generarContrasenaTemporal,
+  obtenerAdminsDeAcueductos,
   signUpAdminAcueducto,
 } from './lib/plataforma';
+import { enviarCorreo } from './lib/email';
 import {
   actualizarServicio,
   crearServicio,
@@ -226,6 +229,50 @@ app.post('/auth/recuperar', async (c) => {
   return c.json({ ok: true });
 });
 
+// POST /auth/cambiar-contrasena — el usuario de la sesión activa cambia su
+// propia contraseña. Nunca usa service_role: la sesión JWT autoriza la acción.
+// auth.updateUser() (a diferencia de las consultas PostgREST del resto de las
+// rutas) necesita una sesión activa en el cliente, no solo el access_token
+// como header — de ahí setSession() con ambos tokens, mismo patrón que ya usa
+// verificarSesionAdministrativa()/cerrarSesion() en lib/auth.ts. Sin este
+// paso, updateUser() falla con "Auth session missing!" (confirmado real).
+app.post('/auth/cambiar-contrasena', async (c) => {
+  const sesion = await verificarSesionAdministrativa(c);
+  if (!sesion) return c.json({ error: 'No autenticado' }, 401);
+
+  const body = await c.req
+    .json<{ passwordNueva?: string }>()
+    .catch(() => ({ passwordNueva: undefined }));
+  const passwordNueva = body.passwordNueva ?? '';
+  if (passwordNueva.length < 8) {
+    return c.json({ error: 'La contraseña debe tener al menos 8 caracteres' }, 400);
+  }
+
+  const tokens = obtenerTokensSesion(c);
+  if (!tokens) return c.json({ error: 'No autenticado' }, 401);
+  const supabase = crearClienteAnon(c.env);
+  const { error: errSesion } = await supabase.auth.setSession({
+    access_token: tokens.at,
+    refresh_token: tokens.rt,
+  });
+  if (errSesion) return c.json({ error: 'No se pudo validar la sesión' }, 401);
+
+  const { error } = await supabase.auth.updateUser({ password: passwordNueva });
+  if (error) return c.json({ error: error.message }, 400);
+
+  const resultadoCorreo = await enviarCorreo(c.env, {
+    destinatario: sesion.email,
+    remitente: 'no-responder@undreocol.app',
+    asunto: 'Tu contraseña de UndreoCol cambió',
+    cuerpoHtml: `<p>La contraseña de tu cuenta (${sesion.email}) se cambió el ${new Date().toISOString()}.</p><p>Si no fuiste vos, contactá al soporte de inmediato.</p>`,
+  });
+  if (!resultadoCorreo.ok) {
+    console.error('cambiar-contrasena: no se pudo enviar el aviso de correo', resultadoCorreo.error);
+  }
+
+  return c.json({ ok: true });
+});
+
 // GET /auth/sesion — valida/refresca la cookie; devuelve sesión, perfil y
 // membresías activas. 401 si no hay sesión.
 app.get('/auth/sesion', async (c) => {
@@ -318,7 +365,11 @@ app.get('/plataforma', async (c) => {
     .select('id, nombre, slug, fecha_alta')
     .order('fecha_alta', { ascending: false });
   if (error) return c.json({ error: 'No se pudo listar los acueductos' }, 500);
-  return c.json({ acueductos: data ?? [] });
+  const acueductos = data ?? [];
+  const adminsPorCliente = await obtenerAdminsDeAcueductos(ctx.supabase, acueductos.map((a) => a.id));
+  return c.json({
+    acueductos: acueductos.map((a) => ({ ...a, adminEmail: adminsPorCliente[a.id] ?? null })),
+  });
 });
 
 // POST /plataforma/acueductos — alta de un acueducto + su primer admin.

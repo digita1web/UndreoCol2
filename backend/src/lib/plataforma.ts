@@ -88,3 +88,34 @@ export async function asignarAdminAcueducto(
     throw new Error(error.message);
   }
 }
+
+// Email del admin_acueducto activo de cada cliente_id, para GET /plataforma (033).
+// SECURITY INVOKER: RLS del cliente del superadmin decide qué puede leer.
+export async function obtenerAdminsDeAcueductos(
+  supabase: SupabaseClient,
+  clienteIds: string[],
+): Promise<Record<string, string | null>> {
+  if (clienteIds.length === 0) return {};
+
+  const { data: membresias, error: errMembresias } = await supabase
+    .from('membresias')
+    .select('cliente_id, perfil_id')
+    .in('cliente_id', clienteIds)
+    .eq('rol', 'admin_acueducto')
+    .eq('activo', true);
+  if (errMembresias || !membresias || membresias.length === 0) return {};
+
+  const perfilIds = membresias.map((m) => m.perfil_id);
+  const { data: perfiles, error: errPerfiles } = await supabase
+    .from('perfiles')
+    .select('id, email')
+    .in('id', perfilIds);
+  if (errPerfiles || !perfiles) return {};
+
+  const emailPorPerfil = new Map(perfiles.map((p) => [p.id, p.email as string]));
+  const resultado: Record<string, string | null> = {};
+  for (const membresia of membresias) {
+    resultado[membresia.cliente_id] = emailPorPerfil.get(membresia.perfil_id) ?? null;
+  }
+  return resultado;
+}

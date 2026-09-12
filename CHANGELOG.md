@@ -4,6 +4,46 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-12 — Sesión 051: feature 033, credenciales del panel maestro
+
+Primera feature de backend real vía el flujo Luna/Claude (030/031/032 fueron re-vestidos de
+frontend puro). Antes de aprobar el spec, Mateo pidió investigar prácticas de la comunidad sobre
+paneles de superadmin — validó el diseño (usar los primitivos nativos de Supabase Auth) y aportó
+la mejora de robustez incorporada (aviso por correo al cambiar la contraseña) y el mapa completo de
+módulos del panel maestro, documentado en `PLAN-PRODUCCION.md` antes de escribir código.
+
+**Implementado por Luna (T-001 backend, T-002 frontend):** `GET /plataforma` devuelve el email del
+`admin_acueducto` de cada acueducto; botón "Restablecer contraseña" por acueducto (reutiliza
+`POST /auth/recuperar`, ya existía, sin ruta nueva); nueva ruta `POST /auth/cambiar-contrasena`
+para que el superadmin cambie la suya, con aviso por correo cuyo fallo nunca bloquea el cambio.
+
+**Bug real encontrado en la auditoría (T-003), no en `build`/`lint`/tests con mocks — solo
+corriendo la ruta contra `wrangler dev` real:** `supabase.auth.updateUser()` fallaba con
+`"Auth session missing!"`. Causa: `crearClienteSuscriptor()` (el patrón que usa el resto del
+sistema) solo pone el JWT como header `Authorization` para las consultas PostgREST — el módulo
+`auth.*` de Supabase necesita una sesión activa en el cliente vía
+`auth.setSession({ access_token, refresh_token })`, con **ambos** tokens, no solo el access_token.
+El patrón correcto ya existía en `lib/auth.ts` (`verificarSesionAdministrativa`/`cerrarSesion`) pero
+no se incluyó en la tarea que se le armó a Luna — error de la tarea, no de la implementación.
+Corregido por Claude: nueva función `obtenerTokensSesion()` en `lib/auth.ts`, la ruta usa
+`crearClienteAnon()` + `setSession()` antes de `updateUser()`, y se reescribió el test unitario para
+mockear el cliente y el método correctos (antes probaba un cliente que la ruta corregida ya no usa).
+
+**Verificado de punta a punta contra `wrangler dev` real, no solo tests con mocks:**
+- Backend: **222/222 tests**, `build`, `lint`, `wrangler deploy --dry-run` limpios.
+- Login → cambiar contraseña → logout → login con la contraseña vieja falla (`401`) → login con la
+  nueva funciona (`200`).
+- `GET /plataforma` con sesión real de superadmin: `adminEmail` correcto para 2 acueductos de
+  fixture reales.
+- "Restablecer contraseña" con una cuenta real: el correo de recuperación llega de verdad (Mailpit,
+  confirmado); con una cuenta inexistente, responde igual sin revelar que no existe.
+- Aviso de cambio de contraseña: contenido real verificado (`wrangler dev` simula el binding
+  `send_email` como archivo local) — asunto, destinatario y cuerpo correctos, sin texto libre de
+  terceros interpolado.
+- `grep` confirma que ninguna ruta nueva usa `service_role`/`SERVICE_ROLE_KEY`.
+
+**NO VERIFICADO — requiere Mateo:** aspecto visual final en navegador real.
+
 ### 2026-09-12 — Sesión 050: feature 032, re-vestido de /app/pagos (Cartera)
 
 Quinta pantalla del rediseño, tercera vía el flujo Luna/Claude. Cierra el cabo suelto de `PagoForm`

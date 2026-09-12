@@ -72,6 +72,15 @@ export function obtenerAccessToken(c: Context<{ Bindings: Env }>): string | null
   return leerCookie(c)?.at ?? null;
 }
 
+// Ambos tokens de la cookie — a diferencia de obtenerAccessToken() (alcanza
+// para las consultas PostgREST vía crearClienteSuscriptor), las operaciones
+// de auth.* que requieren sesión activa en el cliente (ej. auth.updateUser())
+// necesitan auth.setSession({ access_token, refresh_token }) primero — mismo
+// patrón que ya usan internamente verificarSesionAdministrativa()/cerrarSesion().
+export function obtenerTokensSesion(c: Context<{ Bindings: Env }>): { at: string; rt: string } | null {
+  return leerCookie(c);
+}
+
 // Middleware/helper: valida la cookie vía Supabase y refresca si expiró.
 // Sin sesión → null (nunca lanza); cookie inválida/vencida → null.
 export async function verificarSesionAdministrativa(

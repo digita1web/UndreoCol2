@@ -397,7 +397,7 @@ No todo fue hallazgos. Verificado con evidencia, no supuesto:
 
 ---
 
-## Estado general — qué queda pendiente (actualizado 2026-09-10, Sesión 047)
+## Estado general — qué queda pendiente (actualizado 2026-09-12, Sesión 051)
 
 Consolidado de todo lo abierto a esta fecha, para no tener que reconstruirlo de memoria en la
 próxima sesión. Cada punto tiene su detalle completo en el hallazgo, spec o entrada de CHANGELOG
@@ -413,6 +413,13 @@ Sesión 042, ya está restaurado (confirmado corriendo esta sesión).
 **Sesión 047:** parche de `sharp` en frontend (B-5, no-breaking). Hallazgo nuevo: backend tenía 10
 vulnerabilidades sin documentar (no las 0 que decía este archivo), todas en herramientas de
 desarrollo de `wrangler`, sin ruta de explotación en el Worker real — ver B-5 más abajo.
+
+**Sesión 051:** feature 033 (credenciales del panel de plataforma) implementada y verificada de
+punta a punta contra `wrangler dev` real — ver "Panel maestro" más abajo. Bug real encontrado y
+corregido durante la auditoría: `auth.updateUser()` necesita `setSession()` con ambos tokens de la
+cookie, no alcanza con el `access_token` como header (patrón que sí sirve para las consultas
+PostgREST del resto del sistema, pero no para el módulo `auth.*`) — las pruebas unitarias con mocks
+no lo detectaban, solo se vio corriendo la ruta real.
 
 ### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
 
@@ -470,11 +477,16 @@ encaja. Ninguno de los puntos 3/4 tiene spec todavía — quedan documentados ac
 como trabajo en curso.
 
 1. **Acueductos** — implementado en 018, ampliado por 033: alta de acueducto + admin, lista,
-   email del `admin_acueducto` de cada uno, restablecer su contraseña.
+   email del `admin_acueducto` de cada uno, restablecer su contraseña. **Verificado de punta a
+   punta contra `wrangler dev` real (Sesión 051)**: `GET /plataforma` devuelve el `adminEmail`
+   correcto por acueducto; "Restablecer contraseña" dispara el correo real de Supabase Auth
+   (confirmado en Mailpit) y no revela si una cuenta existe o no.
 2. **Mi cuenta / Seguridad** — implementado en 033: el superadmin cambia su propia contraseña, con
-   aviso por correo al cambiar. Si algún día hay más de un superadmin, este módulo crecería a
-   "cuentas de superadmin" (crear/revocar otras cuentas `administrador`) — no existe esa necesidad
-   hoy, hay una sola cuenta.
+   aviso por correo al cambiar. **Verificado de punta a punta (Sesión 051)**: login → cambiar
+   contraseña → logout → la vieja falla, la nueva funciona; el correo de aviso se generó con el
+   contenido correcto (confirmado leyendo el archivo simulado por `wrangler dev`). Si algún día hay
+   más de un superadmin, este módulo crecería a "cuentas de superadmin" (crear/revocar otras
+   cuentas `administrador`) — no existe esa necesidad hoy, hay una sola cuenta.
 3. **Planes y estado de cuenta** — sin empezar. `clientes`/`planes` y `estado_cuenta`
    (`activa`/`vencida`/`suspendida`/`cancelada`) ya existen en el esquema (001-fundación) pero no
    hay ninguna UI en `/plataforma` para verlos o cambiarlos. Relevante recién cuando haya cobro real

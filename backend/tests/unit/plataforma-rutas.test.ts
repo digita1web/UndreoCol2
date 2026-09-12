@@ -59,6 +59,7 @@ let asignarLanza: string | null = null;
 
 vi.mock('../../src/lib/plataforma', () => ({
   generarContrasenaTemporal: vi.fn(() => 'Clave-Temporal-Fija1'),
+  obtenerAdminsDeAcueductos: vi.fn(async () => ({})),
   crearAcueductoBase: vi.fn(async (_s: unknown, nombre: string, slug: string) => {
     ordenLlamadas.push('crearAcueductoBase');
     if (crearAcueductoBaseLanza) throw new Error(crearAcueductoBaseLanza);
@@ -161,7 +162,7 @@ describe('GET /plataforma', () => {
     const r = await listar();
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({
-      acueductos: [{ id: 'c1', nombre: 'Acueducto A', slug: 'acueducto-a', fecha_alta: '2026-09-01' }],
+      acueductos: [{ id: 'c1', nombre: 'Acueducto A', slug: 'acueducto-a', fecha_alta: '2026-09-01', adminEmail: null }],
     });
   });
 });

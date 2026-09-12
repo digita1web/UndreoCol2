@@ -971,6 +971,7 @@ export interface Acueducto {
   nombre: string;
   slug: string;
   fecha_alta: string;
+  adminEmail: string | null;
 }
 
 export function listarAcueductos(): Promise<{ acueductos: Acueducto[] }> {
@@ -996,6 +997,22 @@ export function crearAcueductoPlataforma(datos: DatosAltaAcueducto): Promise<Res
   return peticion('/plataforma/acueductos', {
     method: 'POST',
     body: JSON.stringify(datos),
+  });
+}
+
+// --- Credenciales del panel de plataforma (033) -----------------------------
+
+export function restablecerContrasenaAcueducto(email: string): Promise<{ ok: true }> {
+  return peticion<{ ok: true }>('/auth/recuperar', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function cambiarContrasena(passwordNueva: string): Promise<{ ok: true }> {
+  return peticion<{ ok: true }>('/auth/cambiar-contrasena', {
+    method: 'POST',
+    body: JSON.stringify({ passwordNueva }),
   });
 }
 

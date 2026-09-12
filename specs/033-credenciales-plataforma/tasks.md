@@ -540,4 +540,13 @@ Más, contra `wrangler dev` real (no alcanza con build/lint para una ruta de aut
 5. Confirmar en los logs de `wrangler dev` (o Mailpit si corre local) que el aviso de cambio de
    contraseña se intentó enviar.
 
-**Estado:** pendiente — arranca cuando llegue el código de T-001 y T-002.
+**Estado:** COMPLETADO — auditoría real encontró un bug que build/lint/tests con mocks no
+detectaban: `auth.updateUser()` fallaba con "Auth session missing!" porque `crearClienteSuscriptor`
+solo pasa el JWT como header PostgREST, no como sesión activa del módulo `auth.*`. Corregido
+(`obtenerTokensSesion()` nueva en `lib/auth.ts` + `setSession()` con ambos tokens antes de
+`updateUser()`), test unitario reescrito para el cliente/método correctos. Verificado de punta a
+punta contra `wrangler dev` real: login → cambiar contraseña → logout → vieja falla, nueva
+funciona; `GET /plataforma` con `adminEmail` real; "Restablecer contraseña" con correo real
+confirmado en Mailpit; aviso de cambio de contraseña con contenido real verificado. 222/222 tests,
+`build`/`lint`/`wrangler deploy --dry-run` limpios. `grep` confirma cero uso de `service_role` en
+las rutas nuevas. Verificación visual en navegador real queda pendiente de Mateo.

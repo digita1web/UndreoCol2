@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { PlataformaForm } from '@/components/plataforma-form';
 import { urlBaseApiServidor } from '@/lib/url-base-api-servidor';
 import { BotonSalir } from '@/components/boton-salir';
+import { CambiarContrasenaForm } from '@/components/cambiar-contrasena-form';
+import { RestablecerContrasenaAcueducto } from '@/components/restablecer-contrasena-acueducto';
 
 // Server component, mismo patrón que frontend/app/app/dashboard/page.tsx: lee
 // la cookie de sesión administrativa y reenvía el header Cookie a mano (un
@@ -16,6 +18,7 @@ interface Acueducto {
   nombre: string;
   slug: string;
   fecha_alta: string;
+  adminEmail: string | null;
 }
 
 interface RespuestaPlataforma {
@@ -75,6 +78,11 @@ export default async function PlataformaPage() {
         <PlataformaForm />
       </section>
 
+      <section className="flex flex-col gap-4 rounded-lg border border-border p-4">
+        <h2 className="text-lg font-medium">Cambiar mi contraseña</h2>
+        <CambiarContrasenaForm />
+      </section>
+
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Acueductos ({acueductos.length})</h2>
         {acueductos.length === 0 ? (
@@ -82,9 +90,15 @@ export default async function PlataformaPage() {
         ) : (
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
             {acueductos.map((a) => (
-              <li key={a.id} className="flex items-center justify-between p-4 text-sm">
-                <span className="font-medium">{a.nombre}</span>
-                <span className="text-muted-foreground">{a.slug}</span>
+              <li key={a.id} className="flex flex-wrap items-center justify-between gap-4 p-4 text-sm">
+                <div>
+                  <p className="font-medium">{a.nombre}</p>
+                  <p className="text-muted-foreground">{a.slug}</p>
+                  <p className="text-muted-foreground">
+                    {a.adminEmail ?? 'sin admin asignado'}
+                  </p>
+                </div>
+                <RestablecerContrasenaAcueducto email={a.adminEmail} />
               </li>
             ))}
           </ul>
