@@ -4,6 +4,33 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-12 — Sesión 049: feature 031, re-vestido de /app/facturacion/[facturaId] (detalle)
+
+Cuarta pantalla del rediseño, segunda vía el flujo Luna/Claude. A diferencia de 030, esta pantalla
+tenía mucha más lógica real que la propuesta estática (pagos, anular) — el spec priorizó no tocar
+ninguna regla de negocio, solo re-vestir y reubicar.
+
+**T-001 (Claude, mecánica):** se extrajeron `formatearCategoria`/`configuracionEstado`, que 030
+había dejado locales, a `frontend/lib/formato-factura.ts` — archivo nuevo y puntual, no
+`lib/utils.ts` genérico (CLAUDE.md §7). Ahora con 2 consumidores reales.
+
+**T-002 (Luna):** encabezado re-vestido (eyebrow + h1 + acciones reubicadas: Ver PDF, Imprimir,
+Enviar por correo, Anular factura), `Badge` de estado, categoría formateada con la función
+compartida. `PagoForm`, los cálculos de dinero y los permisos por rol quedaron intactos, como pedía
+el spec.
+
+**Mejora propia, a pedido de Mateo:** anular una factura o un pago ahora pide confirmación explícita
+(`window.confirm()` con el número/monto) antes de ejecutar — antes bastaba con escribir el motivo,
+sin ningún paso de "¿estás seguro?", menos fricción que emitir un periodo (030) para una acción
+igual de irreversible.
+
+**Auditoría (T-003, Claude) — sin bloqueantes esta vez, 1 inconsistencia menor corregida:**
+`npm run build`/`lint` reales pasaron a la primera. Único hallazgo: el `<h1>` usaba
+`text-3xl font-semibold` en vez del `text-[28px] font-bold` real que ya usan 027/030 — vacío de la
+tarea que le armé a Luna (solo especifiqué la clase del eyebrow, no la del `h1`), no error de ella.
+Corregido directo. Los 7 criterios de aceptación (incluidas las dos confirmaciones nuevas y
+`print:hidden` en los mismos elementos) se verificaron contra el código real.
+
 ### 2026-09-12 — Sesión 048: feature 030, re-vestido de /app/facturacion (lista)
 
 Tercera pantalla del rediseño (026/027), primera redactada bajo el flujo Luna/Claude: Luna

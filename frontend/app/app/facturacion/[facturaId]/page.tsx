@@ -2,8 +2,10 @@
 
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PagoForm } from '@/components/pago-form';
+import { configuracionEstado, formatearCategoria } from '@/lib/formato-factura';
 import {
   anularFactura,
   anularPago,
@@ -72,9 +74,13 @@ export default function DetalleFacturaPage({ params }: PageProps) {
       .catch(() => setRol('admin_acueducto'));
   }, []);
 
-  async function alAnularPago(pagoId: string) {
+  async function alAnularPago(pagoId: string, valor: number) {
     const motivo = window.prompt('Motivo de anulación del pago (obligatorio):');
     if (!motivo) return;
+    const confirmar = window.confirm(
+      `¿Confirmar la anulación del pago por $${valor.toLocaleString('es-CO')}?`,
+    );
+    if (!confirmar) return;
     try {
       await anularPago(pagoId, motivo);
       setError(null);
@@ -104,6 +110,10 @@ export default function DetalleFacturaPage({ params }: PageProps) {
     if (!factura) return;
     const motivo = window.prompt(`Motivo de anulación de ${factura.numero} (obligatorio):`);
     if (!motivo) return;
+    const confirmar = window.confirm(
+      `¿Confirmar la anulación de la factura ${factura.numero} por $${factura.total.toLocaleString('es-CO')}?`,
+    );
+    if (!confirmar) return;
     try {
       const r = await anularFactura(factura.id, motivo);
       setFactura(r.factura);
@@ -122,38 +132,56 @@ export default function DetalleFacturaPage({ params }: PageProps) {
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
       {error && <p className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-600">{error}</p>}
       {aviso && <p className="rounded-md border border-green-200 bg-green-50 p-2 text-sm text-green-700">{aviso}</p>}
-      <div className="flex items-center justify-between print:hidden">
-        <h1 className="text-2xl font-semibold">Factura {factura.numero}</h1>
-        <Link href="/app/facturacion" className="text-sm text-blue-600 hover:underline">
-          ← Facturación
-        </Link>
-      </div>
+      <section className="flex flex-col gap-4 print:hidden">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-accent">
+              Detalle de factura
+            </p>
+            <h1 className="text-[28px] font-bold tracking-tight">Factura {factura.numero}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {snap.nombre} · {snap.codigo_suscriptor}
+            </p>
+          </div>
+          <Link href="/app/facturacion" className="text-sm text-accent hover:underline">
+            ← Facturación
+          </Link>
+        </div>
 
-      <div className="flex flex-wrap items-center gap-3 print:hidden">
-        <a
-          className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
-          href={urlPdfFactura(factura.id)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Ver PDF
-        </a>
-        <button
-          className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          onClick={() => window.print()}
-        >
-          Imprimir
-        </button>
-        {factura.estado !== 'anulada' && (
-          <button
-            className="h-9 w-fit rounded-md bg-green-700 px-4 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
-            onClick={alEnviarCorreo}
-            disabled={enviando}
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+            href={urlPdfFactura(factura.id)}
+            target="_blank"
+            rel="noreferrer"
           >
-            {enviando ? 'Encolando…' : 'Enviar por correo'}
+            Ver PDF
+          </a>
+          <button
+            className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            onClick={() => window.print()}
+          >
+            Imprimir
           </button>
-        )}
-      </div>
+          {factura.estado !== 'anulada' && (
+            <button
+              className="h-9 w-fit rounded-md bg-green-700 px-4 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
+              onClick={alEnviarCorreo}
+              disabled={enviando}
+            >
+              {enviando ? 'Encolando…' : 'Enviar por correo'}
+            </button>
+          )}
+          {rol === 'admin_acueducto' && factura.estado !== 'anulada' && (
+            <button
+              className="h-9 w-fit rounded-md border border-red-300 px-4 text-sm font-medium text-red-600 hover:bg-red-50"
+              onClick={alAnular}
+            >
+              Anular factura
+            </button>
+          )}
+        </div>
+      </section>
 
       {acueducto && (
         <div className="flex items-start gap-3 border-b border-border pb-4">
@@ -182,9 +210,14 @@ export default function DetalleFacturaPage({ params }: PageProps) {
           <CardTitle>Datos</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-1 text-sm">
-          <p><strong>Estado:</strong> {factura.estado}</p>
+          <div className="flex items-center gap-2">
+            <strong>Estado:</strong>
+            <Badge variante={configuracionEstado[factura.estado].variante}>
+              {configuracionEstado[factura.estado].etiqueta}
+            </Badge>
+          </div>
           <p><strong>Suscriptor:</strong> {snap.nombre} ({snap.codigo_suscriptor})</p>
-          <p><strong>Categoría:</strong> {snap.categoria ?? '—'} · <strong>Dirección:</strong> {snap.direccion ?? '—'}</p>
+          <p><strong>Categoría:</strong> {formatearCategoria(snap.categoria)} · <strong>Dirección:</strong> {snap.direccion ?? '—'}</p>
           <p><strong>Consumo:</strong> {factura.consumo_m3} m³</p>
           <p><strong>Subtotal servicios:</strong> ${factura.subtotal_servicios.toLocaleString('es-CO')}</p>
           <p><strong>Recargo mora:</strong> ${factura.recargo_mora.toLocaleString('es-CO')}</p>
@@ -267,7 +300,7 @@ export default function DetalleFacturaPage({ params }: PageProps) {
               {rol === 'admin_acueducto' && !p.anulado && (
                 <button
                   className="h-8 w-fit rounded-md border border-red-300 px-3 text-xs font-medium text-red-600 hover:bg-red-50"
-                  onClick={() => alAnularPago(p.id)}
+                  onClick={() => alAnularPago(p.id, p.valor)}
                 >
                   Anular
                 </button>
@@ -277,14 +310,6 @@ export default function DetalleFacturaPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {rol === 'admin_acueducto' && factura.estado !== 'anulada' && (
-        <button
-          className="h-9 w-fit rounded-md border border-red-300 px-4 text-sm font-medium text-red-600 hover:bg-red-50 print:hidden"
-          onClick={alAnular}
-        >
-          Anular factura
-        </button>
-      )}
     </main>
   );
 }

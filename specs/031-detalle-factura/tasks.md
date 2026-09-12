@@ -433,4 +433,7 @@ cd frontend && npm run build && npm run lint
 Más inspección manual contra `next dev` real, sesión de `admin_acueducto` (CA-3, CA-4, CA-4b) y de
 un rol sin permiso de anular.
 
-**Estado:** pendiente — arranca cuando llegue el código de T-002.
+**Estado:** COMPLETADO — auditoría real sin bloqueantes; 1 inconsistencia menor corregida (`h1`
+con `text-3xl font-semibold` en vez de `text-[28px] font-bold`, el patrón real de 027/030). `npm run
+build` y `npm run lint` verificados en verde. Verificación visual en navegador real (CA-3, CA-4,
+CA-4b con sesión de `admin_acueducto`) queda pendiente de Mateo.
