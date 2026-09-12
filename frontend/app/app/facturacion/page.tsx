@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   emitirPeriodo,
@@ -16,16 +16,7 @@ import {
   type Periodo,
   type ResumenSimulacion,
 } from '@/lib/api';
-
-const configuracionEstado: Record<
-  EstadoFactura,
-  { variante: BadgeProps['variante']; etiqueta: string }
-> = {
-  pendiente: { variante: 'warning', etiqueta: 'Pendiente' },
-  pagada: { variante: 'success', etiqueta: 'Pagada' },
-  vencida: { variante: 'danger', etiqueta: 'Vencida' },
-  anulada: { variante: 'gray', etiqueta: 'Anulada' },
-};
+import { configuracionEstado, formatearCategoria } from '@/lib/formato-factura';
 
 const nombresAnomalia: Record<string, string> = {
   consumo_atipico: 'Consumo atípico',
@@ -34,18 +25,6 @@ const nombresAnomalia: Record<string, string> = {
   total_cero_o_negativo: 'Total cero/negativo',
   variacion_superior_20: 'Variación > 20% vs periodo anterior',
 };
-
-function formatearCategoria(categoria: unknown): string {
-  if (typeof categoria !== 'string' || !categoria) return '—';
-
-  if (categoria.startsWith('estrato_')) {
-    return `Estrato ${categoria.replace('estrato_', '')}`;
-  }
-
-  return categoria
-    .replaceAll('_', ' ')
-    .replace(/\b\w/g, (letra) => letra.toUpperCase());
-}
 
 export default function FacturacionPage() {
   const [periodos, setPeriodos] = useState<Periodo[] | null>(null);
