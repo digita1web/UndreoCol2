@@ -463,6 +463,29 @@ del prototipo.
 - **Asignación de rutas/zonas al lector** (`ESPECIFICACION-FUNCIONAL.md §2.14.1`) — dejada fuera de
   024 y 025 a propósito ("no existe como feature todavía"), sigue sin empezar.
 
+### Panel maestro (`/plataforma`) — mapa de módulos
+
+Mateo pidió el mapa completo antes de aprobar 033, para no construir credenciales sin ver dónde
+encaja. Ninguno de los puntos 3/4 tiene spec todavía — quedan documentados acá como roadmap, no
+como trabajo en curso.
+
+1. **Acueductos** — implementado en 018, ampliado por 033: alta de acueducto + admin, lista,
+   email del `admin_acueducto` de cada uno, restablecer su contraseña.
+2. **Mi cuenta / Seguridad** — implementado en 033: el superadmin cambia su propia contraseña, con
+   aviso por correo al cambiar. Si algún día hay más de un superadmin, este módulo crecería a
+   "cuentas de superadmin" (crear/revocar otras cuentas `administrador`) — no existe esa necesidad
+   hoy, hay una sola cuenta.
+3. **Planes y estado de cuenta** — sin empezar. `clientes`/`planes` y `estado_cuenta`
+   (`activa`/`vencida`/`suspendida`/`cancelada`) ya existen en el esquema (001-fundación) pero no
+   hay ninguna UI en `/plataforma` para verlos o cambiarlos. Relevante recién cuando haya cobro real
+   a acueductos (ver disparadores de costo, `ARQUITECTURA.md §6`).
+4. **Salud del sistema** — sin empezar. `tamano_base_mb()` y el cron de monitoreo (`cron/monitor-
+   db.ts`) ya existen y alertan por correo/log cuando la base se acerca al límite de 500 MB
+   (Supabase Free), pero ningún panel lo muestra visualmente; lo mismo para el estado del último
+   backup (`.github/workflows/backup-diario.yml`) y el keepalive (`cron/keepalive.ts`).
+5. **Feature 019** (invitar admins de acueducto por correo, en vez de contraseña temporal) — no es
+   un módulo aparte, es una mejora al flujo de alta dentro de "Acueductos" (punto 1).
+
 ### Producción real
 
 La base de producción (`undreocol-produccion`) sigue **vacía**: 0 acueductos, 0 suscriptores. Nadie
