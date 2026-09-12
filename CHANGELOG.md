@@ -4,6 +4,40 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-10 — Sesión 046: sincroniza el esquema de `undreocol-produccion`
+
+Auditoría del estado de `undreocol-produccion` (Supabase Cloud) contra `supabase/migrations/`
+local: estaba aplicada solo hasta `panel_plataforma` (018), 5 migraciones atrás —
+`personalizacion-factura` (023), `permisos-lector` (024), `cerrar-registro-publico` (M-5),
+`rol-secretaria` (028) y `autorizacion-tarifas-secretaria` (029).
+
+**Aplicadas las 5, en orden, contra el proyecto real** (verificado, no supuesto): `rol_usuario`
+incluye `secretaria`; las 9 funciones nuevas existen; las 10 políticas `_staff` existen y las
+políticas viejas de lectura amplia de M-2 ya no; `autorizaciones_tarifa`/
+`auditoria_tarifas_autorizadas` existen con RLS `FORCE`; `authenticated` ya no puede ejecutar
+`crear_tenant_con_admin` (M-5 cerrado también en producción). `get_advisors` (seguridad): sin
+hallazgos nuevos.
+
+**Hallazgo real durante la verificación:** un bloque de una sola línea (`cerrar_registro_publico`)
+se salteó al pegarlo a mano en el SQL Editor, sin ningún error visible — se detectó al verificar el
+ACL real de la función, no por la consola. Corregido y reverificado.
+
+**Hallazgo mayor, no resuelto en esta sesión:** el Worker `undreocol-api` desplegado no tiene el
+código de 028/029 — verificado contra el bundle real (`workers_get_worker_code`), cero coincidencias
+de `es_staff_de`/`autorizaciones_tarifa`. Su última modificación (2026-09-10T10:04Z) es anterior a
+los commits que implementan esto. `undreocol-frontend` tiene el mismo timestamp. La base de datos ya
+sabe qué es `secretaria`; ningún Worker desplegado lo sabe todavía.
+
+**Mejora propia:** documentado en `docs/PLAN-PRODUCCION.md` ("Cómo aplicar migraciones a
+`undreocol-produccion`") el método real que exige este entorno — `supabase db push --linked` pide
+una contraseña de Postgres que no está guardada en ningún `.env` (correcto por CLAUDE.md §12); el
+MCP `apply_migration` es la vía real, pero el clasificador de seguridad de Claude Code bloquea
+migraciones con varios `drop policy`/`grant`/`revoke`; para esas, la única vía es pegar a mano en el
+SQL Editor, y verificar después contra el proyecto real en vez de confiar en la ausencia de error.
+
+**NO VERIFICADO — requiere Mateo o decisión de continuar:** desplegar `undreocol-api` y
+`undreocol-frontend` a producción para que el código use el esquema ya sincronizado.
+
 ### 2026-09-10 — Sesión 045: feature 029, autorización temporal de tarifas
 
 Implementada la opción A solicitada: `admin_acueducto` puede autorizar a `secretaria` a cambiar una
