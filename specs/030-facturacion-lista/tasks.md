@@ -458,4 +458,8 @@ cd frontend && npm run build && npm run lint
 Más inspección manual contra `next dev` real con sesión de `admin_acueducto` y de `lector` (CA-5,
 la única que no se puede confirmar solo con build/lint).
 
-**Estado:** pendiente — arranca cuando llegue el código de T-001.
+**Estado:** COMPLETADO — auditoría real encontró 1 bloqueante (build fallaba, typo
+`encolados`/`encoladas`) y 2 menores (eyebrow no coincidía con el patrón visual de 027; clase
+`page-head` muerta, copiada del prototipo). Corregidas por Claude directo, con autorización de
+Mateo. `npm run build` y `npm run lint` verificados en verde después de las correcciones.
+Verificación visual en navegador real (CA-5 incluido) queda pendiente de Mateo.

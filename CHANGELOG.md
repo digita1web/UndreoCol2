@@ -4,6 +4,38 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-12 — Sesión 048: feature 030, re-vestido de /app/facturacion (lista)
+
+Tercera pantalla del rediseño (026/027), primera redactada bajo el flujo Luna/Claude: Luna
+(ChatGPT) escribió el código de `frontend/app/app/facturacion/page.tsx` a partir de una tarea
+autocontenida en `specs/030-facturacion-lista/tasks.md` (T-001 — archivo actual completo, tipos y
+funciones de `lib/api.ts`, componente `Badge`, patrón "No autorizado" del dashboard, todo
+embebido para no reexplicar contexto entre conversaciones); Claude auditó el resultado corriendo
+`next build`/`lint` reales, no lo que Luna reportó.
+
+**Implementado, cero endpoints nuevos:** encabezado con periodo seleccionado y los controles
+Simular/Confirmar emisión reubicados (mismo flujo de siempre, no colapsado en un botón); filtros de
+búsqueda y estado 100% en el cliente sobre los datos ya cargados; tabla con `Badge` de color por
+`estado_factura` (las 4 categorías reales, no las 3 de la propuesta); botón "Ver" al detalle; estado
+"No autorizado" explícito para `lector` (antes era una lista vacía indistinguible de "sin
+facturas", degradación silenciosa vía RLS).
+
+**Mejora propia, a pedido de Mateo:** resumen de urgencia del periodo — cantidad de facturas
+vencidas y su saldo real (`total - total_pagado`, no el total bruto), calculado en el cliente sobre
+datos ya cargados, sin llamada nueva.
+
+**Auditoría — 1 bloqueante corregido, 2 menores corregidas:** el build real fallaba
+(`respuesta.encolados` en vez de `encoladas`, typo en `enviarCorreoPeriodo` — Luna reportó "sin
+error" porque no esperó a que el build terminara); el "eyebrow" del encabezado no coincidía con el
+patrón visual real de 027 (`text-xs font-bold uppercase tracking-wide text-accent`, no un párrafo
+gris genérico — falta de la tarea que le armé a Luna, no de ella); una clase `page-head` copiada del
+prototipo estático que no existe en el CSS real de la app (no hacía nada, se sacó). Las 3
+corregidas por Claude directo, con autorización de Mateo, sin volver a pasar por Luna. Verificado:
+`npm run build` y `npm run lint` limpios después de las 3 correcciones.
+
+**NO VERIFICADO — requiere Mateo:** aspecto visual final en navegador real, con sesión de
+`admin_acueducto` y de `lector` (este entorno sigue sin Chromium/Playwright).
+
 ### 2026-09-10 — Sesión 047: parche de dependencias (B-5) + hallazgo de auditoría en backend
 
 Mateo pidió parchar B-5 (`postcss`/`sharp`) "con lo más estándar". Se aplicó exactamente eso —
