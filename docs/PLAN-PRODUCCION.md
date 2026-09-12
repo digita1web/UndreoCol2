@@ -325,11 +325,31 @@ operaciones desde otro origen. Cerrar el periodo es una operación central del m
 (que con varios orígenes produce una cabecera inválida) sino el primero de la lista. Test nuevo
 `cors.test.ts` (9 casos) que ejercita `app.fetch` con preflights reales.
 
-**B-5 · `postcss` con 2 vulnerabilidades (1 alta) por dependencia transitiva de `next`.**
-`npm audit` del frontend lo confirma; el arreglo exige `next@16` (cambio mayor). Las cuatro
-advertencias requieren CSS controlado por un atacante y aquí PostCSS solo procesa el CSS propio del
-proyecto en tiempo de compilación. Sin ruta de explotación en este sistema. `npm audit` del backend:
-**0 vulnerabilidades**.
+**B-5 · `postcss` con 4 vulnerabilidades por dependencia transitiva de `next`. — PARCIALMENTE
+RESUELTO (Sesión 047): `sharp` corregido, `postcss`/`next` sigue abierto, y se sumó un hallazgo
+nuevo en backend.**
+`npm audit` del frontend lo confirma; el arreglo de `postcss` exige `next@16` (cambio mayor, sin
+tocar por ahora — decisión de Mateo pendiente). Las cuatro advertencias requieren CSS controlado
+por un atacante y aquí PostCSS solo procesa el CSS propio del proyecto en tiempo de compilación. Sin
+ruta de explotación en este sistema.
+
+*Corregido en la misma sesión:* `sharp` (alta, vía `miniflare`/`wrangler`, dependencia de
+desarrollo — nunca viaja al Worker desplegado) con `npm audit fix` (sin `--force`, sin cambios de
+versión mayor). Verificado: `npm run build` y `npm run lint` limpios; `wrangler deploy --dry-run`
+exitoso (requiere Node ≥22 desde este parche — ya disponible vía `nvm` en este equipo, `v22.23.2`;
+con el Node por defecto del shell, v20, `wrangler` ahora rehúsa arrancar con un mensaje explícito,
+no en silencio).
+
+**Hallazgo nuevo — backend, no en el `npm audit` original.** `npm audit` real del backend hoy:
+**10 vulnerabilidades** (3 moderadas, 6 altas, 1 crítica), no las 0 que este documento decía antes
+— drift normal de un árbol de dependencias de `wrangler` que no se había vuelto a auditar. Mismo
+perfil que `sharp`/B-5: todas dentro del árbol de herramientas de desarrollo (`miniflare`, `vitest`,
+`esbuild`, `vite`, `undici`, `ws`), ninguna viaja al Worker real desplegado (el bundle de
+`wrangler deploy` es solo `src/`, no sus propias herramientas). **No se corrigió**: a diferencia del
+`sharp` de frontend, acá `npm audit fix` (sin `--force`) no encontró ningún cambio no-breaking
+aplicable — la única vía es `--force`, que sube `vitest` de `^2.1.0` a `4.1.11` (dos versiones
+mayores), un cambio real de test runner que exige correr los 217 tests y revisar compatibilidad de
+config antes de aceptarlo. Decisión de Mateo pendiente, del mismo tamaño que la de `next@16`.
 
 **B-6 · No había cabeceras de seguridad en el frontend. — RESUELTO Y VERIFICADO (`4ab4200`).** (`next.config.ts` estaba vacío): sin CSP, sin
 `X-Frame-Options`/`frame-ancestors`, sin `Referrer-Policy`. El panel administrativo se podía embeber
@@ -377,7 +397,7 @@ No todo fue hallazgos. Verificado con evidencia, no supuesto:
 
 ---
 
-## Estado general — qué queda pendiente (actualizado 2026-09-10, Sesión 046)
+## Estado general — qué queda pendiente (actualizado 2026-09-10, Sesión 047)
 
 Consolidado de todo lo abierto a esta fecha, para no tener que reconstruirlo de memoria en la
 próxima sesión. Cada punto tiene su detalle completo en el hallazgo, spec o entrada de CHANGELOG
@@ -390,10 +410,16 @@ público) y B-1 (`planes` público — Mateo confirmó dejarlo así, decisión c
 de `undreocol-produccion`" más abajo. El stack local de Docker, reportado caído al cierre de la
 Sesión 042, ya está restaurado (confirmado corriendo esta sesión).
 
+**Sesión 047:** parche de `sharp` en frontend (B-5, no-breaking). Hallazgo nuevo: backend tenía 10
+vulnerabilidades sin documentar (no las 0 que decía este archivo), todas en herramientas de
+desarrollo de `wrangler`, sin ruta de explotación en el Worker real — ver B-5 más abajo.
+
 ### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
 
-- **B-5 · `postcss` con 2 vulnerabilidades (transitiva de `next`).** Exige subir a `next@16`
-  (cambio mayor). Sin ruta de explotación real en este sistema.
+- **B-5 · `postcss` (frontend, cambio mayor `next@16`) y el árbol de `wrangler` en backend
+  (cambio mayor `vitest` 2→4).** `sharp` ya se corrigió en frontend sin cambios mayores. Ninguna de
+  las dos tiene ruta de explotación real en este sistema — ambas son dependencias de desarrollo, no
+  código que llegue al Worker desplegado.
 - **"Leaked password protection" de Supabase Auth** — un toggle en el dashboard, nunca activado.
   No es de código; es un clic de Mateo.
 - **Feature 019** (invitar admins de acueducto por correo, en vez de contraseña temporal) — sin

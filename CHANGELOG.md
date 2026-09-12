@@ -4,6 +4,38 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-10 — Sesión 047: parche de dependencias (B-5) + hallazgo de auditoría en backend
+
+Mateo pidió parchar B-5 (`postcss`/`sharp`) "con lo más estándar". Se aplicó exactamente eso —
+`npm audit fix` sin `--force`— y no más: donde el único camino era una versión mayor, se frenó y se
+dejó documentado en vez de forzarlo.
+
+**Frontend — corregido:** `sharp` (alta, vía `miniflare`/`wrangler`, dependencia de desarrollo, no
+viaja al Worker desplegado). `npm audit fix` sin cambios de versión mayor. Verificado:
+`npm run build`, `npm run lint` limpios; `wrangler deploy --dry-run` exitoso. **Efecto colateral
+real, no silencioso:** la versión de `wrangler` que quedó exige Node ≥22 — con el Node por defecto
+de este equipo (v20) `wrangler` ahora rehúsa arrancar con un mensaje explícito. Ya hay un Node 22
+instalado vía `nvm` en este equipo (`v22.23.2`) y con ese el dry-run corre limpio; queda como
+advertencia para quien use `wrangler` a mano sin `nvm use 22`.
+
+**`postcss`/`next` — sin tocar, a propósito.** El único fix es `next@16` (cambio mayor). Sin ruta de
+explotación real (PostCSS solo procesa CSS propio del proyecto). Documentado, decisión de Mateo
+pendiente, igual que antes.
+
+**Hallazgo no pedido, backend:** al verificar que el parche de frontend no rompiera nada, se corrió
+`npm audit` del backend por consistencia — `docs/PLAN-PRODUCCION.md` decía "0 vulnerabilidades" y
+hoy son **10** (3 moderadas, 6 altas, 1 crítica). Investigado antes de tocar nada: todas están en el
+árbol de herramientas de desarrollo de `wrangler` (`miniflare`, `vitest`, `esbuild`, `vite`,
+`undici`, `ws`) — ninguna llega al Worker real (el bundle desplegado es solo `src/`). A diferencia
+del `sharp` de frontend, acá `npm audit fix` sin `--force` no encontró ningún camino no-breaking: la
+única vía sube `vitest` de `^2.1.0` a `4.1.11` (dos versiones mayores), un cambio de test runner que
+exige correr los 217 tests y revisar la config antes de aceptarlo. **No se tocó** — es una decisión
+de Mateo, del mismo tamaño que `next@16`, no un "parche estándar".
+
+**Verificado:** frontend `npm run build`/`npm run lint`/`wrangler deploy --dry-run` (con Node 22)
+limpios. Backend sin cambios (`npm audit fix` no modificó nada), por lo tanto sin necesidad de
+re-correr los 217 tests.
+
 ### 2026-09-10 — Sesión 046: sincroniza el esquema de `undreocol-produccion`
 
 Auditoría del estado de `undreocol-produccion` (Supabase Cloud) contra `supabase/migrations/`
