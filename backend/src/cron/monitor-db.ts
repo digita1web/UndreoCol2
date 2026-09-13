@@ -38,6 +38,14 @@ export default {
       throw new Error(`monitor-db: tamano_base_mb() devolvió un valor inválido: ${data}`);
     }
     const resultado = calcularNivel(mb);
+    // Persiste la medición para que el panel la lea sin usar service_role_key.
+    const { error: errSalud } = await supabase
+      .from('_salud_sistema')
+      .update({ tamano_base_mb: mb, nivel: resultado.nivel, medido_en: new Date().toISOString() })
+      .eq('id', 1);
+    if (errSalud) {
+      console.error('monitor-db: no se pudo actualizar _salud_sistema', errSalud.message);
+    }
     console.info(
       `monitor-db: base de ${mb} MB (${resultado.porcentaje}% del límite de ${LIMITE_BASE_MB} MB) — nivel ${resultado.nivel}`,
     );

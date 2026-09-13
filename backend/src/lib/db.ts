@@ -17,6 +17,8 @@ export interface Env {
   EMAIL?: { send: (m: unknown) => Promise<{ messageId?: string }> };
   // R2: bucket de los PDF de factura. En dev local wrangler lo simula.
   FACTURAS_R2?: R2Bucket;
+  // R2: histórico de backups diarios (035). En dev local wrangler lo simula.
+  BACKUPS_R2?: R2Bucket;
 }
 
 // Mensaje de la cola de facturación: UNA factura (o notificación) por mensaje

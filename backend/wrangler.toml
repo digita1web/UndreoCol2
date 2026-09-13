@@ -34,6 +34,10 @@ max_retries = 3
 binding = "FACTURAS_R2"
 bucket_name = "undreocol-facturas"
 
+[[r2_buckets]]
+binding = "BACKUPS_R2"
+bucket_name = "undreocol-backups"
+
 # Email Workers (D-9): solo efectivo en producción (Workers Paid + dominio
 # verificado). En dev local el binding no se materializa; lib/email.ts detecta
 # la ausencia de env.EMAIL y NO bloquea (regla 20).
@@ -80,6 +84,10 @@ max_retries = 3
 [[env.production.r2_buckets]]
 binding = "FACTURAS_R2"
 bucket_name = "undreocol-facturas"
+
+[[env.production.r2_buckets]]
+binding = "BACKUPS_R2"
+bucket_name = "undreocol-backups"
 
 [[env.production.send_email]]
 name = "EMAIL"

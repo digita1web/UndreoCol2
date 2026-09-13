@@ -119,3 +119,60 @@ export async function obtenerAdminsDeAcueductos(
   }
   return resultado;
 }
+
+export async function actualizarPlanEstadoAcueducto(
+  supabase: SupabaseClient,
+  clienteId: string,
+  cambios: { planId?: string; estadoCuenta?: string },
+): Promise<{ id: string; planId: string | null; estadoCuenta: string } | null> {
+  const patch: Record<string, string> = {};
+  if (cambios.planId !== undefined) patch.plan_id = cambios.planId;
+  if (cambios.estadoCuenta !== undefined) patch.estado_cuenta = cambios.estadoCuenta;
+
+  const { data, error } = await supabase
+    .from('clientes')
+    .update(patch)
+    .eq('id', clienteId)
+    .select('id, plan_id, estado_cuenta')
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    planId: data.plan_id as string | null,
+    estadoCuenta: data.estado_cuenta as string,
+  };
+}
+
+export async function obtenerSaludSistema(
+  supabase: SupabaseClient,
+): Promise<{ tamanoBaseMb: number; nivel: string; medidoEn: string; ultimoKeepalive: string | null }> {
+  const { data: salud, error: errSalud } = await supabase
+    .from('_salud_sistema')
+    .select('tamano_base_mb, nivel, medido_en')
+    .eq('id', 1)
+    .maybeSingle();
+  if (errSalud) throw new Error(errSalud.message);
+
+  const { data: keepalive } = await supabase
+    .from('_keepalive')
+    .select('ultimo_ping')
+    .eq('id', 1)
+    .maybeSingle();
+
+  return {
+    tamanoBaseMb: Number(salud?.tamano_base_mb ?? 0),
+    nivel: (salud?.nivel as string) ?? 'ok',
+    medidoEn: (salud?.medido_en as string) ?? new Date(0).toISOString(),
+    ultimoKeepalive: (keepalive?.ultimo_ping as string) ?? null,
+  };
+}
+
+export async function obtenerEstadoBackup(
+  bucket: R2Bucket,
+): Promise<{ archivo: string; subidoEn: string } | null> {
+  const listado = await bucket.list();
+  if (listado.objects.length === 0) return null;
+  const masReciente = listado.objects.reduce((a, b) => (a.uploaded > b.uploaded ? a : b));
+  return { archivo: masReciente.key, subidoEn: masReciente.uploaded.toISOString() };
+}

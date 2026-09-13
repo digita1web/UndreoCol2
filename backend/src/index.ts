@@ -18,6 +18,9 @@ import {
   crearAcueductoBase,
   generarContrasenaInterna,
   obtenerAdminsDeAcueductos,
+  actualizarPlanEstadoAcueducto,
+  obtenerSaludSistema,
+  obtenerEstadoBackup,
   signUpAdminAcueducto,
 } from './lib/plataforma';
 import { enviarCorreo } from './lib/email';
@@ -408,14 +411,65 @@ app.get('/plataforma', async (c) => {
   if (!ctx) return respuesta;
   const { data, error } = await ctx.supabase
     .from('clientes')
-    .select('id, nombre, slug, fecha_alta')
+    .select('id, nombre, slug, fecha_alta, plan_id, estado_cuenta, planes(nombre)')
     .order('fecha_alta', { ascending: false });
   if (error) return c.json({ error: 'No se pudo listar los acueductos' }, 500);
   const acueductos = data ?? [];
   const adminsPorCliente = await obtenerAdminsDeAcueductos(ctx.supabase, acueductos.map((a) => a.id));
   return c.json({
-    acueductos: acueductos.map((a) => ({ ...a, adminEmail: adminsPorCliente[a.id] ?? null })),
+    acueductos: acueductos.map((a) => {
+      const planEmbebido = a.planes as { nombre?: string } | null;
+      return {
+        id: a.id,
+        nombre: a.nombre,
+        slug: a.slug,
+        fecha_alta: a.fecha_alta,
+        adminEmail: adminsPorCliente[a.id] ?? null,
+        planId: a.plan_id,
+        planNombre: planEmbebido?.nombre ?? null,
+        estadoCuenta: a.estado_cuenta,
+      };
+    }),
   });
+});
+
+const ESTADOS_CUENTA_VALIDOS = ['activa', 'vencida', 'suspendida', 'cancelada'];
+
+app.patch('/plataforma/acueductos/:id', async (c) => {
+  const { ctx, respuesta } = await requerirAdminPlataforma(c);
+  if (!ctx) return respuesta;
+
+  const body = await c.req
+    .json<{ planId?: string; estadoCuenta?: string }>()
+    .catch(() => ({ planId: undefined, estadoCuenta: undefined }));
+  if (body.planId === undefined && body.estadoCuenta === undefined) {
+    return c.json({ error: 'planId o estadoCuenta son requeridos' }, 400);
+  }
+  if (body.estadoCuenta !== undefined && !ESTADOS_CUENTA_VALIDOS.includes(body.estadoCuenta)) {
+    return c.json({ error: `estadoCuenta debe ser uno de: ${ESTADOS_CUENTA_VALIDOS.join(', ')}` }, 400);
+  }
+
+  let actualizado: Awaited<ReturnType<typeof actualizarPlanEstadoAcueducto>>;
+  try {
+    actualizado = await actualizarPlanEstadoAcueducto(ctx.supabase, c.req.param('id'), body);
+  } catch (e) {
+    // planId inexistente viola la llave foránea clientes_plan_id_fkey — error
+    // real de Postgres, no un 500 críptico (hallazgo Sesión 055, confirmado
+    // contra wrangler dev real: sin este catch, un planId inválido devolvía
+    // "Internal Server Error" en texto plano en vez de un mensaje claro).
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo actualizar el acueducto' }, 400);
+  }
+  if (!actualizado) return c.json({ error: 'Acueducto no encontrado' }, 404);
+  return c.json(actualizado);
+});
+
+app.get('/plataforma/salud', async (c) => {
+  const { ctx, respuesta } = await requerirAdminPlataforma(c);
+  if (!ctx) return respuesta;
+
+  const salud = await obtenerSaludSistema(ctx.supabase);
+  const backup = c.env.BACKUPS_R2 ? await obtenerEstadoBackup(c.env.BACKUPS_R2) : null;
+  return c.json({ ...salud, ultimoBackup: backup });
 });
 
 // POST /plataforma/acueductos — alta de un acueducto + su primer admin.

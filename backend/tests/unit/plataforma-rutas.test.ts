@@ -79,6 +79,24 @@ vi.mock('../../src/lib/plataforma', () => ({
     ordenLlamadas.push('asignar');
     if (asignarLanza) throw new Error(asignarLanza);
   }),
+  actualizarPlanEstadoAcueducto: vi.fn(async (_s: unknown, id: string, cambios: Record<string, unknown>) => {
+    if (id === 'inexistente') return null;
+    return {
+      id,
+      planId: (cambios.planId as string) ?? null,
+      estadoCuenta: (cambios.estadoCuenta as string) ?? 'activa',
+    };
+  }),
+  obtenerSaludSistema: vi.fn(async () => ({
+    tamanoBaseMb: 42,
+    nivel: 'ok',
+    medidoEn: '2026-09-25T05:30:00Z',
+    ultimoKeepalive: '2026-09-25T05:00:00Z',
+  })),
+  obtenerEstadoBackup: vi.fn(async () => ({
+    archivo: 'undreocol-backup-20260925.sql.gz',
+    subidoEn: '2026-09-25T06:00:00Z',
+  })),
 }));
 
 const app = (await import('../../src/index')).default;
@@ -89,6 +107,14 @@ const env = {
   SUPABASE_SERVICE_ROLE_KEY: 'service',
   ALLOWED_ORIGIN: 'https://panel.undreocol.test',
   SESSION_SECRET: 'secreto',
+  BACKUPS_R2: {
+    list: async () => ({
+      objects: [{
+        key: 'undreocol-backup-20260925.sql.gz',
+        uploaded: new Date('2026-09-25T06:00:00Z'),
+      }],
+    }),
+  },
 } as never;
 
 async function alta(body: Record<string, unknown>): Promise<Response> {
@@ -162,13 +188,112 @@ describe('requerirAdminPlataforma — autorización', () => {
 describe('GET /plataforma', () => {
   it('con sesión de plataforma -> 200 con la lista', async () => {
     respuestaClientes = {
-      data: [{ id: 'c1', nombre: 'Acueducto A', slug: 'acueducto-a', fecha_alta: '2026-09-01' }],
+      data: [{
+        id: 'c1',
+        nombre: 'Acueducto A',
+        slug: 'acueducto-a',
+        fecha_alta: '2026-09-01',
+        plan_id: null,
+        estado_cuenta: 'activa',
+        planes: null,
+      }],
       error: null,
     };
     const r = await listar();
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({
-      acueductos: [{ id: 'c1', nombre: 'Acueducto A', slug: 'acueducto-a', fecha_alta: '2026-09-01', adminEmail: null }],
+      acueductos: [{
+        id: 'c1',
+        nombre: 'Acueducto A',
+        slug: 'acueducto-a',
+        fecha_alta: '2026-09-01',
+        adminEmail: null,
+        planId: null,
+        planNombre: null,
+        estadoCuenta: 'activa',
+      }],
+    });
+  });
+});
+
+describe('PATCH /plataforma/acueductos/:id', () => {
+  it('sin sesión de plataforma -> 403', async () => {
+    respuestaMembresias = { data: null, error: null };
+    const r = await app.fetch(
+      new Request('https://api.undreocol.test/plataforma/acueductos/cliente-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Origin: 'https://panel.undreocol.test' },
+        body: JSON.stringify({ estadoCuenta: 'suspendida' }),
+      }),
+      env,
+    );
+    expect(r.status).toBe(403);
+  });
+
+  it('estadoCuenta inválido -> 400', async () => {
+    const r = await app.fetch(
+      new Request('https://api.undreocol.test/plataforma/acueductos/cliente-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Origin: 'https://panel.undreocol.test' },
+        body: JSON.stringify({ estadoCuenta: 'no-existe' }),
+      }),
+      env,
+    );
+    expect(r.status).toBe(400);
+  });
+
+  it('cambio válido -> 200 con la fila actualizada', async () => {
+    const r = await app.fetch(
+      new Request('https://api.undreocol.test/plataforma/acueductos/cliente-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Origin: 'https://panel.undreocol.test' },
+        body: JSON.stringify({ estadoCuenta: 'suspendida' }),
+      }),
+      env,
+    );
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ id: 'cliente-1', planId: null, estadoCuenta: 'suspendida' });
+  });
+
+  it('id inexistente -> 404', async () => {
+    const r = await app.fetch(
+      new Request('https://api.undreocol.test/plataforma/acueductos/inexistente', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Origin: 'https://panel.undreocol.test' },
+        body: JSON.stringify({ estadoCuenta: 'activa' }),
+      }),
+      env,
+    );
+    expect(r.status).toBe(404);
+  });
+});
+
+describe('GET /plataforma/salud', () => {
+  it('sin sesión de plataforma -> 403', async () => {
+    respuestaMembresias = { data: null, error: null };
+    const r = await app.fetch(
+      new Request('https://api.undreocol.test/plataforma/salud', {
+        headers: { Origin: 'https://panel.undreocol.test' },
+      }),
+      env,
+    );
+    expect(r.status).toBe(403);
+  });
+
+  it('con sesión de plataforma -> 200 con los tres indicadores', async () => {
+    const r = await app.fetch(
+      new Request('https://api.undreocol.test/plataforma/salud', {
+        headers: { Origin: 'https://panel.undreocol.test' },
+      }),
+      env,
+    );
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({
+      tamanoBaseMb: 42,
+      nivel: 'ok',
+      medidoEn: '2026-09-25T05:30:00Z',
+      ultimoKeepalive: '2026-09-25T05:00:00Z',
+      ultimoBackup: { archivo: 'undreocol-backup-20260925.sql.gz', subidoEn: '2026-09-25T06:00:00Z' },
     });
   });
 });
