@@ -4,6 +4,62 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-13 — Sesión 055: feature 035, planes/estado de cuenta y salud del sistema en /plataforma
+
+Completa los dos únicos módulos del mapa de `/plataforma` que seguían "sin empezar" desde 033: que
+el superadmin vea y cambie el plan/estado de cuenta de cada acueducto, y que vea de un vistazo el
+tamaño de la base, el keepalive y el último backup. T-001 (backend) por Luna, auditado y corregido
+por Claude; T-002 (frontend) implementado directamente por Claude (autorización expresa de Mateo).
+De paso, esta sesión agregó Knip (ISC) a backend y frontend para código muerto en TypeScript, a
+pedido de Mateo — ver commits `74a719b`/`d8a76ad`; PL/pgSQL y un bundler aparte quedaron descartados
+tras investigar (Wrangler/Next.js ya minifican solos, sin problema medido para tocar SQL de dinero).
+
+**Diseño central:** `tamano_base_mb()` solo se puede ejecutar con `service_role_key` — no se puede
+llamar desde una ruta del superadmin (CLAUDE.md §12). Se reutiliza el patrón que el proyecto ya usa
+para esto (`_keepalive`): el cron `monitor-db.ts` (ya con `service_role`) escribe su medición en una
+tabla nueva (`_salud_sistema`), el superadmin la lee con una política RLS nueva. El estado del backup
+sale de un binding R2 nuevo (`BACKUPS_R2`) — decisión de Mateo, evita agregar un `GITHUB_TOKEN` al
+Worker.
+
+**Dos bugs de seguridad/robustez reales encontrados auditando T-001, ninguno visible en build/lint
+ni en los 235 tests con mocks — solo verificando contra Postgres real:**
+1. `PATCH /plataforma/acueductos/:id` fallaba con `permission denied for table clientes` incluso
+   como superadmin: una migración de hace varias sesiones (023) ya había revocado el `UPDATE`
+   completo de esa tabla para `authenticated` y solo dejó `color_acento`. Corregido con
+   `grant update (plan_id, estado_cuenta) on clientes to authenticated`.
+2. **Hallazgo más serio:** ese `grant` por sí solo dejaba a un `admin_acueducto` cambiar el plan o
+   el estado de cuenta de **su propio** acueducto — RLS combina políticas de `UPDATE` con OR, y
+   `clientes_color_acento` (023) ya autoriza esa fila para otra columna; RLS no distingue por
+   columna dentro de una fila ya autorizada. Corregido con un trigger
+   (`bloquear_cambio_plan_estado()`, mismo patrón que `bloquear_factura_inmutable()` de 005/006) que
+   bloquea el cambio de esas dos columnas salvo que sea `es_admin_plataforma()`. Verificado que
+   `color_acento` sigue funcionando para `admin_acueducto` (sin regresión de 023).
+
+Corrección menor: un `planId` inexistente (violación de FK) devolvía `500` en texto plano; ahora
+responde `400` con el mensaje real.
+
+**Un bug de diseño real encontrado implementando T-002:** el primer intento pasaba
+`onCambiado={() => window.location.reload()}` desde el server component `/plataforma/page.tsx` a
+`PlanEstadoAcueducto` (client component) — Next.js no serializa funciones a través de ese límite
+salvo Server Actions. Corregido: `PlanEstadoAcueducto` llama a `window.location.reload()` él mismo,
+ya es cliente. **Hallazgo más serio, previo a esta sesión:** `lib/api.ts` ya tenía dos `interface
+Acueducto` distintas (018/plataforma vs. 023/configuración del propio acueducto) que TypeScript
+fusiona en una sola por *declaration merging* en vez de dar error — invisible hasta que este
+componente nuevo las importó juntas. Renombrada la menos usada a `AcueductoPlataforma`.
+
+**Verificado con evidencia real:** `tests/aislamiento/904_salud_sistema_aislamiento.sql` (RLS de
+`_salud_sistema`/`_keepalive`, el trigger nuevo, y la regresión de `color_acento`) corrido en verde
+contra Postgres local. Cabeceras y rutas verificadas con `curl` real contra `wrangler dev` (backend
++ frontend con su service binding conectado, build real de OpenNext): login de superadmin real →
+`/plataforma` renderiza los `<select>` de plan/estado y "Salud del sistema" con las mediciones
+reales de `_salud_sistema`/`_keepalive`, "sin backups todavía" con el bucket local vacío; login de
+`admin_acueducto` real → "No autorizado", la sección de salud nunca se renderiza para ese rol.
+235/235 tests backend, `build`/`lint`/`wrangler deploy --dry-run` limpios en ambos proyectos, sin
+`service_role` en ninguna ruta nueva.
+
+**NO VERIFICADO — requiere Mateo:** clic real de "Guardar" en un navegador (este entorno no tiene
+Chromium/Playwright, solo `curl` contra el HTML renderizado); aspecto visual final.
+
 ### 2026-09-13 — Sesión 054: feature 015, identificación de contador por QR
 
 Primera mitad de la Feature 015 del roadmap ("QR + OCR", `ESPECIFICACION-FUNCIONAL.md §2.14.1`),

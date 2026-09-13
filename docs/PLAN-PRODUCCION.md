@@ -397,7 +397,7 @@ No todo fue hallazgos. Verificado con evidencia, no supuesto:
 
 ---
 
-## Estado general — qué queda pendiente (actualizado 2026-09-13, Sesión 054)
+## Estado general — qué queda pendiente (actualizado 2026-09-13, Sesión 055)
 
 Consolidado de todo lo abierto a esta fecha, para no tener que reconstruirlo de memoria en la
 próxima sesión. Cada punto tiene su detalle completo en el hallazgo, spec o entrada de CHANGELOG
@@ -448,6 +448,21 @@ inventa, se investiga primero contra prácticas de la comunidad (aplicada acá:
 documentación encontrados al escribir el spec: `ESPECIFICACION-FUNCIONAL.md §2.14.1` decía
 "Feature 014" (el registro maestro `.specify/config.md` confirma que siempre fue 015), y ese mismo
 registro maestro no reflejaba la 019 (Sesión 053) como implementada.
+
+**Sesión 055:** feature 035 — planes/estado de cuenta y salud del sistema en `/plataforma`, los dos
+únicos módulos del mapa que seguían sin empezar desde 033. T-001 (backend) por Luna, auditado y
+corregido por Claude; T-002 (frontend) implementado directamente por Claude (autorización expresa).
+**Dos bugs de seguridad/robustez reales, invisibles en build/lint/tests con mocks:** un `GRANT` de
+columna que faltaba (023 ya había revocado el `UPDATE` completo de `clientes` para `authenticated`)
+y, más serio, ese mismo `GRANT` sin un trigger dejaba a un `admin_acueducto` cambiar el plan/estado
+de su propio acueducto vía una política de RLS de 023 pensada para otra columna — RLS combina
+políticas de `UPDATE` con OR, no distingue por columna. Corregido con un trigger, mismo patrón que
+`bloquear_factura_inmutable`. Un tercer bug (declaration merging de dos `interface Acueducto`
+homónimas en `lib/api.ts`, previo a esta sesión) se encontró implementando el frontend. Ver
+CHANGELOG Sesión 055 para el detalle completo y la evidencia real de cada verificación. De paso,
+esta sesión agregó Knip (ISC) a backend y frontend para código muerto en TypeScript, a pedido de
+Mateo — PL/pgSQL y un bundler aparte se descartaron tras investigar (ya resueltos por
+Wrangler/Next.js; sin problema medido para tocar SQL de dinero).
 
 ### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
 
@@ -531,14 +546,19 @@ como trabajo en curso.
    contenido correcto (confirmado leyendo el archivo simulado por `wrangler dev`). Si algún día hay
    más de un superadmin, este módulo crecería a "cuentas de superadmin" (crear/revocar otras
    cuentas `administrador`) — no existe esa necesidad hoy, hay una sola cuenta.
-3. **Planes y estado de cuenta** — sin empezar. `clientes`/`planes` y `estado_cuenta`
-   (`activa`/`vencida`/`suspendida`/`cancelada`) ya existen en el esquema (001-fundación) pero no
-   hay ninguna UI en `/plataforma` para verlos o cambiarlos. Relevante recién cuando haya cobro real
-   a acueductos (ver disparadores de costo, `ARQUITECTURA.md §6`).
-4. **Salud del sistema** — sin empezar. `tamano_base_mb()` y el cron de monitoreo (`cron/monitor-
-   db.ts`) ya existen y alertan por correo/log cuando la base se acerca al límite de 500 MB
-   (Supabase Free), pero ningún panel lo muestra visualmente; lo mismo para el estado del último
-   backup (`.github/workflows/backup-diario.yml`) y el keepalive (`cron/keepalive.ts`).
+3. **Planes y estado de cuenta — implementado (035, Sesión 055).** Cada acueducto muestra su plan
+   y su `estado_cuenta`, y el superadmin puede cambiar ambos (`PATCH /plataforma/acueductos/:id`) —
+   `clientes_plataforma` (001) ya autorizaba el `UPDATE`, solo faltaba el `GRANT` de columna
+   (revocado por 023 para `authenticated`) y, hallazgo real de la auditoría, un trigger para que
+   `admin_acueducto` no pudiera cambiar el plan/estado de **su propio** acueducto vía la política de
+   `color_acento` (023) — ver CHANGELOG. `estado_cuenta` sigue sin ningún efecto real en el resto del
+   sistema (decisión explícita del spec, relevante recién cuando haya cobro real a acueductos, ver
+   `ARQUITECTURA.md §6`); esto solo lo hace visible y editable.
+4. **Salud del sistema — implementado (035, Sesión 055).** `/plataforma` muestra tamaño de la base
+   + nivel (vía `_salud_sistema`, que `monitor-db.ts` ya escribe con su `service_role`), último
+   keepalive (`_keepalive`, con una política de lectura nueva) y último backup (binding R2 nuevo
+   `BACKUPS_R2`) — ninguno de los tres se mide en vivo ni usa `service_role_key` en la ruta del
+   superadmin. Verificado con datos reales contra `wrangler dev` — ver CHANGELOG Sesión 055.
 5. **Feature 019** (invitar admins de acueducto por correo, en vez de contraseña temporal) —
    **implementada (Sesión 053)**, dentro del flujo de alta de "Acueductos" (punto 1), no como módulo
    aparte.

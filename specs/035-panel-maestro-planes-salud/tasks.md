@@ -834,4 +834,15 @@ build/lint):
    prueba: confirmar con una consulta SQL directa que `plan_id`/`estado_cuenta` cambiaron.
 6. `grep` confirmando que ninguna de las rutas/funciones nuevas usa `service_role`/`SERVICE_ROLE_KEY`.
 
-**Estado:** PENDIENTE — sin empezar todavía.
+**Estado:** COMPLETADO. `tests/aislamiento/904_salud_sistema_aislamiento.sql` escrito por Claude
+(seguridad de RLS, no delegado) y corrido en verde contra Postgres local — confirma que solo
+`es_admin_plataforma()` lee `_salud_sistema`/`_keepalive` y puede cambiar `plan_id`/`estado_cuenta`
+de `clientes`, que `admin_acueducto` queda bloqueado por el trigger nuevo incluso sobre su propio
+acueducto, y que `color_acento` (023) sigue funcionando sin regresión. Verificado de punta a punta
+contra `wrangler dev` real (backend + frontend con su service binding conectado, build real de
+OpenNext): login de superadmin real → `GET /plataforma`/`PATCH .../:id`/`GET /plataforma/salud`
+con datos reales; `/plataforma` renderiza los `<select>` y "Salud del sistema" con las mediciones
+reales; login de `admin_acueducto` real → "No autorizado", sección de salud nunca se renderiza.
+235/235 tests backend, `build`/`lint`/`wrangler deploy --dry-run` limpios en ambos proyectos.
+`CHANGELOG.md` y `docs/PLAN-PRODUCCION.md` actualizados (Sesión 055). Clic real de "Guardar" en un
+navegador y aspecto visual final: NO VERIFICADO, requiere Mateo (sin Chromium/Playwright acá).
