@@ -234,6 +234,23 @@ factura por mensaje en Cloudflare Queues → un consumidor procesa en batches.
   la hidratación de React (carrera: el usuario envía antes de que el `onSubmit`
   se adjunte y el navegador hace un GET con el formulario como query string,
   ignorando el `preventDefault()`). Regla obligatoria al crear o editar un form.
+- **Knip (`npm run knip`, `backend/` y `frontend/`) corre en cada tarea que toque TypeScript** —
+  Claude y Mateo trabajan de la mano con esta herramienta, no solo al final: cada hallazgo real se
+  corrige antes de comitear, nunca se deja acumular. Antes de tocar cualquier hallazgo:
+  - Un export sin ningún import externo real (verificado contra `src/`/`app/`/`components/`/`lib/`
+    **y** `tests/`, no solo lo que reporta Knip) se achica quitando `export`, nunca se borra la
+    declaración si algo la usa dentro de su propio archivo.
+  - Una declaración sin ninguna referencia en absoluto, ni siquiera en su propio archivo, se borra
+    entera.
+  - Un archivo marcado "no usado" que en realidad es un entry point que Knip no conoce (un Worker de
+    cron con su propio `wrangler.*.toml`, `open-next.config.ts`, etc.) se declara en `knip.json`
+    (`entry`), nunca se borra a ciegas.
+  - Un export que envuelve una ruta de backend real pero que ningún componente llama hoy (ej. un
+    cliente de API para una pantalla que nunca se construyó) **no se borra**: es una decisión de
+    alcance de producto, no higiene de código — se reporta a Mateo, se deja como está hasta que él
+    decida.
+  - Sin CI para esto por ahora (decisión de Mateo, Sesión 055): se corre a mano como parte de la
+    Definición de terminado (§11), no está en `.github/workflows/`.
 
 ---
 
@@ -427,6 +444,8 @@ anterior. Toda implementación relacionada debe manejarlos **y testearlos**.
 - [ ] `npm run build` (frontend) sin errores ni warnings de TypeScript
 - [ ] `npx wrangler deploy --dry-run` (backend) exitoso
 - [ ] `npm run lint` limpio en ambos proyectos
+- [ ] `npm run knip` corrido en cada proyecto que se tocó — sin hallazgos
+      nuevos sin revisar (ver §7)
 - [ ] Tests de la tarea en verde, con la salida pegada
 - [ ] Si toca base de datos: migración versionada + test de aislamiento en verde
 - [ ] Si toca `core/`: tests de los casos límite, no solo del caso feliz
