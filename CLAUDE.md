@@ -74,6 +74,15 @@ Estructura: `specs/NNN-nombre-feature/spec.md`, `plan.md`, `tasks.md`.
   iniciativa propia.
 - Si a mitad de `/implement` aparece algo fuera del spec, **se detiene y se
   reporta**. No se improvisa alcance.
+- **Ninguna decisión de implementación se inventa.** Antes de fijar el *cómo*
+  (`/plan`, o antes si la decisión ya afecta un requisito de `/specify`), se
+  investigan prácticas recomendadas por la comunidad de programadores/
+  profesionales del área — gente con experiencia real en el problema, no
+  intuición propia. Las fuentes quedan documentadas con enlace en el spec/plan
+  correspondiente, no solo mencionadas de palabra. Precedente: 033 (paneles de
+  superadmin, primitivos nativos de Supabase Auth) y 015 (`BarcodeDetector`
+  nativo vs. decodificar QR en JS, corrección de errores para etiquetas
+  industriales).
 
 | Fase | Contiene | NO contiene |
 |---|---|---|
@@ -413,6 +422,8 @@ anterior. Toda implementación relacionada debe manejarlos **y testearlos**.
 ## 11. Definición de "terminado"
 
 - [ ] Hace lo que dice el spec, ni más ni menos
+- [ ] Decisiones de implementación investigadas contra prácticas de la
+      comunidad, no inventadas — fuentes documentadas en `spec.md`/`plan.md`
 - [ ] `npm run build` (frontend) sin errores ni warnings de TypeScript
 - [ ] `npx wrangler deploy --dry-run` (backend) exitoso
 - [ ] `npm run lint` limpio en ambos proyectos
