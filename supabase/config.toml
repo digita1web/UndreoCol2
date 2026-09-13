@@ -252,11 +252,16 @@ otp_expiry = 3600
 # content_path = "./supabase/templates/invite.html"
 
 # Plantilla en español del correo de recuperación de contraseña (034) — la de
-# Supabase por defecto viene en inglés. En producción, esta misma plantilla se
-# configura desde el dashboard de Supabase Auth (Authentication → Email
-# Templates), un clic de Mateo — este archivo solo gobierna el stack local.
+# Supabase por defecto viene en inglés. Texto neutro desde 019: el mismo
+# enlace sirve para invitar a un admin nuevo (sin contraseña previa) y para
+# recuperar una cuenta existente — "Restablecer" no tenía sentido en el primer
+# caso (hallazgo de la auditoría de 019: el body de recovery.html se reescribió
+# pero el asunto, que vive en este archivo aparte, había quedado con el texto
+# viejo). En producción, esta misma plantilla se configura desde el dashboard
+# de Supabase Auth (Authentication → Email Templates), un clic de Mateo — este
+# archivo solo gobierna el stack local.
 [auth.email.template.recovery]
-subject = "Restablecer tu contraseña de UndreoCol"
+subject = "Definí tu contraseña de UndreoCol"
 content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize notification email template

@@ -29,6 +29,10 @@ vi.mock('../../src/lib/auth', async (original) => ({
   ...(await original<Record<string, unknown>>()),
   verificarSesionAdministrativa: vi.fn(async () => sesionActiva),
   obtenerAccessToken: vi.fn(() => 'token-de-prueba'),
+  enviarEnlaceDefinirContrasena: vi.fn(async () => {
+    ordenLlamadas.push('enviarInvitacion');
+    if (enviarInvitacionLanza) throw new Error(enviarInvitacionLanza);
+  }),
 }));
 
 vi.mock('../../src/lib/db', async (original) => {
@@ -56,9 +60,10 @@ let ordenLlamadas: string[] = [];
 let crearAcueductoBaseLanza: string | null = null;
 let signUpLanza: string | null = null;
 let asignarLanza: string | null = null;
+let enviarInvitacionLanza: string | null = null;
 
 vi.mock('../../src/lib/plataforma', () => ({
-  generarContrasenaTemporal: vi.fn(() => 'Clave-Temporal-Fija1'),
+  generarContrasenaInterna: vi.fn(() => 'Clave-Interna-Fija1'),
   obtenerAdminsDeAcueductos: vi.fn(async () => ({})),
   crearAcueductoBase: vi.fn(async (_s: unknown, nombre: string, slug: string) => {
     ordenLlamadas.push('crearAcueductoBase');
@@ -130,6 +135,7 @@ beforeEach(() => {
   crearAcueductoBaseLanza = null;
   signUpLanza = null;
   asignarLanza = null;
+  enviarInvitacionLanza = null;
 });
 
 describe('requerirAdminPlataforma — autorización', () => {
@@ -181,17 +187,17 @@ describe('POST /plataforma/acueductos — validación de body', () => {
   });
 });
 
-describe('POST /plataforma/acueductos — orden de los 3 pasos (plan §3, §5.1)', () => {
-  it('alta completa -> 201 con clienteId/slug/correoAdmin/contrasenaTemporal', async () => {
+describe('POST /plataforma/acueductos — orden de los 4 pasos (019)', () => {
+  it('alta completa -> 201 con invitacionEnviada true, sin contraseña en la respuesta', async () => {
     const r = await alta(cuerpoValido);
     expect(r.status).toBe(201);
     expect(await r.json()).toEqual({
       clienteId: 'cliente-de-acueducto-nuevo',
       slug: 'acueducto-nuevo',
       correoAdmin: 'admin-nuevo@test.local',
-      contrasenaTemporal: 'Clave-Temporal-Fija1',
+      invitacionEnviada: true,
     });
-    expect(ordenLlamadas).toEqual(['crearAcueductoBase', 'signUp', 'asignar']);
+    expect(ordenLlamadas).toEqual(['crearAcueductoBase', 'signUp', 'asignar', 'enviarInvitacion']);
   });
 
   it('slug duplicado (paso 1 falla) -> 400, NO se llega a signUp ni a asignar', async () => {
@@ -222,6 +228,23 @@ describe('POST /plataforma/acueductos — orden de los 3 pasos (plan §3, §5.1)
     expect(cuerpo.usuarioId).toBe('usuario-de-admin-nuevo@test.local');
     expect(cuerpo.error).toMatch(/corrección manual/);
     expect(ordenLlamadas).toEqual(['crearAcueductoBase', 'signUp', 'asignar']);
+  });
+
+  it('falla el envío de la invitación (paso 4) -> sigue 201, invitacionEnviada false con aviso', async () => {
+    enviarInvitacionLanza = 'límite de envíos alcanzado';
+    const r = await alta(cuerpoValido);
+    expect(r.status).toBe(201);
+    const cuerpo = (await r.json()) as {
+      clienteId: string;
+      slug: string;
+      correoAdmin: string;
+      invitacionEnviada: boolean;
+      avisoCorreo: string;
+    };
+    expect(cuerpo.invitacionEnviada).toBe(false);
+    expect(cuerpo.avisoCorreo).toMatch(/límite de envíos alcanzado/);
+    expect(cuerpo.avisoCorreo).toMatch(/Restablecer contraseña/);
+    expect(ordenLlamadas).toEqual(['crearAcueductoBase', 'signUp', 'asignar', 'enviarInvitacion']);
   });
 });
 

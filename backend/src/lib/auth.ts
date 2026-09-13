@@ -196,3 +196,16 @@ export async function completarRecuperacion(
     accessToken: s.session.access_token,
   };
 }
+
+// Dispara el correo con el enlace para definir contraseña, tanto para una
+// cuenta existente como para el admin recién creado de un acueducto.
+export async function enviarEnlaceDefinirContrasena(env: Env, email: string): Promise<void> {
+  const supabase = crearClienteAnon(env);
+  const primerOrigen = env.ALLOWED_ORIGIN.split(',')[0]?.trim() ?? '';
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${primerOrigen}/restablecer-contrasena`,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+}

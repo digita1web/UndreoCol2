@@ -5,6 +5,7 @@ import { crearClienteAnon, crearClienteSuscriptor, type Env } from './lib/db';
 import {
   cerrarSesion,
   completarRecuperacion,
+  enviarEnlaceDefinirContrasena,
   iniciarSesion,
   obtenerAccessToken,
   obtenerTokensSesion,
@@ -15,7 +16,7 @@ import { estadoLoginAdmin, registrarIntentoLoginAdmin } from './lib/auth-intento
 import {
   asignarAdminAcueducto,
   crearAcueductoBase,
-  generarContrasenaTemporal,
+  generarContrasenaInterna,
   obtenerAdminsDeAcueductos,
   signUpAdminAcueducto,
 } from './lib/plataforma';
@@ -217,22 +218,16 @@ app.post('/auth/logout', async (c) => {
   return c.json({ ok: true });
 });
 
-// POST /auth/recuperar — resetPasswordForEmail.
+// POST /auth/recuperar — delega en el envío compartido de enlaces (019).
 app.post('/auth/recuperar', async (c) => {
   const body = await c.req.json<{ email?: string }>().catch(() => ({ email: undefined }));
   const email = body.email?.trim().toLowerCase();
   if (!email) return c.json({ error: 'Email requerido' }, 400);
-  const supabase = crearClienteAnon(c.env);
-  // El enlace debe caer en /restablecer-contrasena (034), no en la raíz — ahí
-  // es donde se lee el fragmento #access_token=...&type=recovery. Mismo
-  // criterio de "primer origen de la lista" que ya usa CORS (B-4): ALLOWED_ORIGIN
-  // puede traer varios separados por coma, concatenar la cadena entera
-  // produciría una URL inválida.
-  const primerOrigen = c.env.ALLOWED_ORIGIN.split(',')[0]?.trim() ?? '';
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${primerOrigen}/restablecer-contrasena`,
-  });
-  if (error) return c.json({ error: error.message }, 400);
+  try {
+    await enviarEnlaceDefinirContrasena(c.env, email);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo enviar el correo' }, 400);
+  }
   return c.json({ ok: true });
 });
 
@@ -424,9 +419,7 @@ app.get('/plataforma', async (c) => {
 });
 
 // POST /plataforma/acueductos — alta de un acueducto + su primer admin.
-// Orden de 3 pasos (plan §3, §5.1): sin transacción atómica única entre
-// Postgres y GoTrue — ver los comentarios de cada paso para el porqué y el
-// modo de falla de cada uno.
+// Orden de 4 pasos: la invitación por correo no revierte los tres anteriores.
 app.post('/plataforma/acueductos', async (c) => {
   const { ctx, respuesta } = await requerirAdminPlataforma(c);
   if (!ctx) return respuesta;
@@ -454,13 +447,12 @@ app.post('/plataforma/acueductos', async (c) => {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudo crear el acueducto' }, 400);
   }
 
-  // Paso 2: signUp con la clave anon (nunca service_role, CLAUDE.md §12). Si
-  // falla, queda un `clientes` sin admin — visible en GET /plataforma, no un
-  // usuario huérfano invisible. No hay reintento automático en v1 (plan §5.1).
-  const contrasenaTemporal = generarContrasenaTemporal();
+  // Paso 2: signUp con la clave anon y una contraseña interna que nunca se
+  // devuelve. Si falla, queda un `clientes` sin admin.
+  const contrasenaInterna = generarContrasenaInterna();
   let usuarioId: string;
   try {
-    ({ usuarioId } = await signUpAdminAcueducto(c.env, correoAdmin, contrasenaTemporal));
+    ({ usuarioId } = await signUpAdminAcueducto(c.env, correoAdmin, contrasenaInterna));
   } catch (e) {
     return c.json(
       {
@@ -474,8 +466,7 @@ app.post('/plataforma/acueductos', async (c) => {
   }
 
   // Paso 3: perfiles + membresias. A esta altura clientes y auth.users ya
-  // existen y son válidos; si esto falla, el auth.users queda con la
-  // contraseña ya entregada — recuperable a mano (plan §5.1).
+  // existen y son válidos; si esto falla, requiere corrección manual.
   try {
     await asignarAdminAcueducto(ctx.supabase, clienteId, usuarioId, nombreAdmin, correoAdmin);
   } catch (e) {
@@ -491,7 +482,26 @@ app.post('/plataforma/acueductos', async (c) => {
     );
   }
 
-  return c.json({ clienteId, slug, correoAdmin, contrasenaTemporal }, 201);
+  // Paso 4: invitación por correo. Un fallo no revierte el alta; se puede
+  // reintentar desde "Restablecer contraseña" en la lista de acueductos.
+  try {
+    await enviarEnlaceDefinirContrasena(c.env, correoAdmin);
+  } catch (e) {
+    return c.json(
+      {
+        clienteId,
+        slug,
+        correoAdmin,
+        invitacionEnviada: false,
+        avisoCorreo: `El acueducto y el administrador se crearon, pero no se pudo enviar el correo de invitación: ${
+          e instanceof Error ? e.message : 'error desconocido'
+        }. Podés reintentar con "Restablecer contraseña" en la lista de acueductos.`,
+      },
+      201,
+    );
+  }
+
+  return c.json({ clienteId, slug, correoAdmin, invitacionEnviada: true }, 201);
 });
 
 // --- Catálogo de servicios y tarifas (002-catalogo-y-tarifas) --------------

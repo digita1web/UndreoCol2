@@ -989,8 +989,8 @@ export interface RespuestaAltaAcueducto {
   clienteId: string;
   slug: string;
   correoAdmin: string;
-  /** Se muestra UNA sola vez: el backend no la guarda en ningún lado. */
-  contrasenaTemporal: string;
+  invitacionEnviada: boolean;
+  avisoCorreo?: string;
 }
 
 export function crearAcueductoPlataforma(datos: DatosAltaAcueducto): Promise<RespuestaAltaAcueducto> {

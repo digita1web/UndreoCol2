@@ -18,9 +18,9 @@ import { crearClienteAnon, type Env } from './db';
 const ALFABETO_CONTRASENA = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
 const LONGITUD_CONTRASENA = 20;
 
-// Contraseña temporal para el admin nuevo (plan §5.4). Se muestra una sola
-// vez en la respuesta del alta; no se guarda en ninguna tabla ni se loguea.
-export function generarContrasenaTemporal(): string {
+// Contraseña interna para satisfacer signUp() al crear el admin nuevo (019).
+// Nunca se devuelve ni se loguea: el admin la reemplaza mediante invitación.
+export function generarContrasenaInterna(): string {
   const bytes = new Uint8Array(LONGITUD_CONTRASENA);
   crypto.getRandomValues(bytes);
   let contrasena = '';

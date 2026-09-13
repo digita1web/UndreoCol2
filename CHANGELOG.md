@@ -4,6 +4,50 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-13 — Sesión 053: feature 019, invitar admin de acueducto por correo
+
+Reemplaza la contraseña temporal de 018 (se mostraba una sola vez en `/plataforma` para que el
+superadmin la entregara a mano) por una invitación real por correo — reutiliza el mismo mecanismo
+que 033/034 ya construyeron y verificaron (`resetPasswordForEmail` + `/restablecer-contrasena`), en
+vez de `auth.admin.inviteUserByEmail` (descartado: exige `service_role_key` en una ruta que atiende
+al superadmin, CLAUDE.md §12).
+
+**Implementado por Luna (T-001 backend, T-002 frontend):** función compartida
+`enviarEnlaceDefinirContrasena()` nueva en `lib/auth.ts`, usada tanto por `POST /auth/recuperar`
+como por el paso 4 nuevo de `POST /plataforma/acueductos`. `generarContrasenaTemporal()` renombrada
+a `generarContrasenaInterna()` en `lib/plataforma.ts` — mismo generador, la contraseña que produce
+ya no se muestra ni se loguea en ningún lado, el admin la reemplaza por el enlace. Si el correo de
+invitación falla, el alta no se revierte: responde `201` con `invitacionEnviada: false` y
+`avisoCorreo`, y el superadmin puede reintentar con el botón "Restablecer contraseña" que 033 ya
+puso por acueducto (misma llamada exacta). `plataforma-form.tsx` confirma el envío en vez de
+mostrar una contraseña. `supabase/templates/recovery.html` reescrito en términos neutros — sirve
+tanto para invitar como para recuperar.
+
+**Un bug real encontrado en la auditoría (T-003), invisible en build/lint/tests con mocks — solo
+visible siguiendo el correo real:** Luna reescribió el cuerpo de `recovery.html` pero no el asunto
+del correo, que vive aparte en `supabase/config.toml` (`[auth.email.template.recovery] subject`) —
+el correo real llegaba con el cuerpo nuevo ("Definí tu contraseña...") pero el asunto viejo
+("Restablecer tu contraseña..."), inconsistencia que no tenía sentido para un admin que nunca tuvo
+contraseña. Corregido (`subject = "Definí tu contraseña de UndreoCol"`); requirió `supabase stop` +
+`supabase start` para que GoTrue recargara la plantilla — confirmado que los datos locales
+sobrevivieron (`"backup":true` en el stop, "Starting database from backup" en el start; conteo de
+`auth.users`/`clientes` idéntico antes y después).
+
+**Verificado de punta a punta con datos reales, no con una suposición de cómo debía verse:** login
+real como superadmin de prueba → `POST /plataforma/acueductos` con un acueducto y admin de prueba →
+`201` sin ninguna contraseña en la respuesta (CA-1) → correo real recibido en Mailpit con el asunto
+y cuerpo ya corregidos (CA-5) → enlace real seguido con `curl` contra `verify` de GoTrue → tokens
+reales extraídos del fragmento → `POST /auth/completar-recuperacion` con esos tokens → `200` →
+login posterior con la contraseña recién definida → `200` (CA-2). Datos de prueba borrados al
+cerrar (acueducto, membresía, perfil, cuenta de Auth) — el estado local quedó igual que antes del
+test. 229/229 tests backend, `build`/`lint`/`wrangler deploy --dry-run` limpios en ambos proyectos,
+`grep` confirma cero uso de `service_role` en las rutas nuevas.
+
+**NO VERIFICADO — requiere Mateo:** aspecto visual del bloque de éxito de `plataforma-form.tsx` en
+navegador real; replicar el asunto y cuerpo nuevos de la plantilla de recuperación en el dashboard
+de Supabase Auth de **producción** (`config.toml` solo gobierna local, mismo pendiente ya anotado
+en 034).
+
 ### 2026-09-12 — Sesión 052: feature 034, completar recuperación de contraseña
 
 Cierra un flujo que 033 dejó a medias: el botón "Restablecer contraseña" mandaba un correo real,

@@ -442,8 +442,6 @@ suposición de cómo debía verse.
   código que llegue al Worker desplegado.
 - **"Leaked password protection" de Supabase Auth** — un toggle en el dashboard, nunca activado.
   No es de código; es un clic de Mateo.
-- **Feature 019** (invitar admins de acueducto por correo, en vez de contraseña temporal) — sin
-  empezar, sin fecha.
 
 ### Verificación en navegador real — pendiente de Mateo (este entorno no tiene Chromium/Playwright)
 
@@ -478,6 +476,11 @@ del prototipo.
   autoriza servicio+categoría con motivo y expiración; la autorización es de un solo uso, revocable
   y queda en bitácora inmutable. Suite SQL 016 en verde. El superadmin conserva permisos globales
   de base de datos; la selección visual de cliente desde el panel maestro queda como mejora separada.
+- **Feature 019 (invitar admin de acueducto por correo) — implementada (Sesión 053):** el alta de
+  un acueducto ya no muestra una contraseña temporal; envía una invitación real reutilizando
+  `resetPasswordForEmail` + `/restablecer-contrasena` (033/034). Verificado de punta a punta contra
+  `wrangler dev` + Mailpit reales — ver CHANGELOG, Sesión 053, para el detalle y el bug real
+  encontrado (asunto del correo desactualizado en `config.toml`, corregido).
 - **Feature 015 (QR + OCR del contador)** — diferenciador tecnológico principal del roadmap
   original, marcado "requiere máximo rigor de precisión", sin empezar.
 - **Asignación de rutas/zonas al lector** (`ESPECIFICACION-FUNCIONAL.md §2.14.1`) — dejada fuera de
@@ -489,14 +492,18 @@ Mateo pidió el mapa completo antes de aprobar 033, para no construir credencial
 encaja. Ninguno de los puntos 3/4 tiene spec todavía — quedan documentados acá como roadmap, no
 como trabajo en curso.
 
-1. **Acueductos** — implementado en 018, ampliado por 033: alta de acueducto + admin, lista,
-   email del `admin_acueducto` de cada uno, restablecer su contraseña. **Verificado de punta a
-   punta contra `wrangler dev` real (Sesión 051)**: `GET /plataforma` devuelve el `adminEmail`
-   correcto por acueducto; "Restablecer contraseña" dispara el correo real de Supabase Auth
+1. **Acueductos** — implementado en 018, ampliado por 033 y por 019 (Sesión 053: el alta ya no
+   entrega contraseña, invita por correo — ver CHANGELOG): alta de acueducto + admin por
+   invitación, lista, email del `admin_acueducto` de cada uno, restablecer su contraseña.
+   **Verificado de punta a punta contra `wrangler dev` real (Sesión 051)**: `GET /plataforma`
+   devuelve el `adminEmail` correcto por acueducto; "Restablecer contraseña" dispara el correo real
+   de Supabase Auth
    (confirmado en Mailpit) y no revela si una cuenta existe o no. **El enlace de ese correo
    funciona de punta a punta desde 034** (antes llevaba a la raíz del sitio sin completar nada):
    verificado siguiendo el enlace real hasta `/restablecer-contrasena`, definiendo la contraseña
-   nueva y confirmando el login con ella.
+   nueva y confirmando el login con ella. **El alta por invitación (019) tiene su propia
+   verificación de punta a punta, Sesión 053** (mismo mecanismo, admin recién creado en vez de uno
+   existente) — ver CHANGELOG.
 2. **Mi cuenta / Seguridad** — implementado en 033: el superadmin cambia su propia contraseña, con
    aviso por correo al cambiar. **Verificado de punta a punta (Sesión 051)**: login → cambiar
    contraseña → logout → la vieja falla, la nueva funciona; el correo de aviso se generó con el
@@ -511,8 +518,9 @@ como trabajo en curso.
    db.ts`) ya existen y alertan por correo/log cuando la base se acerca al límite de 500 MB
    (Supabase Free), pero ningún panel lo muestra visualmente; lo mismo para el estado del último
    backup (`.github/workflows/backup-diario.yml`) y el keepalive (`cron/keepalive.ts`).
-5. **Feature 019** (invitar admins de acueducto por correo, en vez de contraseña temporal) — no es
-   un módulo aparte, es una mejora al flujo de alta dentro de "Acueductos" (punto 1).
+5. **Feature 019** (invitar admins de acueducto por correo, en vez de contraseña temporal) —
+   **implementada (Sesión 053)**, dentro del flujo de alta de "Acueductos" (punto 1), no como módulo
+   aparte.
 
 ### Producción real
 

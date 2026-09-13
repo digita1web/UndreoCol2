@@ -41,7 +41,7 @@ vi.mock('../../src/lib/db', async (original) => ({
 }));
 
 const {
-  generarContrasenaTemporal,
+  generarContrasenaInterna,
   crearAcueductoBase,
   signUpAdminAcueducto,
   asignarAdminAcueducto,
@@ -64,10 +64,10 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('generarContrasenaTemporal', () => {
+describe('generarContrasenaInterna', () => {
   it('genera 20 caracteres sin 0/O/1/l/I', () => {
     for (let i = 0; i < 200; i++) {
-      const c = generarContrasenaTemporal();
+      const c = generarContrasenaInterna();
       expect(c).toHaveLength(20);
       expect(c).not.toMatch(/[0O1lI]/);
     }
@@ -75,7 +75,7 @@ describe('generarContrasenaTemporal', () => {
 
   it('no se repite en 1000 llamadas (colisión estadísticamente imposible)', () => {
     const vistas = new Set<string>();
-    for (let i = 0; i < 1000; i++) vistas.add(generarContrasenaTemporal());
+    for (let i = 0; i < 1000; i++) vistas.add(generarContrasenaInterna());
     expect(vistas.size).toBe(1000);
   });
 });

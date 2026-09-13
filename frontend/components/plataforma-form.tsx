@@ -28,9 +28,8 @@ export function PlataformaForm() {
   const [correoAdmin, setCorreoAdmin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
-  // Resultado del último alta exitosa: la contraseña se muestra UNA sola vez,
-  // el backend no la guarda en ningún lado (plan §5.4). Se pierde al recargar
-  // o al dar de alta otro acueducto — es a propósito.
+  // Resultado del último alta exitosa: confirma si la invitación por correo se
+  // envió o no (019). Se pierde al recargar o al dar de alta otro acueducto.
   const [resultado, setResultado] = useState<RespuestaAltaAcueducto | null>(null);
   const hidratado = useHidratado();
 
@@ -75,18 +74,27 @@ export function PlataformaForm() {
   return (
     <div className="flex flex-col gap-4">
       {resultado && (
-        <div className="flex flex-col gap-2 rounded-lg border border-green-600 bg-green-50 p-4 text-sm">
-          <p className="font-semibold">
-            Acueducto &quot;{resultado.slug}&quot; creado. Contraseña temporal de {resultado.correoAdmin}
-            :
-          </p>
-          <code className="rounded bg-white px-2 py-1 font-mono text-base">
-            {resultado.contrasenaTemporal}
-          </code>
-          <p className="text-muted-foreground">
-            Se muestra una sola vez — no queda guardada en ningún lado. Entréguesela al admin del
-            acueducto por un canal seguro.
-          </p>
+        <div
+          className={`flex flex-col gap-2 rounded-lg border p-4 text-sm ${
+            resultado.invitacionEnviada
+              ? 'border-green-600 bg-green-50'
+              : 'border-amber-600 bg-amber-50'
+          }`}
+        >
+          {resultado.invitacionEnviada ? (
+            <p className="font-semibold">
+              Acueducto &quot;{resultado.slug}&quot; creado. Se envió una invitación a{' '}
+              {resultado.correoAdmin} para que defina su contraseña.
+            </p>
+          ) : (
+            <>
+              <p className="font-semibold">
+                Acueducto &quot;{resultado.slug}&quot; creado, pero no se pudo enviar la invitación a{' '}
+                {resultado.correoAdmin}.
+              </p>
+              <p className="text-muted-foreground">{resultado.avisoCorreo}</p>
+            </>
+          )}
         </div>
       )}
 
