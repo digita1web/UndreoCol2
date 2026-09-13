@@ -74,15 +74,21 @@ Estructura: `specs/NNN-nombre-feature/spec.md`, `plan.md`, `tasks.md`.
   iniciativa propia.
 - Si a mitad de `/implement` aparece algo fuera del spec, **se detiene y se
   reporta**. No se improvisa alcance.
-- **Ninguna decisión de implementación se inventa.** Antes de fijar el *cómo*
-  (`/plan`, o antes si la decisión ya afecta un requisito de `/specify`), se
-  investigan prácticas recomendadas por la comunidad de programadores/
-  profesionales del área — gente con experiencia real en el problema, no
-  intuición propia. Las fuentes quedan documentadas con enlace en el spec/plan
-  correspondiente, no solo mencionadas de palabra. Precedente: 033 (paneles de
-  superadmin, primitivos nativos de Supabase Auth) y 015 (`BarcodeDetector`
+- **Ninguna decisión técnica se inventa, en ningún rincón del proyecto** — no
+  solo dentro de `/specify`→`/plan`. Antes de fijar el *cómo* de cualquier
+  decisión de implementación (una feature nueva, una corrección, una
+  herramienta, una migración, un cambio de configuración, una limpieza de
+  mantenimiento), se investigan prácticas recomendadas por la comunidad de
+  programadores/profesionales del área — gente con experiencia real en el
+  problema, no intuición propia. Las fuentes quedan documentadas con enlace,
+  nunca solo mencionadas de palabra: en el `spec.md`/`plan.md` cuando la
+  decisión nace de una feature con ese ciclo; en el mensaje de commit y/o
+  `CHANGELOG.md` cuando es trabajo directo fuera de él (mantenimiento, un
+  hallazgo de auditoría, una herramienta nueva). Precedente: 033 (paneles de
+  superadmin, primitivos nativos de Supabase Auth), 015 (`BarcodeDetector`
   nativo vs. decodificar QR en JS, corrección de errores para etiquetas
-  industriales).
+  industriales), y Knip sobre `ts-prune` para código muerto en TypeScript
+  (Sesiones 054-055 — decisión de mantenimiento, fuera de cualquier spec).
 
 | Fase | Contiene | NO contiene |
 |---|---|---|
