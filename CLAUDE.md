@@ -89,6 +89,14 @@ Estructura: `specs/NNN-nombre-feature/spec.md`, `plan.md`, `tasks.md`.
   nativo vs. decodificar QR en JS, corrección de errores para etiquetas
   industriales), y Knip sobre `ts-prune` para código muerto en TypeScript
   (Sesiones 054-055 — decisión de mantenimiento, fuera de cualquier spec).
+  **Excepción — proporcionalidad, no aplicarla a ciegas:** si el propio proyecto ya tiene un patrón
+  establecido para este tipo de decisión (ej. seguir el mismo trigger que ya usa
+  `bloquear_factura_inmutable` para una regla de inmutabilidad nueva), esa convención interna **ya
+  es la fuente** — no hace falta salir a buscar más. La investigación externa real se reserva para
+  decisiones sin precedente en este código: elegir una librería nueva, un patrón de seguridad que
+  el proyecto no usa todavía, una herramienta. Consultar la comunidad para una decisión trivial o ya
+  resuelta por el propio código es ruido, no rigor — va en contra de CLAUDE.md §1 y §7 (no
+  sobre-diseñar, no complejidad de más).
 
 | Fase | Contiene | NO contiene |
 |---|---|---|
