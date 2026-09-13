@@ -25,7 +25,7 @@ export interface TendenciaMes {
   total: number; // pesos enteros
 }
 
-export type EstadoSuscriptorKey = 'activo' | 'suspendido' | 'cortado' | 'inactivo';
+type EstadoSuscriptorKey = 'activo' | 'suspendido' | 'cortado' | 'inactivo';
 
 export interface IndicadoresDashboard {
   /** "hoy" UTC del Worker (mismo reloj de 007). */

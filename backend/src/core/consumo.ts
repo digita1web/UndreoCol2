@@ -21,7 +21,7 @@
 // consumo a 2 decimales.
 
 /** Motivos por los que una lectura se rechaza al calcular su consumo. */
-export type ErrorLectura =
+type ErrorLectura =
   | 'lectura_menor_sin_rollover' // cláusula punto 2
   | 'lectura_mayor_capacidad'    // lectura_actual > capacidad_maxima (no puede pasar en un display real)
   | 'datos_invalidos';           // capacidad o umbral no positivos, o datos incoherentes

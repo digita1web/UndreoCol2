@@ -21,7 +21,7 @@ export interface FacturaPendienteParaPago {
   fechaVencimiento: string;
 }
 
-export interface AplicacionCalculada {
+interface AplicacionCalculada {
   facturaId: string;
   valor: number;
 }

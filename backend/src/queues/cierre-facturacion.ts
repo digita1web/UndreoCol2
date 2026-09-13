@@ -368,7 +368,7 @@ export async function enviarCorreoDeFactura(env: Env, mensaje: MensajeFactura): 
 // enviarCorreoDeFactura, plan.md §5, decisión técnica).
 // ---------------------------------------------------------------------------
 
-export async function enviarNotificacionGenerica(env: Env, mensaje: MensajeFactura): Promise<void> {
+async function enviarNotificacionGenerica(env: Env, mensaje: MensajeFactura): Promise<void> {
   const supabase = crearClienteServicio(env);
   const { clienteId, notificacionId, destinatario, asunto, cuerpoHtml } = mensaje;
   if (!clienteId || !notificacionId || !destinatario || !asunto || !cuerpoHtml) {

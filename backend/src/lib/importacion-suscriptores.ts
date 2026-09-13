@@ -57,7 +57,7 @@ export async function detectarDuplicadosContraBase(
 // 003): categorías de filas válidas sin ninguna tarifa vigente en ningún
 // servicio activo del cliente. NO bloquea la importación de esas filas —
 // solo se reporta junto al resultado (3.5).
-export async function categoriasSinTarifa(
+async function categoriasSinTarifa(
   supabase: SupabaseClient,
   clienteId: string,
   filas: FilaNormalizada[],

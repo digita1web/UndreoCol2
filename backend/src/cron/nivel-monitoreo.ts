@@ -5,7 +5,7 @@
 
 export const LIMITE_BASE_MB = 500;
 
-export type NivelMonitoreo = 'ok' | 'atencion' | 'alerta' | 'critico';
+type NivelMonitoreo = 'ok' | 'atencion' | 'alerta' | 'critico';
 
 export interface ResultadoMonitoreo {
   porcentaje: number; // % respecto a 500 MB (2 decimales)

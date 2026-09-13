@@ -126,7 +126,7 @@ export function componerNumeroFactura(prefijo: string, anio: number, consecutivo
 // ---------------------------------------------------------------------------
 // Anomalías de la simulación (spec §3.3)
 // ---------------------------------------------------------------------------
-export type TipoAnomaliaFacturacion =
+type TipoAnomaliaFacturacion =
   | 'consumo_atipico'       // la lectura del suscriptor quedó en revisión (alto/bajo/cero)
   | 'usuario_sin_lectura'   // no tiene lectura en el periodo
   | 'sin_tarifa'            // tarifa_vigente() devuelve NULL → NO se emite (punto 9d)

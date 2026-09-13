@@ -58,7 +58,7 @@ export interface DetalleFacturaRow {
   subtotal: number;
 }
 
-export interface SuscriptorSimulado {
+interface SuscriptorSimulado {
   usuarioServicioId: string;
   codigoSuscriptor: string;
   nombre: string;

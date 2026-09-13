@@ -8,7 +8,7 @@
 // como objetos. La detección de duplicados CONTRA la base (usuarios_servicio
 // existentes) no es pura por definición — vive en lib/importacion-suscriptores.ts.
 
-export type CampoSuscriptor =
+type CampoSuscriptor =
   | 'codigo_suscriptor' | 'nombre' | 'numero_documento' | 'direccion' | 'categoria'
   | 'tipo_documento' | 'telefono' | 'email' | 'sector' | 'notas';
 

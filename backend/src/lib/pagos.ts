@@ -12,7 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { distribuirPago, redondearPeso, type MetodoPago } from '../core/pagos';
 
-export interface FacturaPendienteRow {
+interface FacturaPendienteRow {
   id: string;
   usuario_servicio_id: string;
   numero: string;

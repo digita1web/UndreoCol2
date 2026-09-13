@@ -6,16 +6,14 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 import { crearClienteAnon, type Env } from './db';
 
-export type TipoSesion = 'administrativa' | 'suscriptor';
-
 export interface SesionAdministrativa {
   tipo: 'administrativa';
   perfilId: string; // auth.users.id / perfiles.id
   email: string;
 }
 
-export const NOMBRE_COOKIE_SESION = 'uc_sesion_admin';
-export const DURACION_COOKIE_SESION_SEG = 7 * 24 * 60 * 60; // 7 días
+const NOMBRE_COOKIE_SESION = 'uc_sesion_admin';
+const DURACION_COOKIE_SESION_SEG = 7 * 24 * 60 * 60; // 7 días
 
 export interface ResultadoInicioSesion {
   sesion: SesionAdministrativa;

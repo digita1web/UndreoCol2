@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/cron/avisos-vencimiento.ts",
+    "src/cron/keepalive.ts",
+    "src/cron/limpieza.ts",
+    "src/cron/monitor-db.ts"
+  ],
+  "project": ["src/**/*.ts"],
+  "ignoreBinaries": ["psql"]
+}

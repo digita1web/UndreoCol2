@@ -116,7 +116,7 @@ export function contenidoReconexionCompletada(datos: {
 // Intento máximo antes de marcar la notificación como 'fallida' (reintento del
 // worker; después lo gestiona el admin desde el panel). Movido desde
 // lib/email.ts (006) sin cambios de comportamiento.
-export const MAX_INTENTOS_ENVIO = 3;
+const MAX_INTENTOS_ENVIO = 3;
 
 // Decisión pura del estado de la notificación tras un intento de envío
 // (spec 006 §3.4): SIEMPRE incrementa intentos y, si falla, deja ultimo_error

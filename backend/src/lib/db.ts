@@ -31,7 +31,7 @@ export interface Env {
 //                             contenido ya viene armado por quien encoló el
 //                             mensaje (core/notificaciones.ts), no se re-arma
 //                             en el consumidor (plan.md §5, decisión técnica)
-export type TipoMensajeFacturaCierre = 'emitir_factura' | 'enviar_correo_factura' | 'enviar_notificacion';
+type TipoMensajeFacturaCierre = 'emitir_factura' | 'enviar_correo_factura' | 'enviar_notificacion';
 
 export interface MensajeFacturaCierre {
   tipo: TipoMensajeFacturaCierre;
