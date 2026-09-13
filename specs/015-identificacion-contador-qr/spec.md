@@ -42,6 +42,24 @@ pegarla en el medidor real, porque hoy no existe ninguna.
   `§2.14.1` a "Feature 015" como parte de este mismo trabajo, sin abrir un spec aparte por una
   corrección de una palabra.
 
+**Investigación de la comunidad (pedida por Mateo antes de aprobar este spec) — dos hallazgos que sí
+cambian requisitos, no solo implementación, por eso están en §3 y no en un futuro `/plan`:**
+1. La API nativa `BarcodeDetector` del navegador (Chrome/Android delega en el sistema operativo)
+   decodifica un QR con mucho menos consumo de batería que calcularlo cuadro por cuadro en
+   JavaScript puro — relevante de verdad para un fontanero que usa el celular toda la jornada en
+   campo. Patrón recomendado: nativo primero, con una librería como respaldo solo si el navegador no
+   la soporta. [Loke.dev — Native Barcode Detection API](https://loke.dev/blog/native-barcode-detection-api),
+   [DEV Community — Zero-Dependency Barcode Scanner](https://dev.to/jamiepark-design/building-a-zero-dependency-barcode-scanner-with-the-web-barcode-detection-api-246k).
+2. Corrección de errores nivel Q o H (25-30% de daño tolerado) es la recomendación específica para
+   etiquetas industriales sucias, rayadas o a la intemperie — exactamente el entorno real de un
+   contador de agua. [Scanova — QR Code Error Correction Explained](https://scanova.io/blog/qr-code-error-correction/),
+   [ShareMyToolbox — Asset Tagging, QR Code Error Correction](https://www.sharemytoolbox.com/2020/11/15/qr-code-error-correction/).
+
+Se descartó explorar un código corto propio en vez del `id` (UUID) — a 36 caracteres el QR sigue
+siendo chico y muy escaneable; inventar un esquema de códigos cortos agregaría una columna, lógica
+de generación y manejo de colisiones a cambio de una ganancia marginal frente a simplemente usar
+corrección de errores alta.
+
 ## 3. Alcance
 
 ### 3.1 Generar y ver la etiqueta QR de un contador
@@ -50,7 +68,15 @@ serial/capacidad/fecha de instalación), un botón nuevo "Ver etiqueta QR" abre 
 renderiza el código QR de ese contador, con su `serial` como texto legible al lado (para el caso en
 que alguien necesite identificarlo a simple vista, sin escanear). El QR codifica el `id` del
 contador (UUID ya existente, único globalmente — no el `serial`, que solo es único dentro de un
-mismo acueducto y podría repetirse entre acueductos distintos con la misma marca de contador).
+mismo acueducto y podría repetirse entre acueductos distintos con la misma marca de contador). A 36
+caracteres el QR resultante sigue siendo chico y muy escaneable — no vale la pena inventar un código
+corto propio solo por densidad (investigación de la comunidad, §2).
+
+**Corrección de errores alta (nivel H, ~30% de daño tolerado), no la que trae por defecto cualquier
+generador.** Investigación de la comunidad (§2) confirma que es exactamente el nivel recomendado
+para etiquetas industriales expuestas a suciedad, humedad y rayones — el caso real de un contador de
+agua a la intemperie, no una excepción. El costo es un QR levemente más denso a cambio de que siga
+siendo legible con la etiqueta sucia o parcialmente dañada.
 
 ### 3.2 Imprimir la etiqueta — mismo patrón que las facturas (D-8)
 La vista de la etiqueta se imprime con `Ctrl+P` y una hoja de estilos `@media print` pensada para
@@ -65,6 +91,14 @@ cargados en esa sesión** (`suscriptores`, la misma prop que ya recibe el compon
 nuevo al backend) y, si lo encuentra, preselecciona ese contador exactamente como si se hubiera
 elegido del `<select>` — el fontanero sigue viendo a quién le está tomando la lectura antes de
 guardar, no se salta esa confirmación visual.
+
+**Preferir la capacidad nativa del navegador para decodificar el QR, con una librería como respaldo
+solo si no está disponible.** Investigación de la comunidad (§2): Chrome en Android (el navegador
+real de este proyecto — PWA sin Play Store, CLAUDE.md §2) puede delegar la decodificación al sistema
+operativo en vez de calcularla cuadro por cuadro en JavaScript — más rápido y con mucho menos consumo
+de batería, algo que le importa de verdad a un fontanero que usa el celular toda la jornada en campo.
+La librería de respaldo exacta se elige en `/plan` (tiene que ser MIT/Apache-2.0/BSD/ISC,
+CLAUDE.md §2); este spec solo fija el criterio de "nativo primero".
 
 ### 3.4 El `<select>` manual nunca se elimina
 Cámara con mala luz, lente sucia, QR dañado/despegado, o un celular sin cámara utilizable: el
@@ -146,7 +180,7 @@ resultado que antes de este spec — regresión cero sobre 025.
 | Riesgo | Mitigación |
 |---|---|
 | Permiso de cámara denegado por el usuario o el navegador | El `<select>` manual sigue siempre disponible (§3.4) — el escaneo nunca es la única vía |
-| Etiqueta QR dañada, sucia o mal impresa, ilegible para la cámara | Mismo caso que "permiso denegado" — cae al `<select>` manual; no se agrega ningún reintento especial más allá del que ya ofrece la librería de escaneo (a elegir en `/plan`) |
+| Etiqueta QR dañada, sucia o mal impresa, ilegible para la cámara | Corrección de errores nivel H al generar la etiqueta (§3.1, ~30% de daño tolerado — nivel recomendado por la comunidad para este caso exacto, §2); si aun así no lee, cae al `<select>` manual |
 | Confundir el escaneo con una lectura automática de la cifra del contador | Es exactamente el malentendido que motivó separar QR de OCR en dos specs (nota de alcance) — este spec identifica el contador, nunca lee ni sugiere ningún número; se refuerza en la UI con el texto del botón ("Escanear QR del contador", no "Escanear lectura") |
 | Reemplazo de contador deja una etiqueta física apuntando al `id` viejo | Documentado como fuera de alcance (§4) — mismo tipo de paso manual que ya exige hoy cambiar el medidor físico |
 | Alguien imprime la etiqueta de un contador y la pega en el medidor equivocado (error humano, no del sistema) | Fuera del control del software; el `serial` en texto junto al QR (§3.1) ayuda a verificar visualmente antes de pegar |
