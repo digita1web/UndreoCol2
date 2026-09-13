@@ -5,12 +5,10 @@ import { urlBaseApiServidor } from '@/lib/url-base-api-servidor';
 import { BotonSalir } from '@/components/boton-salir';
 import { CambiarContrasenaForm } from '@/components/cambiar-contrasena-form';
 import { RestablecerContrasenaAcueducto } from '@/components/restablecer-contrasena-acueducto';
+import { PlanEstadoAcueducto } from '@/components/plan-estado-acueducto';
+import { SaludSistema as SaludSistemaCard } from '@/components/salud-sistema';
+import type { SaludSistema as TipoSaludSistema } from '@/lib/api';
 
-// Server component, mismo patrón que frontend/app/app/dashboard/page.tsx: lee
-// la cookie de sesión administrativa y reenvía el header Cookie a mano (un
-// fetch de servidor no incluye las cookies del navegador). Ver el comentario
-// de dashboard/page.tsx para el porqué de encodeURIComponent, y
-// lib/url-base-api-servidor.ts para el porqué la URL base ya no es constante.
 const NOMBRE_COOKIE_SESION = 'uc_sesion_admin';
 
 interface Acueducto {
@@ -19,6 +17,9 @@ interface Acueducto {
   slug: string;
   fecha_alta: string;
   adminEmail: string | null;
+  planId: string | null;
+  planNombre: string | null;
+  estadoCuenta: 'activa' | 'vencida' | 'suspendida' | 'cancelada';
 }
 
 interface RespuestaPlataforma {
@@ -38,8 +39,6 @@ async function obtenerAcueductos(): Promise<RespuestaPlataforma> {
 
   if (respuesta.status === 401) redirect('/login');
   if (respuesta.status === 403) {
-    // No es un error de la página: un admin_acueducto que llegó aquí por
-    // error de navegación. Se muestra explícito, sin redirigir en silencio.
     return { autorizado: false, acueductos: [] };
   }
 
@@ -52,8 +51,41 @@ async function obtenerAcueductos(): Promise<RespuestaPlataforma> {
   return { autorizado: true, acueductos: cuerpo.acueductos ?? [] };
 }
 
+// 035: nunca lanza — si algo falla, la sección "Salud del sistema" muestra el
+// aviso, pero el resto del panel (alta de acueductos, lista, credenciales)
+// sigue funcionando igual. La misma sesión que ya validó obtenerAcueductos()
+// (401/403) sirve acá; esta función no redirige por su cuenta.
+interface RespuestaSalud {
+  salud: TipoSaludSistema | null;
+  error: string | null;
+}
+
+async function obtenerSalud(): Promise<RespuestaSalud> {
+  const almacenCookies = await cookies();
+  const cookieSesion = almacenCookies.get(NOMBRE_COOKIE_SESION);
+  if (!cookieSesion) return { salud: null, error: null };
+
+  try {
+    const respuesta = await fetch(`${await urlBaseApiServidor()}/plataforma/salud`, {
+      headers: { Cookie: `${NOMBRE_COOKIE_SESION}=${encodeURIComponent(cookieSesion.value)}` },
+      cache: 'no-store',
+    });
+    if (!respuesta.ok) {
+      const cuerpo: { error?: string } = await respuesta.json().catch(() => ({}));
+      return { salud: null, error: cuerpo.error ?? 'No se pudo cargar la salud del sistema' };
+    }
+    const salud: TipoSaludSistema = await respuesta.json();
+    return { salud, error: null };
+  } catch (e) {
+    return { salud: null, error: e instanceof Error ? e.message : 'No se pudo cargar la salud del sistema' };
+  }
+}
+
 export default async function PlataformaPage() {
-  const { autorizado, acueductos } = await obtenerAcueductos();
+  const [{ autorizado, acueductos }, { salud, error: errorSalud }] = await Promise.all([
+    obtenerAcueductos(),
+    obtenerSalud(),
+  ]);
 
   if (!autorizado) {
     return (
@@ -90,18 +122,30 @@ export default async function PlataformaPage() {
         ) : (
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
             {acueductos.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-center justify-between gap-4 p-4 text-sm">
-                <div>
-                  <p className="font-medium">{a.nombre}</p>
-                  <p className="text-muted-foreground">{a.slug}</p>
-                  <p className="text-muted-foreground">
-                    {a.adminEmail ?? 'sin admin asignado'}
-                  </p>
+              <li key={a.id} className="flex flex-col gap-3 p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium">{a.nombre}</p>
+                    <p className="text-muted-foreground">{a.slug}</p>
+                    <p className="text-muted-foreground">
+                      {a.adminEmail ?? 'sin admin asignado'}
+                    </p>
+                  </div>
+                  <RestablecerContrasenaAcueducto email={a.adminEmail} />
                 </div>
-                <RestablecerContrasenaAcueducto email={a.adminEmail} />
+                <PlanEstadoAcueducto acueducto={a} />
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-4 rounded-lg border border-border p-4">
+        <h2 className="text-lg font-medium">Salud del sistema</h2>
+        {salud ? (
+          <SaludSistemaCard salud={salud} />
+        ) : (
+          <p className="text-sm text-red-600">{errorSalud ?? 'No se pudo cargar la salud del sistema'}</p>
         )}
       </section>
     </main>

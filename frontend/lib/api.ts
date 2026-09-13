@@ -965,17 +965,56 @@ export function confirmarImportacion(
 // --- Panel de plataforma (018) ----------------------------------------------
 // Solo para el superadmin (rol 'administrador'); el backend lo exige por RLS
 // y por requerirAdminPlataforma (index.ts), no solo aquí.
-
-export interface Acueducto {
+//
+// Nombrado AcueductoPlataforma (035), no Acueducto: ya existe otro `Acueducto`
+// más abajo (023, configuración del propio acueducto — nombre/nit/dirección/
+// etc.) con un nombre igual pero un significado distinto. Dos `interface`
+// homónimas en el mismo módulo se fusionan en TypeScript (declaration
+// merging) en vez de dar error — bug real y previo a esta sesión, encontrado
+// al construir PlanEstadoAcueducto (035 T-002): el tipo fusionado exigía
+// campos de ambos significados a la vez. Se renombra este, el menos usado
+// (solo listarAcueductos, hoy sin ningún llamador), para no tocar los 4
+// archivos que ya dependen del otro `Acueducto`.
+export interface AcueductoPlataforma {
   id: string;
   nombre: string;
   slug: string;
   fecha_alta: string;
   adminEmail: string | null;
+  planId: string | null;
+  planNombre: string | null;
+  estadoCuenta: 'activa' | 'vencida' | 'suspendida' | 'cancelada';
 }
 
-export function listarAcueductos(): Promise<{ acueductos: Acueducto[] }> {
+export function listarAcueductos(): Promise<{ acueductos: AcueductoPlataforma[] }> {
   return peticion('/plataforma');
+}
+
+export interface CambioPlanEstado {
+  planId?: string;
+  estadoCuenta?: 'activa' | 'vencida' | 'suspendida' | 'cancelada';
+}
+
+export function cambiarPlanEstadoAcueducto(
+  clienteId: string,
+  cambios: CambioPlanEstado,
+): Promise<{ id: string; planId: string | null; estadoCuenta: string }> {
+  return peticion(`/plataforma/acueductos/${clienteId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(cambios),
+  });
+}
+
+export interface SaludSistema {
+  tamanoBaseMb: number;
+  nivel: 'ok' | 'atencion' | 'alerta' | 'critico';
+  medidoEn: string;
+  ultimoKeepalive: string | null;
+  ultimoBackup: { archivo: string; subidoEn: string } | null;
+}
+
+export function obtenerSaludSistema(): Promise<SaludSistema> {
+  return peticion('/plataforma/salud');
 }
 
 export interface DatosAltaAcueducto {
