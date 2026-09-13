@@ -240,9 +240,12 @@ factura por mensaje en Cloudflare Queues → un consumidor procesa en batches.
   la hidratación de React (carrera: el usuario envía antes de que el `onSubmit`
   se adjunte y el navegador hace un GET con el formulario como query string,
   ignorando el `preventDefault()`). Regla obligatoria al crear o editar un form.
-- **Knip (`npm run knip`, `backend/` y `frontend/`) corre en cada tarea que toque TypeScript** —
-  Claude y Mateo trabajan de la mano con esta herramienta, no solo al final: cada hallazgo real se
-  corrige antes de comitear, nunca se deja acumular. Antes de tocar cualquier hallazgo:
+- **Knip (`npm run knip`, `backend/` y `frontend/`) corre en cada commit que toque TypeScript, no
+  solo una vez al cerrar la feature completa.** Misma granularidad que build/lint/tests: "una tarea
+  = un commit" (CLAUDE.md §9) — Knip es evidencia de esa tarea, igual que las demás, en todo el
+  código del proyecto y en cada movimiento a partir de ahora. Claude y Mateo trabajan de la mano con
+  esta herramienta: cada hallazgo real se corrige antes de comitear, nunca se deja acumular para el
+  final. Antes de tocar cualquier hallazgo:
   - Un export sin ningún import externo real (verificado contra `src/`/`app/`/`components/`/`lib/`
     **y** `tests/`, no solo lo que reporta Knip) se achica quitando `export`, nunca se borra la
     declaración si algo la usa dentro de su propio archivo.
