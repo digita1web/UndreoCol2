@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { KpiCard } from '@/components/ui/kpi-card';
 
-export interface TendenciaMes {
+interface TendenciaMes {
   anio: number;
   mes: number; // 1..12
   total: number;

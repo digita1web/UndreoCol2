@@ -15,19 +15,19 @@
 // bug no existe (mismo host `localhost`, las cookies no distinguen puerto).
 const URL_BASE_API = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
-export interface SesionAdministrativa {
+interface SesionAdministrativa {
   tipo: 'administrativa';
   perfilId: string;
   email: string;
 }
 
-export interface Perfil {
+interface Perfil {
   id: string;
   nombre: string;
   email: string;
 }
 
-export interface Membresia {
+interface Membresia {
   id: string;
   cliente_id: string;
   rol: string;
@@ -262,7 +262,7 @@ export function matrizTarifas(): Promise<{ matriz: FilaMatrizTarifas[] }> {
 
 // --- Suscriptores y contadores (003-suscriptores-contadores) ---------------
 
-export type EstadoSuscriptor = 'activo' | 'suspendido' | 'cortado' | 'inactivo';
+type EstadoSuscriptor = 'activo' | 'suspendido' | 'cortado' | 'inactivo';
 
 export interface Suscriptor {
   id: string;
@@ -416,7 +416,7 @@ export interface Periodo {
   cerrado_por: string | null;
 }
 
-export type RevisionLectura = 'normal' | 'consumo_alto' | 'consumo_bajo' | 'consumo_cero';
+type RevisionLectura = 'normal' | 'consumo_alto' | 'consumo_bajo' | 'consumo_cero';
 
 export interface Lectura {
   id: string;
@@ -488,9 +488,9 @@ export function revisarLectura(id: string): Promise<{ lectura: Lectura }> {
 
 // --- Facturación (005-facturacion) -------------------------------------------
 
-export type TipoFactura = 'ciclo' | 'reconexion' | 'ajuste';
+type TipoFactura = 'ciclo' | 'reconexion' | 'ajuste';
 export type EstadoFactura = 'pendiente' | 'pagada' | 'vencida' | 'anulada';
-export type TipoAnomaliaFacturacion =
+type TipoAnomaliaFacturacion =
   | 'consumo_atipico' | 'usuario_sin_lectura' | 'sin_tarifa'
   | 'total_cero_o_negativo' | 'variacion_superior_20';
 
@@ -532,19 +532,19 @@ export interface DetalleFactura {
   subtotal: number;
 }
 
-export interface AnomaliaFacturacion {
+interface AnomaliaFacturacion {
   tipo: TipoAnomaliaFacturacion;
   usuarioServicioId: string;
   detalle: string;
 }
 
-export interface RenglonSimulado {
+interface RenglonSimulado {
   descripcion: string;
   consumoM3: number;
   subtotal: number;
 }
 
-export interface SuscriptorSimulado {
+interface SuscriptorSimulado {
   usuarioServicioId: string;
   codigoSuscriptor: string;
   nombre: string;
@@ -613,12 +613,12 @@ export function enviarCorreoPeriodo(
 
 export type MetodoPago = 'efectivo' | 'transferencia' | 'consignacion' | 'pse' | 'otro';
 
-export interface AplicacionPago {
+interface AplicacionPago {
   factura_id: string;
   valor: number;
 }
 
-export interface Pago {
+interface Pago {
   id: string;
   valor: number;
   metodo: MetodoPago;
@@ -629,7 +629,7 @@ export interface Pago {
   usuario_servicio_id: string;
 }
 
-export interface FacturaTrasPago {
+interface FacturaTrasPago {
   factura_id: string;
   total: number;
   total_pagado: number;
@@ -674,7 +674,7 @@ export function anularPago(pagoId: string, motivo: string): Promise<ResultadoAnu
   });
 }
 
-export interface FacturaVencidaMasAntigua {
+interface FacturaVencidaMasAntigua {
   numero: string;
   diasMora: number;
 }
