@@ -31,10 +31,18 @@ const nextConfig: NextConfig = {
           // suscriptor) a terceros al salir del sitio.
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           // El sistema no usa cámara, micrófono ni geolocalización en el panel.
-          // La PWA del lector (feature 015, QR+OCR) SÍ necesitará cámara: al
-          // implementarla habrá que exceptuar su ruta aquí.
+          // La PWA del lector (015, identificación por QR) SÍ necesita cámara —
+          // se exceptúa puntualmente su ruta abajo, sin abrirla en el resto.
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
         ],
+      },
+      {
+        // 015: solo "Nueva lectura" del lector necesita cámara para escanear el
+        // QR del contador. Next.js aplica la última clave que coincide para la
+        // misma ruta (docs oficiales) — las otras cuatro cabeceras de arriba
+        // siguen viniendo del bloque global, no se repiten acá.
+        source: '/app/lecturas',
+        headers: [{ key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' }],
       },
     ];
   },

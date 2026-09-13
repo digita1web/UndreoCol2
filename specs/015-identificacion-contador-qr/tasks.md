@@ -649,4 +649,20 @@ Más:
 - Que la etiqueta impresa en una impresora real, a tamaño real, siga siendo legible por una cámara
   de celular a la distancia habitual de trabajo.
 
-**Estado:** PENDIENTE — sin empezar todavía.
+**Estado:** COMPLETADO — implementado directamente por Claude (autorización expresa de Mateo, no
+pasó por Luna). Permiso de cámara agregado a `next.config.ts`, encabezado de
+`ESPECIFICACION-FUNCIONAL.md §2.14.1` corregido a "Feature 015" con nota de la división en dos
+specs. `.specify/config.md` (registro maestro del roadmap) actualizado: fila 015 refleja la
+división QR/OCR, y de paso se corrigió que la fila 019 (Sesión 053) seguía sin marcar como
+implementada. Verificación real: `npm run build`/`npm run lint` limpios en frontend; backend
+confirmado sin cambios (229/229 tests, `wrangler deploy --dry-run` limpio, `git diff --stat
+backend/` vacío). Cabeceras reales comparadas con una sesión de lector real contra `wrangler dev`
+(backend + frontend conectados por su service binding local): `/app/lecturas` responde
+`permissions-policy: camera=(self)…`, `/app/facturacion` con la misma sesión responde `camera=()`
+— confirma en la práctica el criterio de "última clave gana" de Next.js, no solo la documentación.
+Hallazgo propio durante la verificación: `wrangler dev` servía un build de OpenNext desactualizado
+(`npm run build` genera el de Next.js; `wrangler dev` sirve `.open-next/`, que solo genera `npm run
+pages:build`) — corregido antes de repetir la prueba. Datos de prueba (contraseña del fixture
+`lector-a@test.local`) sin filas nuevas que limpiar. Verificación con cámara real, worker de
+respaldo de `qr-scanner` bajo el bundler, y legibilidad de la etiqueta impresa: NO VERIFICADO,
+requiere Mateo con un celular real (este entorno no tiene cámara física ni Chromium/Playwright).

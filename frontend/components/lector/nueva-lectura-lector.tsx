@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useHidratado } from '@/lib/use-hidratado';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EscanerQrContador } from '@/components/lector/escaner-qr-contador';
 import { crearLectura, type Suscriptor } from '@/lib/api';
 
 interface NuevaLecturaLectorProps {
@@ -18,11 +19,27 @@ export function NuevaLecturaLector({ suscriptores, periodoAbiertoId, onCreada }:
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [escaneando, setEscaneando] = useState(false);
   const hidratado = useHidratado();
 
   const contadores = (suscriptores ?? [])
     .filter((s) => s.contador_actual_id)
     .map((s) => ({ id: s.contador_actual_id!, nombre: s.nombre, codigo: s.codigo_suscriptor }));
+
+  // 015: matching 100% client-side contra los datos que ya recibió esta
+  // pantalla — sin ninguna llamada nueva al backend. Si el QR escaneado no
+  // corresponde a ningún contador de este acueducto, se avisa sin romper la
+  // pantalla (CA-4 del spec) y el <select> manual sigue disponible.
+  function alDecodificarQr(texto: string) {
+    const match = contadores.find((c) => c.id === texto);
+    setEscaneando(false);
+    if (!match) {
+      setError('Este código no corresponde a ningún contador de tu acueducto.');
+      return;
+    }
+    setError(null);
+    setContadorSel(match.id);
+  }
 
   async function alGuardar(e: React.FormEvent) {
     e.preventDefault();
@@ -62,18 +79,31 @@ export function NuevaLecturaLector({ suscriptores, periodoAbiertoId, onCreada }:
       </CardHeader>
       <CardContent>
         <form className="flex flex-col gap-3" onSubmit={alGuardar}>
-          <select
-            className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-            value={contadorSel}
-            onChange={(e) => setContadorSel(e.target.value)}
-          >
-            <option value="">Elegí el suscriptor…</option>
-            {contadores.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre} ({c.codigo})
-              </option>
-            ))}
-          </select>
+          {escaneando ? (
+            <EscanerQrContador onDecodificado={alDecodificarQr} onCerrar={() => setEscaneando(false)} />
+          ) : (
+            <>
+              <select
+                className="h-11 rounded-md border border-border bg-background px-3 text-sm"
+                value={contadorSel}
+                onChange={(e) => setContadorSel(e.target.value)}
+              >
+                <option value="">Elegí el suscriptor…</option>
+                {contadores.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre} ({c.codigo})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="h-11 rounded-md border border-border text-sm font-medium hover:bg-muted"
+                onClick={() => setEscaneando(true)}
+              >
+                Escanear QR
+              </button>
+            </>
+          )}
           <input
             type="date"
             className="h-11 rounded-md border border-border bg-background px-3 text-sm"

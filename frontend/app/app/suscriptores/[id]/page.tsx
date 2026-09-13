@@ -6,6 +6,7 @@ import { ContadorForm } from '@/components/contador-form';
 import { ReemplazoContadorForm } from '@/components/reemplazo-contador-form';
 import { CorteForm } from '@/components/corte-form';
 import { ReconexionForm } from '@/components/reconexion-form';
+import { EtiquetaQrContador } from '@/components/etiqueta-qr-contador';
 import {
   historialCortes,
   matrizTarifas,
@@ -32,6 +33,7 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [rol, setRol] = useState<string | null>(null);
+  const [mostrarEtiqueta, setMostrarEtiqueta] = useState(false);
 
   function recargar() {
     setError(null);
@@ -99,7 +101,7 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
         </p>
       )}
 
-      <Card>
+      <Card className="print:hidden">
         <CardHeader>
           <CardTitle>Datos</CardTitle>
         </CardHeader>
@@ -118,7 +120,7 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="print:hidden">
         <CardHeader>
           <CardTitle>Corte y reconexión</CardTitle>
         </CardHeader>
@@ -135,7 +137,7 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="print:hidden">
         <CardHeader>
           <CardTitle>Historial de cortes y reconexiones</CardTitle>
         </CardHeader>
@@ -154,7 +156,7 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="print:hidden">
         <CardHeader>
           <CardTitle>Contador</CardTitle>
         </CardHeader>
@@ -169,6 +171,15 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
             <p className="text-sm text-muted-foreground">Sin contador instalado todavía.</p>
           )}
 
+          {contador && (
+            <button
+              className="h-9 w-fit rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
+              onClick={() => setMostrarEtiqueta((v) => !v)}
+            >
+              {mostrarEtiqueta ? 'Ocultar etiqueta QR' : 'Ver etiqueta QR'}
+            </button>
+          )}
+
           {contador ? (
             <ReemplazoContadorForm usuarioServicioId={id} onReemplazado={recargar} />
           ) : (
@@ -177,7 +188,9 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      <Card>
+      {contador && mostrarEtiqueta && <EtiquetaQrContador contador={contador} />}
+
+      <Card className="print:hidden">
         <CardHeader>
           <CardTitle>Historial de reemplazos</CardTitle>
         </CardHeader>

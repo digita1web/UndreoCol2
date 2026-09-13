@@ -424,11 +424,19 @@ lecturas tomadas. Idempotente: no duplica (`id_cliente_offline`).
 
 ---
 
-### 2.14.1 Identificación de contador por QR + lectura automática por OCR (Feature 014)
+### 2.14.1 Identificación de contador por QR + lectura automática por OCR (Feature 015)
 
 **Marcada como diferenciador tecnológico principal del producto.** Requiere
 máximo rigor de precisión y confiabilidad — ver la regla de confirmación
 humana obligatoria más abajo, que no es negociable.
+
+**Dividida en dos specs (decisión de Mateo, Sesión 054):** son dos problemas de riesgo muy
+distinto — escanear un QR es determinístico y con librerías maduras; el OCR sobre contadores
+mecánicos o sucios no tiene precisión garantizada. **La identificación por QR ya está
+implementada** (`specs/015-identificacion-contador-qr/`, ver CHANGELOG) — reemplaza el paso 1 del
+flujo objetivo de abajo. **La lectura automática por OCR (pasos 3-5 de ese flujo) sigue sin
+empezar**, queda para un spec posterior con su propio número. El resto de esta sección se conserva
+tal cual para cuando le llegue el turno al OCR.
 
 Reemplaza y detalla el paso "Escanea el código QR del contador" de §2.14: el
 escaneo del QR y la lectura automática del número del medidor ocurren **en la
@@ -457,30 +465,33 @@ muestra como sugerencia editable y el fontanero debe confirmarlo o
 corregirlo manualmente antes de que la lectura se registre. Ningún flujo de
 esta feature puede saltarse este paso, incluido el modo offline.
 
-**Dependencias — ya satisfechas, listas para cuando el roadmap llegue a 014:**
+**Dependencias — ya satisfechas:**
 `004-lecturas-y-consumo` está completa (CHANGELOG Sesión 011): el rol
 `lector` ya puede crear y ver lecturas de su propio acueducto por RLS
 (`supabase/migrations/20260904090000_lecturas-consumo.sql`). Precisión: la
 asignación de rutas/órdenes a un lector específico (CLAUDE.md §10 punto 24,
 "ejecuta órdenes asignadas a él") **no existe todavía** como feature propia
 — hoy el lector ve las lecturas de todo su acueducto, no solo las de una
-ruta asignada. Esto no bloquea 014, que solo necesita que el flujo de
+ruta asignada. Esto no bloquea 015, que solo necesita que el flujo de
 captura de una lectura individual ya exista. Esta feature reutiliza la
 lógica de lecturas existente sin cambiarla; no depende de ninguna feature
 posterior del roadmap.
 
-**Tecnología recomendada** (a validar formalmente en `/plan` cuando se
-implemente esta feature — esta sección es referencia, no una decisión
-tomada):
+**Tecnología recomendada para el OCR pendiente** (a validar formalmente en el `/plan` de su propio
+spec — esta sección sigue siendo referencia, no una decisión tomada):
 - **Tesseract.js** (Apache 2.0) para OCR en el navegador, sin dependencias
   nativas — compatible con la regla de licencias de `CLAUDE.md §2`.
-- Una librería de escaneo QR web compatible, corriendo en paralelo sobre el
-  mismo stream de cámara que Tesseract.js.
 
-**Fuera de alcance de esta sección:** la implementación real. Esta es
-documentación de referencia para cuando el roadmap llegue a la feature 014
-(`.specify/config.md`); no se escribe código de esta feature hasta que pase
-por su propio `/specify` → `/plan` → `/tasks` → `/implement`.
+**Tecnología real de la parte de QR ya implementada** (`specs/015-identificacion-contador-qr/`):
+`qr-scanner` (MIT) para escanear — usa la API nativa `BarcodeDetector` del navegador cuando está
+disponible, con `jsQR` como respaldo — y `qrcode` (MIT) para generar la etiqueta, con
+`errorCorrectionLevel: 'H'`. Ambas decisiones documentadas con fuente en ese spec/plan (regla de
+CLAUDE.md §3: ninguna decisión de implementación se inventa).
+
+**Fuera de alcance de esta sección:** la implementación real del OCR. Esta sigue siendo
+documentación de referencia para cuando el roadmap llegue a esa parte de la feature 015; no se
+escribe código de OCR hasta que pase por su propio `/specify` → `/plan` → `/tasks` →
+`/implement`.
 
 ---
 

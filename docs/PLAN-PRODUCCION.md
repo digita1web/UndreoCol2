@@ -397,7 +397,7 @@ No todo fue hallazgos. Verificado con evidencia, no supuesto:
 
 ---
 
-## Estado general — qué queda pendiente (actualizado 2026-09-12, Sesión 052)
+## Estado general — qué queda pendiente (actualizado 2026-09-13, Sesión 054)
 
 Consolidado de todo lo abierto a esta fecha, para no tener que reconstruirlo de memoria en la
 próxima sesión. Cada punto tiene su detalle completo en el hallazgo, spec o entrada de CHANGELOG
@@ -433,6 +433,21 @@ redirects — Supabase Auth la rechazaba en silencio y caía al `site_url` por d
 usaba `127.0.0.1` mientras el resto del proyecto usa `localhost`, inconsistencia previa a esta
 sesión). Los dos corregidos y reverificados contra el enlace real del correo, no contra una
 suposición de cómo debía verse.
+
+**Sesión 053:** feature 019 (invitar admin de acueducto por correo) — reemplaza la contraseña
+temporal de 018 por una invitación real, reutilizando `resetPasswordForEmail` +
+`/restablecer-contrasena` (033/034). Bug real encontrado en la auditoría: Luna reescribió el cuerpo
+de `recovery.html` pero no el asunto del correo (vive aparte en `config.toml`), corregido y
+reverificado con un correo real. Ver CHANGELOG para el detalle completo.
+
+**Sesión 054:** feature 015, mitad QR (dividida de OCR por decisión de Mateo) — botón "Escanear QR"
+en "Nueva lectura" y "Ver etiqueta QR" en la ficha del suscriptor, cero backend nuevo. A pedido de
+Mateo, esta sesión agregó una regla nueva a CLAUDE.md §3: ninguna decisión de implementación se
+inventa, se investiga primero contra prácticas de la comunidad (aplicada acá:
+`BarcodeDetector` nativo + corrección de errores nivel H). De paso se corrigieron dos desvíos de
+documentación encontrados al escribir el spec: `ESPECIFICACION-FUNCIONAL.md §2.14.1` decía
+"Feature 014" (el registro maestro `.specify/config.md` confirma que siempre fue 015), y ese mismo
+registro maestro no reflejaba la 019 (Sesión 053) como implementada.
 
 ### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
 
@@ -481,8 +496,14 @@ del prototipo.
   `resetPasswordForEmail` + `/restablecer-contrasena` (033/034). Verificado de punta a punta contra
   `wrangler dev` + Mailpit reales — ver CHANGELOG, Sesión 053, para el detalle y el bug real
   encontrado (asunto del correo desactualizado en `config.toml`, corregido).
-- **Feature 015 (QR + OCR del contador)** — diferenciador tecnológico principal del roadmap
-  original, marcado "requiere máximo rigor de precisión", sin empezar.
+- **Feature 015 — identificación por QR implementada (Sesión 054); OCR sigue sin empezar.**
+  Dividida en dos specs (decisión de Mateo): `specs/015-identificacion-contador-qr/` agrega un
+  botón "Escanear QR" en "Nueva lectura" (`qr-scanner`, `BarcodeDetector` nativo con respaldo) y un
+  botón "Ver etiqueta QR" en la ficha del suscriptor (`qrcode`, corrección de errores nivel H) — cero
+  cambios de backend/esquema, el `<select>` manual nunca se eliminó. Verificado con cabeceras reales
+  (`camera=(self)` solo en `/app/lecturas`) contra sesión de lector real — ver CHANGELOG Sesión 054.
+  El OCR (diferenciador tecnológico principal del roadmap original, "requiere máximo rigor de
+  precisión") sigue sin empezar, spec propio cuando se retome.
 - **Asignación de rutas/zonas al lector** (`ESPECIFICACION-FUNCIONAL.md §2.14.1`) — dejada fuera de
   024 y 025 a propósito ("no existe como feature todavía"), sigue sin empezar.
 

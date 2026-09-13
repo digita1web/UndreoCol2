@@ -4,6 +4,55 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-13 — Sesión 054: feature 015, identificación de contador por QR
+
+Primera mitad de la Feature 015 del roadmap ("QR + OCR", `ESPECIFICACION-FUNCIONAL.md §2.14.1`),
+dividida en dos specs por decisión de Mateo: escanear un QR es determinístico y con librerías
+maduras, el OCR sobre contadores mecánicos o sucios no tiene precisión garantizada. Esta sesión
+cierra **solo** la parte de QR — el OCR queda para un spec futuro. Implementada directamente por
+Claude (autorización expresa de Mateo, sin pasar por Luna).
+
+**Investigación de la comunidad antes de aprobar el spec (nueva regla de CLAUDE.md §3, agregada
+esta misma sesión a pedido de Mateo):** `BarcodeDetector` nativo del navegador (Chrome/Android
+delega en el sistema operativo, mucho menos batería que decodificar QR en JavaScript puro) preferido
+sobre una librería propia; corrección de errores nivel H (~30% de daño tolerado) al generar la
+etiqueta — recomendación específica de la comunidad para etiquetas industriales sucias, rayadas o a
+la intemperie, exactamente el caso real de un contador de agua.
+
+**Implementado:** `EtiquetaQrContador` (`qrcode`, MIT) — botón "Ver etiqueta QR" en la ficha del
+suscriptor, codifica el `id` del contador (nunca el `serial`, que solo es único dentro de un mismo
+acueducto) con `errorCorrectionLevel: 'H'`; se imprime con `Ctrl+P` (mismo patrón que las facturas,
+D-8) sin generar ningún PDF. `EscanerQrContador` (`qr-scanner`, MIT — ya trae el criterio de
+"nativo primero, `jsQR` de respaldo" incorporado) — botón "Escanear QR" en "Nueva lectura" de
+AquaLectura; el matching contra el contador ocurre 100% del lado del cliente, contra los datos que
+esa pantalla ya carga, sin ninguna llamada nueva al backend. El `<select>` manual nunca se elimina.
+Permiso de cámara habilitado solo en `/app/lecturas` (`next.config.ts`, segundo bloque de
+`headers()`) — el resto del panel sigue sin acceso a cámara.
+
+**Corrección de documentación:** `ESPECIFICACION-FUNCIONAL.md §2.14.1` titulaba esta sección
+"Feature 014" (dos veces) — el registro maestro del roadmap (`.specify/config.md`) confirma que el
+número correcto siempre fue **015**; corregido, con nota de la división en dos specs. De paso se
+encontró que `.specify/config.md` no reflejaba la 019 (Sesión 053) como implementada — corregido
+también.
+
+**Verificado con evidencia real, no solo con build/lint:** `npm run build`/`npm run lint` limpios en
+frontend; backend confirmado sin cambios (`git diff --stat backend/` vacío) y sus 229/229 tests +
+`wrangler deploy --dry-run` siguen en verde. Cabeceras reales comparadas con sesión de lector real
+contra `wrangler dev` (backend y frontend conectados por su service binding local): `/app/lecturas`
+responde `permissions-policy: camera=(self)…`, `/app/facturacion` con la misma sesión responde
+`camera=()` — confirma que el criterio de "última clave gana" de Next.js funciona en la práctica,
+no solo según la documentación, y que las demás cabeceras de seguridad (`x-frame-options: DENY`,
+etc.) siguen presentes en ambas rutas. Hallazgo propio durante la verificación: `wrangler dev` del
+frontend estaba sirviendo un build de OpenNext desactualizado (`npm run build` genera el build de
+Next.js, pero `wrangler dev` sirve `.open-next/`, que solo genera `npm run pages:build` —
+corregido antes de repetir la prueba de cabeceras).
+
+**NO VERIFICADO — requiere Mateo, este entorno no tiene cámara física ni Chromium/Playwright:**
+escanear con un celular Android real la etiqueta impresa de un contador de prueba; que el worker de
+respaldo de `qr-scanner` cargue bien bajo el bundler de `@opennextjs/cloudflare` sin configurar
+`WORKER_PATH` a mano; legibilidad de la etiqueta impresa a tamaño real, a la distancia habitual de
+trabajo.
+
 ### 2026-09-13 — Sesión 053: feature 019, invitar admin de acueducto por correo
 
 Reemplaza la contraseña temporal de 018 (se mostraba una sola vez en `/plataforma` para que el
