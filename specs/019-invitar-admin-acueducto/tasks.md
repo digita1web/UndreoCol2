@@ -980,4 +980,18 @@ crea credenciales):
 `recovery.html` en la plantilla del dashboard de Supabase de **producción** — `config.toml` solo
 gobierna el entorno local. Un clic de Mateo, no código.
 
-**Estado:** PENDIENTE — sin empezar todavía.
+**Estado:** COMPLETADO — auditoría real encontró un bug que build/lint/tests con mocks no
+detectaban: Luna reescribió el cuerpo de `recovery.html` pero no el asunto del correo, que vive
+aparte en `supabase/config.toml` (`[auth.email.template.recovery] subject`) — el correo real
+llegaba con el cuerpo nuevo y el asunto viejo ("Restablecer tu contraseña..."), sin sentido para un
+admin recién creado. Corregido (`subject = "Definí tu contraseña de UndreoCol"`); requirió
+`supabase stop`+`start` para que GoTrue recargara la plantilla — datos locales confirmados intactos
+antes y después (mismo conteo de `auth.users`/`clientes`). Verificado de punta a punta contra
+`wrangler dev` + Mailpit reales: login como superadmin de prueba → alta de un acueducto y admin de
+prueba → `201` sin ninguna contraseña en la respuesta (CA-1) → correo real con asunto y cuerpo ya
+corregidos (CA-5) → enlace real seguido con `curl` contra `verify` de GoTrue → tokens reales →
+`POST /auth/completar-recuperacion` → `200` → login con la contraseña recién definida → `200`
+(CA-2). Datos de prueba borrados al cerrar. 229/229 tests, `build`/`lint`/`wrangler deploy
+--dry-run` limpios en ambos proyectos, `grep` confirma cero uso de `service_role` en las rutas
+nuevas. Verificación visual en navegador real y réplica de la plantilla en el dashboard de
+producción quedan pendientes de Mateo.
