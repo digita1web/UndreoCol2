@@ -1,6 +1,6 @@
 # SPEC — 036: ocr-lectura-contador
 
-**Estado:** Borrador para aprobación
+**Estado:** Aprobado (2026-09-14) — implementado Sesión 056
 **Depende de:** 004-lecturas-y-consumo, 025-app-lector-movil, 015-identificacion-contador-qr
 
 **Nota de alcance:** segunda mitad de la Feature 015 del roadmap original ("QR + OCR",

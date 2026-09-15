@@ -346,7 +346,11 @@ Más, verificación manual real (no alcanza con build/lint para una feature de c
    % dado el estado del arte sin modelo propio — es para que quede registrado qué tan útil es en la
    práctica).
 
-**NO VERIFICADO — requiere Mateo:** una foto real de un contador de agua real, en un celular
-Android real (este entorno no tiene cámara física ni Chromium/Playwright).
+**NO VERIFICADO — requiere Mateo:** CA-1, CA-2 y CA-4 en un navegador real (este entorno no tiene
+cámara física ni Chromium/Playwright) y una foto real de un contador de agua real, en un celular
+Android real.
 
-**Estado:** PENDIENTE — sin empezar todavía.
+**Estado:** HECHO — Sesión 056. T-001 implementado directamente por Claude (autorización expresa de
+Mateo, no pasó por Luna esta vez). T-002 cerrado: build/lint/knip/tests/dry-run en verde, CA-3/CA-5/
+CA-6 verificados (código + grep), `docs/ESPECIFICACION-FUNCIONAL.md` y `CHANGELOG.md` actualizados.
+CA-1/CA-2/CA-4 y la prueba con foto real quedan NO VERIFICADOS arriba, pendientes de Mateo.

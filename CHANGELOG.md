@@ -4,6 +4,55 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-14 — Sesión 056: feature 036 (OCR de lectura, mejor esfuerzo v1) + limpieza de 2 exports muertos de 035
+
+Dos piezas, ambas implementadas directamente por Claude (autorización expresa de Mateo, sin pasar
+por Luna esta vez).
+
+**Limpieza:** `listarAcueductos` y `obtenerSaludSistema` (`frontend/lib/api.ts`), reportados por
+Knip desde la Sesión 055, quedaban huérfanos no por una pantalla faltante sino por duplicación real:
+`app/plataforma/page.tsx` (Server Component) ya llama a `GET /plataforma` y `GET /plataforma/salud`
+con `fetch()` propio, porque `peticion()` usa `credentials: 'include'` (solo sirve desde el
+navegador) y la página necesita reenviar la cookie a mano + `redirect()`. Se borraron las dos
+funciones; los tipos `AcueductoPlataforma`/`SaludSistema` se mantienen (los usa
+`PlanEstadoAcueducto` y la propia página). Los otros 2 hallazgos de Knip (`actualizarSuscriptor`/
+`DatosActualizarSuscriptor`) sí corresponden a una pantalla real sin construir ("editar suscriptor"
+en `app/app/suscriptores/[id]/page.tsx`) — quedan como están, pendientes de spec, por CLAUDE.md §7.
+
+**Feature 036:** agrega el botón "Sugerir lectura con foto" en `NuevaLecturaLector` — toma una foto
+con la cámara nativa (`<input type="file" capture="environment">`, sin `getUserMedia` propio), la
+preprocesa a escala de grises en Canvas y corre `tesseract.js` 7.0.0 (Apache-2.0) restringido a
+dígitos (`tessedit_char_whitelist`), con una limpieza adicional por regex como red de seguridad
+(la investigación de `/specify` encontró que el whitelist no siempre se respeta igual de estricto
+según el motor). El resultado pre-llena el mismo `<input>` de lectura de siempre — nunca un campo
+aparte, nunca un guardado automático (regla no negociable de 015, se mantiene igual). Sin resultado,
+el campo queda vacío sin ningún mensaje de error. Cero cambios de backend, confirmado con
+`wrangler deploy --dry-run` y grep del código nuevo.
+
+Es "mejor esfuerzo" honesto, no de alta precisión — decisión de Mateo tomada en `/specify` con
+investigación de por medio (`specs/036-ocr-lectura-contador/spec.md` §2): entrenar un modelo propio
+de Tesseract exige un dataset de fotos reales de contadores que no existe todavía (`undreocol-
+producción` sigue vacía). También se descartó correr QR y OCR simultáneos sobre el mismo video en
+vivo (Tesseract.js puede tardar ~30s por imagen) y TensorFlow.js con un clasificador de dígitos
+estilo MNIST (no resuelve solo el recorte/segmentado de la fila de dígitos del contador, que es el
+problema difícil real). `docs/ESPECIFICACION-FUNCIONAL.md §2.14.1` actualizado: OCR pasa de "sin
+empezar" a implementado v1, y se corrige el flujo objetivo original (QR+OCR ya no se describen como
+simultáneos en una sola captura).
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos; `npm test`
+(235 tests)/`build`/`lint`/`wrangler deploy --dry-run` en backend, todos en verde, confirmando cero
+impacto en backend. `grep` confirma cero llamadas a `peticion()`/`fetch()` en el código nuevo
+(CA-6). CA-3 y CA-5 verificados por inspección de código (el nuevo componente solo llama a
+`setLecturaActual`, nunca a `crearLectura` directamente; el aviso de higiene se renderiza sin
+condición, antes de cualquier interacción que dispare la cámara).
+
+**NO VERIFICADO — requiere Mateo:** este entorno no tiene cámara física ni Chromium/Playwright, así
+que CA-1, CA-2 y CA-4 (que el OCR realmente sugiera un valor con una foto de dígitos claros, que se
+pueda corregir y guarde el valor corregido, y que una foto sin números deje el campo vacío) no se
+probaron en un navegador real. Falta también la prueba con una foto real de un contador de agua
+(spec §8, no es criterio de aceptación de precisión, es para registrar qué tan útil es en la
+práctica).
+
 ### 2026-09-13 — Sesión 055: feature 035, planes/estado de cuenta y salud del sistema en /plataforma
 
 Completa los dos únicos módulos del mapa de `/plataforma` que seguían "sin empezar" desde 033: que

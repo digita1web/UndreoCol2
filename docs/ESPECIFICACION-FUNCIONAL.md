@@ -424,7 +424,7 @@ lecturas tomadas. Idempotente: no duplica (`id_cliente_offline`).
 
 ---
 
-### 2.14.1 Identificación de contador por QR + lectura automática por OCR (Feature 015)
+### 2.14.1 Identificación de contador por QR (Feature 015) + sugerencia de lectura por OCR (Feature 036)
 
 **Marcada como diferenciador tecnológico principal del producto.** Requiere
 máximo rigor de precisión y confiabilidad — ver la regla de confirmación
@@ -432,27 +432,32 @@ humana obligatoria más abajo, que no es negociable.
 
 **Dividida en dos specs (decisión de Mateo, Sesión 054):** son dos problemas de riesgo muy
 distinto — escanear un QR es determinístico y con librerías maduras; el OCR sobre contadores
-mecánicos o sucios no tiene precisión garantizada. **La identificación por QR ya está
-implementada** (`specs/015-identificacion-contador-qr/`, ver CHANGELOG) — reemplaza el paso 1 del
-flujo objetivo de abajo. **La lectura automática por OCR (pasos 3-5 de ese flujo) sigue sin
-empezar**, queda para un spec posterior con su propio número. El resto de esta sección se conserva
-tal cual para cuando le llegue el turno al OCR.
+mecánicos o sucios no tiene precisión garantizada. **Las dos partes ya están implementadas:**
+identificación por QR (`specs/015-identificacion-contador-qr/`) y sugerencia de lectura por OCR
+(`specs/036-ocr-lectura-contador/`, **mejor esfuerzo v1**, sin modelo propio entrenado — ver más
+abajo). Ambas viven hoy en `NuevaLecturaLector`
+(`frontend/components/lector/nueva-lectura-lector.tsx`).
 
-Reemplaza y detalla el paso "Escanea el código QR del contador" de §2.14: el
-escaneo del QR y la lectura automática del número del medidor ocurren **en la
-misma captura**, no en dos pasos separados.
+**El flujo objetivo original de abajo tenía un paso incorrecto, corregido durante `/specify` de 036
+con evidencia (no solo pospuesto):** QR y OCR **nunca corren sobre el mismo video en vivo, frame a
+frame** — Tesseract.js puede tardar hasta ~30 segundos por imagen, inviable sobre un stream a
+30-60 cuadros por segundo. Son y quedan dos pasos técnicamente separados dentro del mismo flujo de
+"Nueva lectura": QR sobre video en vivo (`EscanerQrContador`, 015), OCR sobre una foto fija ya
+capturada vía `<input type="file" capture="environment">` (`SugerirLecturaFoto`, 036) — nunca
+simultáneos. El paso 4 de abajo queda corregido en ese sentido.
 
-**Flujo objetivo:**
+**Flujo real implementado:**
 
 ```
 1. Cada contador tiene un QR físico único pegado en el medidor
-2. El fontanero (rol Lector) abre la cámara del celular desde la PWA/app
-3. Antes de escanear, se muestra un aviso:
-   "Limpia el visor del contador antes de escanear para mejor precisión"
-4. El sistema detecta, EN LA MISMA CAPTURA y de forma simultánea:
-   - el QR → identifica el contador
-   - el número del medidor → OCR
-5. El número leído por OCR se muestra como SUGERENCIA EDITABLE
+2. El fontanero (rol Lector) abre "Nueva lectura" en AquaLectura
+3. Antes de escanear o fotografiar, se muestra un aviso:
+   "Limpiá el visor del contador antes de escanear/fotografiar para mejor precisión"
+4. El fontanero identifica el contador (QR, video en vivo) y, en un paso
+   aparte dentro del mismo flujo, puede pedir una sugerencia de lectura a
+   partir de una foto fija (OCR) — no son simultáneos
+5. El número leído por OCR se muestra como SUGERENCIA EDITABLE en el mismo
+   campo de lectura de siempre — nunca en un campo aparte de solo lectura
 6. Al confirmar, se registra la Lectura normalmente (reutiliza toda la
    lógica ya construida en 004-lecturas-y-consumo — validación de rollover,
    detección de anomalías, bloqueos de duplicado/orden cronológico, etc.)
@@ -472,26 +477,24 @@ esta feature puede saltarse este paso, incluido el modo offline.
 asignación de rutas/órdenes a un lector específico (CLAUDE.md §10 punto 24,
 "ejecuta órdenes asignadas a él") **no existe todavía** como feature propia
 — hoy el lector ve las lecturas de todo su acueducto, no solo las de una
-ruta asignada. Esto no bloquea 015, que solo necesita que el flujo de
-captura de una lectura individual ya exista. Esta feature reutiliza la
-lógica de lecturas existente sin cambiarla; no depende de ninguna feature
-posterior del roadmap.
+ruta asignada. Esto no bloqueó 015 ni 036, que solo necesitaban que el flujo
+de captura de una lectura individual ya existiera.
 
-**Tecnología recomendada para el OCR pendiente** (a validar formalmente en el `/plan` de su propio
-spec — esta sección sigue siendo referencia, no una decisión tomada):
-- **Tesseract.js** (Apache 2.0) para OCR en el navegador, sin dependencias
-  nativas — compatible con la regla de licencias de `CLAUDE.md §2`.
-
-**Tecnología real de la parte de QR ya implementada** (`specs/015-identificacion-contador-qr/`):
+**Tecnología real del QR** (`specs/015-identificacion-contador-qr/`):
 `qr-scanner` (MIT) para escanear — usa la API nativa `BarcodeDetector` del navegador cuando está
 disponible, con `jsQR` como respaldo — y `qrcode` (MIT) para generar la etiqueta, con
-`errorCorrectionLevel: 'H'`. Ambas decisiones documentadas con fuente en ese spec/plan (regla de
-CLAUDE.md §3: ninguna decisión de implementación se inventa).
+`errorCorrectionLevel: 'H'`.
 
-**Fuera de alcance de esta sección:** la implementación real del OCR. Esta sigue siendo
-documentación de referencia para cuando el roadmap llegue a esa parte de la feature 015; no se
-escribe código de OCR hasta que pase por su propio `/specify` → `/plan` → `/tasks` →
-`/implement`.
+**Tecnología real del OCR** (`specs/036-ocr-lectura-contador/`): `tesseract.js` 7.0.0 (Apache-2.0),
+restringido a dígitos (`tessedit_char_whitelist`), sobre una foto preprocesada a escala de grises
+en Canvas nativo — corre entero en el navegador del fontanero, ninguna foto se envía al backend.
+**Es "mejor esfuerzo" honesto, no de alta precisión:** la comunidad de Tesseract reporta que sin
+entrenar un set de caracteres propio con fotos reales de contadores mecánicos, la precisión de
+fábrica es baja — de ahí que la confirmación humana de arriba sea no negociable, no una
+protección de más. Entrenar un modelo propio queda **fuera de alcance** hasta que exista
+producción real con fotos de contadores para armar ese dataset (`specs/036-ocr-lectura-contador/spec.md`
+§2, §4 — fuentes documentadas ahí). Ambas decisiones (QR y OCR) documentadas con fuente en su
+spec/plan respectivo (regla de CLAUDE.md §3: ninguna decisión de implementación se inventa).
 
 ---
 
