@@ -532,8 +532,10 @@ del prototipo.
   políticas RLS y guardas de funciones verificadas contra PostgreSQL real; `secretaria` puede hacer
   la operación administrativa permitida y registrar pagos, pero no puede ver indicadores ni anular,
   ejecutar cortes/reconexiones, cambiar tarifas o configuración. Test `015` en verde y regresión de
-  `admin_acueducto` en verde. Pendiente únicamente la integración HTTP contra Workers y la inspección
-  visual en navegador real.
+  `admin_acueducto` en verde. **Corrección (Sesión 056): la nota "pendiente integración HTTP" estaba
+  vieja** — Sesión 046 ya la verificó contra producción real (`GET /salud` → 200, `GET /login` → 200
+  con el bundle desplegado conteniendo `es_staff_de`/`autorizaciones_tarifa`, ver CHANGELOG). Solo
+  sigue pendiente la inspección visual en un navegador real (misma categoría que 023/025/026/027).
 - **Autorización temporal de tarifas para `secretaria` — implementada en 029:** `admin_acueducto`
   autoriza servicio+categoría con motivo y expiración; la autorización es de un solo uso, revocable
   y queda en bitácora inmutable. Suite SQL 016 en verde. El superadmin conserva permisos globales
