@@ -84,7 +84,25 @@ comment on function usuarios_servicio_lector is
 revoke execute on function usuarios_servicio_lector(uuid, text) from anon, public;
 grant execute on function usuarios_servicio_lector(uuid, text) to authenticated;
 
--- lecturas_lectura (004) gana el mismo filtro, vía join a contadores/usuarios_servicio.
+-- Contadores de un cliente cuyo suscriptor está en uno de mis sectores
+-- asignados. SECURITY DEFINER — necesario porque `lector` NO tiene ningún
+-- SELECT directo sobre usuarios_servicio (024 le dejó solo la función
+-- usuarios_servicio_lector()); un join directo a usuarios_servicio dentro de
+-- la política de lecturas_lectura (como venía escrito en el plan original)
+-- se evalúa con los privilegios de quien consulta — para un lector eso da
+-- siempre 0 filas por la propia RLS de usuarios_servicio_escritura, sin
+-- importar el sector. Bug real, encontrado corriendo el test de aislamiento
+-- contra Postgres real (905, PASO 2), no visible leyendo el SQL.
+create or replace function mis_contadores_por_sector(p_cliente_id uuid)
+returns table (contador_id uuid)
+language sql stable security definer set search_path = public as $$
+  select c.id from contadores c
+  join usuarios_servicio u on u.id = c.usuario_servicio_id
+  where c.cliente_id = p_cliente_id
+    and u.sector in (select sector from mis_sectores_asignados(p_cliente_id));
+$$;
+
+-- lecturas_lectura (004) gana el mismo filtro, vía mis_contadores_por_sector().
 drop policy lecturas_lectura on lecturas;
 create policy lecturas_lectura on lecturas for select
   using (
@@ -93,12 +111,7 @@ create policy lecturas_lectura on lecturas for select
       cliente_id in (select mis_clientes())
       and (
         not exists (select 1 from mis_sectores_asignados(lecturas.cliente_id))
-        or contador_id in (
-          select c.id from contadores c
-          join usuarios_servicio u on u.id = c.usuario_servicio_id
-          where c.cliente_id = lecturas.cliente_id
-            and u.sector in (select sector from mis_sectores_asignados(lecturas.cliente_id))
-        )
+        or contador_id in (select contador_id from mis_contadores_por_sector(lecturas.cliente_id))
       )
     )
   );
