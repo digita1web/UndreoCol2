@@ -422,9 +422,15 @@ Sincroniza al recuperar señal
 Funciona **sin señal** (offline-first). Al recuperar conexión, sincroniza las
 lecturas tomadas. Idempotente: no duplica (`id_cliente_offline`).
 
-**Estado real de este flujo (Sesión 056):** "Ve su ruta asignada" sigue sin construirse (037,
-specs/plan/tasks aprobados, implementación pendiente) — hoy el lector ve todos los suscriptores de
-su acueducto. QR (015) y la sugerencia de lectura por foto/OCR (036, mejor esfuerzo v1) están
+**Estado real de este flujo (Sesión 056):** "Ve su ruta asignada" **ya está implementado** (037,
+`specs/037-rutas-zonas-lector/`) — reutiliza la columna `sector` de `usuarios_servicio` (003), ya
+cargable a mano o por importación de Excel, en vez de un concepto de "ruta" geográfica nuevo (mismo
+patrón que la industria llama "Territory-based Permission", Zoho FSM/Salesforce Field Service,
+fuentes en el spec §2). Un `admin_acueducto` asigna sectores a cada lector desde `/app/lectores`; un
+lector sin ningún sector asignado sigue viendo todo el acueducto (retrocompatible). El filtrado es
+real en el backend/RLS, no solo en lo que muestra la pantalla — verificado de punta a punta contra
+`wrangler dev` y Postgres reales, con un bug real encontrado y corregido en el camino (ver
+CHANGELOG). QR (015) y la sugerencia de lectura por foto/OCR (036, mejor esfuerzo v1) también están
 implementados. **El guardado sin señal e idempotente ya es real** (`specs/038-offline-lecturas-lector/`):
 la lectura se guarda en una cola local (IndexedDB) del navegador y se sube sola al recuperar
 conexión, reutilizando el `id_cliente_offline` que ya deduplicaba del lado del servidor desde 004

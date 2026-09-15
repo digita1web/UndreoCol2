@@ -1,6 +1,6 @@
 # SPEC — 037: rutas-zonas-lector
 
-**Estado:** Borrador para aprobación
+**Estado:** Aprobado (2026-09-14) — implementado y verificado Sesión 056
 **Depende de:** 003-suscriptores-contadores (columna `sector`), 024-permisos-lector,
 025-app-lector-movil
 

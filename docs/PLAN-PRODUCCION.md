@@ -476,6 +476,18 @@ entorno no tenía Chromium. Los "Verificación en navegador real — pendiente d
 de abajo deberían revisarse con esto en mente la próxima vez que se retomen, en vez de asumir que
 siguen bloqueados. Detalle completo, metodología y resultado de cada CA en el CHANGELOG.
 
+**Sesión 056 (continuación, 2026-09-15):** feature 037 (rutas/zonas del lector) — cierra el último
+feature grande pendiente del roadmap del lector, implementada directamente por Claude (autorización
+expresa). **Bug real encontrado y corregido, solo visible corriendo el test de aislamiento contra
+Postgres real:** la política `lecturas_lectura` del plan aprobado hacía un `join` directo a
+`usuarios_servicio` dentro de su propia RLS — pero un `lector` no tiene ningún `SELECT` propio sobre
+esa tabla (024), así que el filtro daba 0 filas siempre. Corregido con una función `SECURITY
+DEFINER` nueva. Verificado en dos niveles reales: el test de aislamiento SQL propio (905, 9 pasos)
+contra Postgres local, y `curl` real contra `wrangler dev` con usuarios reales de Supabase Auth
+local (login real, `GET /dashboard`/`GET /lecturas` confirmando el filtro de punta a punta, no
+solo en SQL simulado). Con esto, el roadmap del rol lector queda completo: QR + OCR + offline +
+rutas/zonas, los cuatro implementados. Detalle completo en el CHANGELOG.
+
 ### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
 
 - **B-5 · `postcss` (frontend, cambio mayor `next@16`) y el árbol de `wrangler` en backend
@@ -550,12 +562,21 @@ del prototipo.
   generara. Verificado con Playwright + Chromium real (Sesión 056): guardar sin conexión no la
   pierde, sube sola al reconectar, sobrevive a un reinicio de página, un rechazo real no reintenta
   en bucle. Pendiente de Mateo: prueba de campo con corte de señal genuino en un celular real.
-- **Asignación de rutas/zonas al lector (037)** — dejada fuera de 024 y 025 a propósito ("no existe
-  como feature todavía"). `specs/037-rutas-zonas-lector/` tiene spec+plan+tasks aprobados desde
-  antes de esta sesión; **implementación sin empezar** (cero migración, cero función SQL, cero ruta
-  backend). Es el único feature grande del roadmap del lector que sigue sin arrancar — se priorizó
-  038 primero porque resuelve un problema de escala (varios lectores con zonas distintas) que no
-  existe con cero clientes en producción, mientras que el offline resuelve un problema de día uno.
+- **Asignación de rutas/zonas al lector — implementado (037, Sesión 056).** Reutiliza `sector` de
+  `usuarios_servicio` (003) — patrón "Territory-based Permission" ya establecido en la industria
+  (Zoho FSM, Salesforce Field Service), no una simplificación propia (fuentes en spec §2). Tabla
+  `lector_sectores` + función `mis_sectores_asignados()`; `usuarios_servicio_lector()` (024) y
+  `lecturas_lectura` (004) filtran por sector; sin ninguna asignación, un lector sigue viendo todo
+  (retrocompatible). Pantalla `/app/lectores` para que `admin_acueducto` asigne/quite sectores;
+  "Zona actual" real en Inicio de AquaLectura. **Bug real encontrado y corregido en el camino:** la
+  política de `lecturas_lectura` del plan original hacía un `join` directo a `usuarios_servicio`
+  dentro de su propia RLS, pero un `lector` no tiene ningún `SELECT` propio sobre esa tabla (024) —
+  el filtro daba 0 filas siempre. Corregido con una función `SECURITY DEFINER` nueva
+  (`mis_contadores_por_sector()`), mismo patrón que las funciones equivalentes ya existentes. Con
+  este feature, **el roadmap grande del rol lector queda completo**: QR (015), OCR (036), offline
+  (038) y rutas/zonas (037) — los cuatro implementados y verificados con evidencia real. Detalle
+  completo, incluida la verificación de punta a punta contra `wrangler dev` + Supabase Auth local
+  reales, en el CHANGELOG.
 
 ### Panel maestro (`/plataforma`) — mapa de módulos
 

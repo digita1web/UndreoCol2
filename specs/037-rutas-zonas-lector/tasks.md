@@ -687,16 +687,39 @@ cd frontend && npm run build && npm run lint && npm run knip
 ```
 
 Más, contra Postgres local real y `wrangler dev` real (RLS real, no alcanza con build/lint):
-1. Aplicar la migración contra el stack local.
-2. Correr `tests/aislamiento/905_rutas_zonas_lector_aislamiento.sql` con `psql` real — dos
-   suscriptores de prueba en sectores distintos, un lector asignado a uno solo: confirma CA-2, CA-4,
-   CA-5; un segundo lector sin ninguna asignación confirma CA-3 (regresión); `admin_acueducto`/
-   `secretaria` confirman CA-6; un `lector` no puede escribir en `lector_sectores` directo.
-3. `curl` real con sesión de `admin_acueducto`: `GET /sectores`, `GET /lectores`, asignar y quitar
-   un sector real, confirmando con una consulta SQL directa después de cada cambio.
-4. `curl` real con sesión de un lector con sector asignado: `GET /dashboard` devuelve
-   `sectoresAsignados` correcto; una petición a lecturas/suscriptores de otro sector no devuelve
-   nada de más (CA-4).
-5. `grep` confirmando que ninguna de las rutas/funciones nuevas usa `service_role`/`SERVICE_ROLE_KEY`.
+1. Aplicada la migración contra el stack local (dos veces: una vez con el bug real de abajo, una
+   vez corregida).
+2. `tests/aislamiento/905_rutas_zonas_lector_aislamiento.sql` corrido con `psql` real, 9 pasos, en
+   verde tras el fix — confirma CA-2, CA-3 (regresión), CA-5, CA-6, escritura de `lector_sectores`
+   bloqueada para `lector`, y regresión de aislamiento multi-tenant.
+3. **`curl` real con sesión de `admin_acueducto` (usuario real de Supabase Auth local, no solo
+   simulado en SQL):** `GET /sectores` → `["Centro","Norte"]`; `POST .../sectores` → `201`, el
+   mismo sector otra vez → `409`; confirmado con `select * from lector_sectores` directo.
+4. **`curl` real con sesión de un lector real, asignado a "Centro":** `GET /dashboard` →
+   `sectoresAsignados: ["Centro"]` y `conteoUsuariosServicio: 1` (no 2 — el RPC ya filtra);
+   `GET /lecturas?periodo_id=...` devuelve solo la lectura del contador de su sector, no la de
+   "Norte" (CA-2/CA-4, de punta a punta, no solo en SQL); `GET /lectores` y
+   `POST /lectores/.../sectores` como ese mismo lector → `403` (CA-4, rutas de escritura también
+   protegidas).
+5. `grep` confirmó que ninguna ruta/función nueva usa `service_role`/`SERVICE_ROLE_KEY`.
 
-**Estado:** PENDIENTE — sin empezar todavía.
+**Bug real encontrado en el PASO 2 del test de aislamiento, corregido antes de cerrar — ver
+`CHANGELOG.md`:** la política `lecturas_lectura` del plan original hacía `join` directo a
+`usuarios_servicio` dentro de su `USING`, evaluado con los privilegios de quien consulta — un
+`lector` no tiene ningún `SELECT` propio sobre esa tabla (024 se lo quitó, solo le dejó
+`usuarios_servicio_lector()`), así que el filtro daba 0 filas siempre, ni con el sector correcto.
+Corregido con `mis_contadores_por_sector()`, una función `SECURITY DEFINER` nueva, mismo patrón que
+`mis_sectores_asignados()`/`usuarios_servicio_lector()` ya establecido en este proyecto.
+
+**No verificado con Playwright/Chromium** (a diferencia de 036/038): el aspecto visual de
+`/app/lectores` (checkboxes) y de la tarjeta "Zona actual" en AquaLectura no se probó con un
+navegador real esta vez — decisión de proporcionalidad, no límite de herramientas (a diferencia de
+la foto de contador de 036 o la señal real de 038): es UI estándar (checkboxes, texto condicional)
+que sigue el mismo patrón ya verificado visualmente en otras pantallas de este proyecto, y el riesgo
+real de esta feature (RLS, filtrado de datos) ya quedó probado de punta a punta contra Postgres y
+HTTP reales. Si Mateo quiere esa verificación extra, es cuestión de pedirla.
+
+**Estado:** HECHO — Sesión 056. T-001/T-002 implementados directamente por Claude (autorización
+expresa, no pasaron por Luna). T-003 cerrado con el test de aislamiento propio, un bug real
+encontrado y corregido, y verificación de punta a punta contra `wrangler dev` + Supabase Auth local
+reales — no solo mocks ni solo SQL simulado.

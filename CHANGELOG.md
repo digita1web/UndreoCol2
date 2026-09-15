@@ -4,6 +4,63 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-15 — Sesión 056 (continuación 3): feature 037, rutas/zonas del lector
+
+Cierra el último feature grande pendiente del roadmap del lector: un `admin_acueducto` asigna
+sectores a cada lector desde `/app/lectores`; un lector con sectores asignados solo ve los
+suscriptores y lecturas de esos sectores — sin ninguna asignación, sigue viendo todo el acueducto
+(retrocompatible por diseño). Reutiliza la columna `sector` de `usuarios_servicio` (003, ya cargable
+a mano o por importación de Excel) en vez de un concepto de "ruta" geográfica nuevo — investigación
+de comunidad (CLAUDE.md §3, spec §2) confirmó que una tabla de asignación técnico↔territorio
+filtrando por RLS, sin geolocalización ni ruteo, es el patrón establecido de la industria para este
+problema ("Territory-based Permission" en Zoho FSM, "Service Territories" en Salesforce Field
+Service), no una simplificación propia. T-001/T-002 implementados directamente por Claude
+(autorización expresa, no pasaron por Luna); T-003 (test de aislamiento SQL, cierre) siempre de
+Claude, nunca delegado — mismo criterio que toda la superficie de seguridad de este proyecto.
+
+**Diseño:** tabla `lector_sectores` (cliente_id + RLS FORCE), función `mis_sectores_asignados()`
+(security definer, "vacío = sin restricción"). `usuarios_servicio_lector()` (024) y la política
+`lecturas_lectura` (004) ganan el filtro. Cuatro rutas nuevas (`GET /sectores`, `GET /lectores`,
+`POST`/`DELETE .../sectores`), `GET /dashboard` gana `cliente.sectoresAsignados`. Frontend:
+`/app/lectores` (checkboxes de sectores ya en uso — nunca texto libre nuevo, spec §4) y "Zona
+actual" en Inicio de AquaLectura.
+
+**Bug real encontrado y corregido, no visible leyendo el SQL — solo corriendo el test de
+aislamiento contra Postgres real:** la política `lecturas_lectura` tal como venía en el plan
+aprobado hacía `join` directo a `usuarios_servicio` dentro de su propio `USING` — pero esa
+expresión se evalúa con los privilegios de quien consulta la tabla `lecturas`, y un `lector` no
+tiene ningún `SELECT` propio sobre `usuarios_servicio` (024 se lo quitó por completo, dejando solo
+la función `usuarios_servicio_lector()` como camino de lectura). El filtro daba **0 filas siempre**,
+con o sin el sector correcto — ni siquiera la lectura del propio sector asignado del lector
+aparecía. Corregido con `mis_contadores_por_sector()`, una función `SECURITY DEFINER` nueva que
+hace el mismo `join` con privilegios elevados — mismo patrón ya establecido en este proyecto
+(`mis_sectores_asignados()`, `usuarios_servicio_lector()`).
+
+**Verificado con evidencia real, en dos niveles:**
+1. `tests/aislamiento/905_rutas_zonas_lector_aislamiento.sql` (9 pasos, escrito por Claude, nunca
+   por Luna) contra Postgres local real, en verde tras el fix: CA-2 (lector ve solo su sector),
+   CA-3 (sin asignación, ve todo — regresión explícita), CA-5 (suscriptor sin sector, invisible
+   para un lector restringido), CA-6 (`admin_acueducto`/`secretaria` sin cambios), escritura de
+   `lector_sectores` bloqueada para `lector`, regresión de aislamiento multi-tenant.
+2. **`curl` real contra `wrangler dev`, con usuarios reales de Supabase Auth local** (no solo
+   simulado en SQL): login real de un admin y un lector, `GET /sectores`/`GET /lectores` reales,
+   `POST` de un sector duplicado → `409` real, y lo más importante — `GET /dashboard` del lector
+   real devuelve `sectoresAsignados: ["Centro"]` y `conteoUsuariosServicio: 1` (no 2), y
+   `GET /lecturas` real devuelve solo la lectura del sector asignado. De punta a punta, JWT real
+   incluido, no una simulación.
+
+251 tests de backend en verde (16 nuevos), build/lint/knip limpios en ambos proyectos,
+`wrangler deploy --dry-run` exitoso. De paso, limpieza de datos de prueba sueltos de una sesión
+anterior que bloqueaban `tests/fixtures/fundacion.sql` (desactivando temporalmente dos triggers de
+integridad de facturas solo para el borrado, reactivados de inmediato — nada de esto es dato real,
+es la base local de desarrollo).
+
+**No verificado con Playwright/Chromium esta vez** (a diferencia de 036/038 — decisión de
+proporcionalidad, no límite de herramientas): el aspecto visual de `/app/lectores` y de la tarjeta
+"Zona actual" no se probó con un navegador real — es UI estándar (checkboxes, texto condicional)
+sobre un riesgo (RLS/filtrado de datos) que ya quedó probado de punta a punta contra Postgres y
+HTTP reales, que es donde estaba el riesgo real de esta feature.
+
 ### 2026-09-14 — Sesión 056 (continuación 2): verificación real con Playwright de 036 y 038
 
 Al cerrar 036 y 038 quedaron varios criterios de aceptación como "NO VERIFICADO — requiere Mateo",
