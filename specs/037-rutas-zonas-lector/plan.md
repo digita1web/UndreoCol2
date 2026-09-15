@@ -49,8 +49,11 @@ create policy lector_sectores_escritura on lector_sectores for all
 -- Sectores asignados a auth.uid() para un cliente — vacío = sin restricción,
 -- ve todo el acueducto (retrocompatibilidad, spec CA-3). SECURITY DEFINER
 -- para poder llamarse desde políticas RLS de otras tablas sin recursión.
+-- `returns table` (no `setof text`), mismo patrón que usuarios_servicio_lector()
+-- ya usa — formato de fila sin ambigüedad al llamarla directo vía .rpc() desde
+-- el backend (GET /dashboard, para "Zona actual"), no solo desde otro SQL.
 create or replace function mis_sectores_asignados(p_cliente_id uuid)
-returns setof text
+returns table (sector text)
 language sql stable security definer set search_path = public as $$
   select sector from lector_sectores
   where perfil_id = auth.uid() and cliente_id = p_cliente_id;
@@ -68,7 +71,7 @@ language sql stable security definer set search_path = public as $$
     and (p_estado is null or u.estado::text = p_estado)
     and (
       not exists (select 1 from mis_sectores_asignados(p_cliente_id))
-      or u.sector in (select mis_sectores_asignados(p_cliente_id))
+      or u.sector in (select sector from mis_sectores_asignados(p_cliente_id))
     )
   order by u.nombre;
 $$;
@@ -86,7 +89,7 @@ create policy lecturas_lectura on lecturas for select
           select c.id from contadores c
           join usuarios_servicio u on u.id = c.usuario_servicio_id
           where c.cliente_id = lecturas.cliente_id
-            and u.sector in (select mis_sectores_asignados(lecturas.cliente_id))
+            and u.sector in (select sector from mis_sectores_asignados(lecturas.cliente_id))
         )
       )
     )
