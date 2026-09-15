@@ -1087,11 +1087,41 @@ export function actualizarColorAcentoAcueducto(colorAcento: string): Promise<{ c
 // shell renderizar en /app/lecturas — sin ruta nueva de backend.
 
 export interface ContextoUsuario {
-  cliente: { clienteId: string; rol: string; nombre: string };
+  cliente: { clienteId: string; rol: string; nombre: string; sectoresAsignados: string[] };
   perfil: { id: string; email: string; nombre: string };
   conteoUsuariosServicio: number;
 }
 
 export function obtenerContextoUsuario(): Promise<ContextoUsuario> {
   return peticion('/dashboard');
+}
+
+// --- Sectores y asignación a lectores (037) ---------------------------------
+
+export interface LectorConSectores {
+  perfilId: string;
+  nombre: string;
+  email: string;
+  sectores: string[];
+}
+
+export function listarSectoresDisponibles(): Promise<{ sectores: string[] }> {
+  return peticion('/sectores');
+}
+
+export function listarLectoresConSectores(): Promise<{ lectores: LectorConSectores[] }> {
+  return peticion('/lectores');
+}
+
+export function asignarSectorLector(perfilId: string, sector: string): Promise<{ ok: true }> {
+  return peticion(`/lectores/${perfilId}/sectores`, {
+    method: 'POST',
+    body: JSON.stringify({ sector }),
+  });
+}
+
+export function quitarSectorLector(perfilId: string, sector: string): Promise<{ ok: true }> {
+  return peticion(`/lectores/${perfilId}/sectores/${encodeURIComponent(sector)}`, {
+    method: 'DELETE',
+  });
 }

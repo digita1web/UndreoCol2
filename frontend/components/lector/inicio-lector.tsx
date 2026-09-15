@@ -4,9 +4,10 @@ import type { Lectura } from '@/lib/api';
 interface InicioLectorProps {
   nombreAcueducto: string | null;
   lecturasAbiertas: Lectura[] | null;
+  sectoresAsignados: string[];
 }
 
-export function InicioLector({ nombreAcueducto, lecturasAbiertas }: InicioLectorProps) {
+export function InicioLector({ nombreAcueducto, lecturasAbiertas, sectoresAsignados }: InicioLectorProps) {
   const hoy = new Date().toISOString().slice(0, 10);
   const lecturasHoy = (lecturasAbiertas ?? []).filter((l) => l.fecha_lectura === hoy).length;
   const pendientes = (lecturasAbiertas ?? []).filter((l) => l.revision !== 'normal' && !l.revisada).length;
@@ -33,6 +34,14 @@ export function InicioLector({ nombreAcueducto, lecturasAbiertas }: InicioLector
           </CardContent>
         </Card>
       </div>
+      <Card>
+        <CardContent className="p-4">
+          <p className="text-xs text-muted-foreground">Zona actual</p>
+          <p className="text-sm font-medium">
+            {sectoresAsignados.length > 0 ? sectoresAsignados.join(', ') : 'Todos los sectores'}
+          </p>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Registrar una lectura</CardTitle>

@@ -81,6 +81,15 @@ export function IconoNotificaciones(props: PropsIcono) {
   );
 }
 
+export function IconoLectores(props: PropsIcono) {
+  return (
+    <svg {...BASE} {...props}>
+      <path d="M12 21s7-6.5 7-11.5a7 7 0 0 0-14 0C5 14.5 12 21 12 21z" strokeLinejoin="round" />
+      <circle cx="12" cy="9.5" r="2.5" />
+    </svg>
+  );
+}
+
 export function IconoConfiguracion(props: PropsIcono) {
   return (
     <svg {...BASE} {...props}>

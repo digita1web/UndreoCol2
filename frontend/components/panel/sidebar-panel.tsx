@@ -11,6 +11,7 @@ import {
   IconoConfiguracion,
   IconoCortes,
   IconoFacturacion,
+  IconoLectores,
   IconoLecturas,
   IconoNotificaciones,
   IconoPanel,
@@ -22,6 +23,7 @@ const SECCIONES = [
   { href: '/app/facturacion', etiqueta: 'Facturación', Icono: IconoFacturacion },
   { href: '/app/pagos', etiqueta: 'Cartera', Icono: IconoCartera },
   { href: '/app/lecturas', etiqueta: 'Lecturas', Icono: IconoLecturas },
+  { href: '/app/lectores', etiqueta: 'Lectores', Icono: IconoLectores },
   { href: '/app/suscriptores', etiqueta: 'Suscriptores', Icono: IconoSuscriptores },
   { href: '/app/catalogo', etiqueta: 'Catálogo y tarifas', Icono: IconoCatalogo },
   { href: '/app/cortes', etiqueta: 'Cortes', Icono: IconoCortes },
@@ -74,7 +76,11 @@ export function SidebarPanel() {
       </div>
 
       <nav className="grid grid-cols-3 gap-1 sm:flex sm:flex-col">
-        {SECCIONES.filter(({ href }) => href !== '/app/configuracion' || operador?.rol !== 'secretaria').map(({ href, etiqueta, Icono }) => {
+        {SECCIONES.filter(
+          ({ href }) =>
+            (href !== '/app/configuracion' || operador?.rol !== 'secretaria') &&
+            (href !== '/app/lectores' || operador?.rol === 'admin_acueducto'),
+        ).map(({ href, etiqueta, Icono }) => {
           const activa = esSeccionActiva(pathname, href);
           return (
             <Link

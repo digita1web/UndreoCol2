@@ -48,6 +48,7 @@ function VistaLector() {
   const [suscriptores, setSuscriptores] = useState<Suscriptor[] | null>(null);
   const [lecturasAbiertas, setLecturasAbiertas] = useState<Lectura[] | null>(null);
   const [acueducto, setAcueducto] = useState<Acueducto | null>(null);
+  const [sectoresAsignados, setSectoresAsignados] = useState<string[]>([]);
 
   const periodoAbierto = (periodos ?? []).find((p) => p.estado === 'abierto') ?? null;
 
@@ -57,6 +58,11 @@ function VistaLector() {
     obtenerAcueducto()
       .then((r) => setAcueducto(r.acueducto))
       .catch((e) => console.error('No se pudo cargar el acueducto', e));
+    // 037: "Zona actual" en Inicio — vacío si el lector no tiene sectores
+    // asignados (sigue viendo todo el acueducto, spec CA-3).
+    obtenerContextoUsuario()
+      .then((r) => setSectoresAsignados(r.cliente.sectoresAsignados))
+      .catch((e) => console.error('No se pudieron cargar los sectores asignados', e));
   }, []);
 
   const recargarLecturasAbiertas = useCallback(() => {
@@ -83,7 +89,11 @@ function VistaLector() {
       sinSubirCount={colaOffline.sinSubirCount}
     >
       {pestana === 'inicio' && (
-        <InicioLector nombreAcueducto={acueducto?.nombre ?? null} lecturasAbiertas={lecturasAbiertas} />
+        <InicioLector
+          nombreAcueducto={acueducto?.nombre ?? null}
+          lecturasAbiertas={lecturasAbiertas}
+          sectoresAsignados={sectoresAsignados}
+        />
       )}
       {pestana === 'nueva' && (
         <NuevaLecturaLector
