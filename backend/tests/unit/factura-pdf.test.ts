@@ -1,3 +1,12 @@
+/// <reference types="node" />
+// tsconfig.json restringe `types` a @cloudflare/workers-types a propósito (el
+// código de src/ corre en un Worker, no en Node) — este test SÍ corre en Node
+// real (vitest), y necesita zlib/Buffer para verificar la compresión interna
+// del PDF. Antes del bump a vitest 4 (Sesión 056) esto resolvía por una
+// dependencia transitiva de vitest que traía los tipos de Node sin pedirlo;
+// desapareció con el bump, se referencia acá explícitamente en vez de abrir
+// `types` para todo el proyecto (eso sí sería un riesgo real: código de src/
+// compilando con APIs de Node que no existen en el Worker desplegado).
 import { describe, expect, it } from 'vitest';
 import { PDFDocument } from 'pdf-lib';
 import { inflateSync } from 'zlib';
