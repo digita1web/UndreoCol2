@@ -464,6 +464,18 @@ esta sesión agregó Knip (ISC) a backend y frontend para código muerto en Type
 Mateo — PL/pgSQL y un bundler aparte se descartaron tras investigar (ya resueltos por
 Wrangler/Next.js; sin problema medido para tocar SQL de dinero).
 
+**Sesión 056:** feature 036 (OCR de lectura, mejor esfuerzo v1 con `tesseract.js`) y feature 038
+(guardado offline de lecturas — activa `id_cliente_offline`, que existía sin usar desde 004),
+ambas implementadas directamente por Claude (autorización expresa, no pasaron por Luna). De paso,
+limpieza de 2 exports muertos de 035 (`listarAcueductos`/`obtenerSaludSistema`, duplicados por
+`app/plataforma/page.tsx`, no una pantalla faltante). **Hallazgo con impacto más allá de esta
+sesión: Playwright + Chromium SÍ se puede instalar en este entorno** (aislado, nunca como
+dependencia del proyecto) — se usó para verificar de punta a punta, con navegador real, los CA de
+036 y 038 que habían quedado "NO VERIFICADO — requiere Mateo" por la vieja asunción de que este
+entorno no tenía Chromium. Los "Verificación en navegador real — pendiente de Mateo" de la sección
+de abajo deberían revisarse con esto en mente la próxima vez que se retomen, en vez de asumir que
+siguen bloqueados. Detalle completo, metodología y resultado de cada CA en el CHANGELOG.
+
 ### Hallazgos de seguridad/producto, genuinamente abiertos (ninguno urgente, todos son decisión de Mateo o trabajo mayor)
 
 - **B-5 · `postcss` (frontend, cambio mayor `next@16`) y el árbol de `wrangler` en backend
@@ -473,7 +485,15 @@ Wrangler/Next.js; sin problema medido para tocar SQL de dinero).
 - **"Leaked password protection" de Supabase Auth** — un toggle en el dashboard, nunca activado.
   No es de código; es un clic de Mateo.
 
-### Verificación en navegador real — pendiente de Mateo (este entorno no tiene Chromium/Playwright)
+### Verificación en navegador real — pendiente de Mateo
+
+**Actualización Sesión 056: este encabezado ya no es del todo cierto.** Se confirmó que Playwright +
+Chromium SÍ se pueden instalar en este entorno (aislado, no como dependencia del proyecto) — se usó
+para verificar 036 y 038 de punta a punta contra un navegador real, no simulado. Antes de asumir que
+un punto de esta lista "no se puede verificar acá", vale la pena intentar instalarlo — puede cambiar
+la calidad de la evidencia entregada. Lo que sigue genuinamente fuera de alcance de este entorno es
+lo que depende de hardware real que no existe acá (cámara física, un celular Android, una impresora
+física) — no la falta de un navegador.
 
 - **023** — encabezado + color de acento de la factura, imprimiendo de verdad (`Ctrl+P`).
 - **025 (AquaLectura)** — el shell del lector en un celular real (o modo responsivo del navegador).
@@ -511,22 +531,37 @@ del prototipo.
   `resetPasswordForEmail` + `/restablecer-contrasena` (033/034). Verificado de punta a punta contra
   `wrangler dev` + Mailpit reales — ver CHANGELOG, Sesión 053, para el detalle y el bug real
   encontrado (asunto del correo desactualizado en `config.toml`, corregido).
-- **Feature 015 — identificación por QR implementada (Sesión 054); OCR sigue sin empezar.**
-  Dividida en dos specs (decisión de Mateo): `specs/015-identificacion-contador-qr/` agrega un
-  botón "Escanear QR" en "Nueva lectura" (`qr-scanner`, `BarcodeDetector` nativo con respaldo) y un
-  botón "Ver etiqueta QR" en la ficha del suscriptor (`qrcode`, corrección de errores nivel H) — cero
-  cambios de backend/esquema, el `<select>` manual nunca se eliminó. Verificado con cabeceras reales
-  (`camera=(self)` solo en `/app/lecturas`) contra sesión de lector real — ver CHANGELOG Sesión 054.
-  El OCR (diferenciador tecnológico principal del roadmap original, "requiere máximo rigor de
-  precisión") sigue sin empezar, spec propio cuando se retome.
-- **Asignación de rutas/zonas al lector** (`ESPECIFICACION-FUNCIONAL.md §2.14.1`) — dejada fuera de
-  024 y 025 a propósito ("no existe como feature todavía"), sigue sin empezar.
+- **Feature 015 — identificación por QR (Sesión 054) y feature 036 — sugerencia de lectura por OCR
+  (Sesión 056), las dos mitades de la Feature 015 del roadmap original, ambas implementadas.**
+  `specs/015-identificacion-contador-qr/` agrega "Escanear QR" en "Nueva lectura" (`qr-scanner`,
+  `BarcodeDetector` nativo con respaldo) y "Ver etiqueta QR" en la ficha del suscriptor (`qrcode`,
+  corrección de errores nivel H). `specs/036-ocr-lectura-contador/` agrega "Sugerir lectura con
+  foto" al mismo formulario (`tesseract.js`, restringido a dígitos, mejor esfuerzo v1 — sin
+  entrenamiento propio, decisión documentada). Ninguna de las dos toca backend/esquema; el `<select>`
+  manual nunca se eliminó. 015 verificado con cabeceras reales contra sesión de lector real (Sesión
+  054); 036 verificado con Playwright + Chromium real (Sesión 056) — OCR leyendo exacto una imagen
+  de prueba, campo vacío sin error con una imagen borrosa. Pendiente de Mateo: una foto de un
+  contador de agua real, en un celular Android real (única prueba que ningún tooling de este
+  entorno puede simular).
+- **Guardado offline de lecturas — implementado (038, Sesión 056).** Cola en IndexedDB del
+  navegador (sin librería nueva), drenada al abrir AquaLectura y en cada evento `online` — sin
+  Service Worker/Background Sync en v1 (decisión documentada, mejora futura). Activa
+  `id_cliente_offline`, que el backend ya deduplicaba desde 004 sin que nada del frontend lo
+  generara. Verificado con Playwright + Chromium real (Sesión 056): guardar sin conexión no la
+  pierde, sube sola al reconectar, sobrevive a un reinicio de página, un rechazo real no reintenta
+  en bucle. Pendiente de Mateo: prueba de campo con corte de señal genuino en un celular real.
+- **Asignación de rutas/zonas al lector (037)** — dejada fuera de 024 y 025 a propósito ("no existe
+  como feature todavía"). `specs/037-rutas-zonas-lector/` tiene spec+plan+tasks aprobados desde
+  antes de esta sesión; **implementación sin empezar** (cero migración, cero función SQL, cero ruta
+  backend). Es el único feature grande del roadmap del lector que sigue sin arrancar — se priorizó
+  038 primero porque resuelve un problema de escala (varios lectores con zonas distintas) que no
+  existe con cero clientes en producción, mientras que el offline resuelve un problema de día uno.
 
 ### Panel maestro (`/plataforma`) — mapa de módulos
 
 Mateo pidió el mapa completo antes de aprobar 033, para no construir credenciales sin ver dónde
-encaja. Ninguno de los puntos 3/4 tiene spec todavía — quedan documentados acá como roadmap, no
-como trabajo en curso.
+encaja. Los 5 puntos del mapa ya están implementados (3 y 4 los cerró 035, Sesión 055) — esta
+sección queda como referencia de qué cubre cada uno, no como roadmap pendiente.
 
 1. **Acueductos** — implementado en 018, ampliado por 033 y por 019 (Sesión 053: el alta ya no
    entrega contraseña, invita por correo — ver CHANGELOG): alta de acueducto + admin por
