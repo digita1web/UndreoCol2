@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useHidratado } from '@/lib/use-hidratado';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EscanerQrContador } from '@/components/lector/escaner-qr-contador';
+import { SugerirLecturaFoto } from '@/components/lector/sugerir-lectura-foto';
 import { crearLectura, type Suscriptor } from '@/lib/api';
 
 interface NuevaLecturaLectorProps {
@@ -118,6 +119,7 @@ export function NuevaLecturaLector({ suscriptores, periodoAbiertoId, onCreada }:
             value={lecturaActual}
             onChange={(e) => setLecturaActual(e.target.value)}
           />
+          <SugerirLecturaFoto onSugerida={(v) => setLecturaActual(v)} />
           {error && <p className="text-sm text-red-600">{error}</p>}
           {aviso && <p className="text-sm text-green-700">{aviso}</p>}
           <button
