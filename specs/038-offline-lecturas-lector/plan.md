@@ -1,6 +1,6 @@
 # PLAN — 038: offline-lecturas-lector
 
-**Spec aprobado:** 2026-09-15
+**Spec aprobado:** 2026-09-14
 
 ## 1. Archivos
 

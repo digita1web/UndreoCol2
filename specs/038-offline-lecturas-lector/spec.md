@@ -1,6 +1,6 @@
 # SPEC — 038: offline-lecturas-lector
 
-**Estado:** Borrador para aprobación
+**Estado:** Aprobado (2026-09-14) — implementado Sesión 056
 **Depende de:** 004-lecturas-y-consumo, 015-identificacion-contador-qr, 025-app-lector-movil,
 036-ocr-lectura-contador
 

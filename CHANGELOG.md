@@ -4,6 +4,65 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-14 — Sesión 056 (continuación): feature 038, guardado offline de lecturas
+
+Cierra el hueco más serio que quedaba documentado en AquaLectura: hasta esta sesión, una lectura
+tomada sin señal simplemente se perdía (`crearLectura()` era una llamada de red directa, sin caché
+ni cola — documentado y aceptado como fuera de alcance en 015 §4 y como riesgo en 025 §7). Todo
+implementado directamente por Claude (autorización expresa de Mateo, no pasó por Luna), con
+`/specify` → `/plan` → `/tasks` completos y checkpoint explícito de Mateo en cada fase.
+
+**Lo que ya existía y esta sesión activó, no inventó:** `lecturas.id_cliente_offline` (`unique`) y
+la deduplicación real en `backend/src/lib/lecturas.ts` vienen de 004-lecturas-y-consumo — hasta
+ahora sin usar, porque ningún flujo del frontend generaba ni mandaba ese campo.
+
+**Investigación de comunidad (CLAUDE.md §3) que definió el diseño, sin patrón interno previo para
+offline-first en este proyecto:**
+- Patrón estándar: outbox en IndexedDB escrito antes de la red + reintento al reconectar.
+- Background Sync API (el mecanismo "automático" de verdad, sin necesidad de reabrir la app) solo
+  la soportan navegadores Chromium — Safari/Firefox/iOS no la implementan.
+- El `useOffline` experimental de Next.js 16 no aplica: solo reintenta Server Actions/navegación de
+  Next.js, nunca `fetch()` a una API externa como la de este proyecto (Hono/Workers) — confirmado
+  contra la documentación oficial, no asumido.
+- **Decisión central de `/plan`, la que más se aparta de lo esperado: sin Service Worker ni
+  Background Sync en v1.** El fallback universal (evento `online` del navegador + reintento al
+  reabrir la app) ya cumple los 6 criterios de aceptación del spec sin la complejidad de lifecycle
+  de un Service Worker — que además no se podría probar en este entorno (sin Chromium/Playwright).
+  Cubre el caso real: el fontanero tiene AquaLectura abierta durante su jornada de lecturas. Queda
+  anotado como mejora futura, no descartado.
+
+**Diseño:** `frontend/lib/use-cola-lecturas-offline.ts` — wrapper propio de IndexedDB (sin librería
+nueva, mismo criterio que 036/015 contra dependencias desproporcionadas para un uso acotado: una
+tabla, cuatro operaciones) y el hook `useColaLecturasOffline()`, instanciado en `VistaLector`
+(`app/app/lecturas/page.tsx`) — no dentro de `NuevaLecturaLector`, que se desmonta al cambiar de
+pestaña; si viviera ahí, una reconexión mientras el fontanero está en "Historial" no dispararía la
+subida hasta volver a "Nueva". `id_cliente_offline` se genera siempre al guardar (falle o no la
+red), no solo en la rama offline — así el envío ya es idempotente ante cualquier ambigüedad, con
+una sola rama de código. Un rechazo real del backend (`ErrorPeticion` — duplicado, fuera de orden,
+periodo cerrado) sale de la cola con su mensaje y no reintenta en bucle; una falla de red real corta
+el drenado del ciclo completo en vez de fallar lectura por lectura contra una conexión que ya se
+sabe caída.
+
+**Bug real encontrado y corregido antes de commitear (no llegó a producción):** el primer borrador
+del hook registraba el listener de `online` con dependencias vacías — el closure de `sincronizar`
+habría quedado desactualizado para siempre en cuanto `VistaLector` recargara `periodoAbierto` tras
+el montaje inicial (pasa siempre, es la carga async normal de la página). Corregido dependiendo del
+callback real; reinscribir el listener es barato y `sincronizar()` es idempotente si se llama de
+más.
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos (Knip confirmó que
+el módulo nuevo dejó de estar huérfano tras cablearlo). Backend confirmado intacto: `git status`
+sin cambios, 235 tests + `build` + `lint` + `wrangler deploy --dry-run` en verde. La clasificación
+`ErrorPeticion`-vs-falla-de-red se probó contra la clase real (compilada con `tsc`, corrida en
+Node), no simulada. El `UNIQUE CONSTRAINT` de `id_cliente_offline` se confirmó existente en el
+esquema real de Postgres local (`psql`, puerto 54322).
+
+**NO VERIFICADO — requiere Mateo, con DevTools reales (Network → Offline) en un navegador real:**
+guardar sin conexión y que no se pierda; que suba sola al reconectar sin recargar; que sobreviva a
+cerrar y reabrir la app sin conexión; que un rechazo real (ej. duplicado) salga de la cola con
+mensaje en vez de reintentar para siempre; que el badge "N sin subir" se vea y sea distinto del de
+"Pendientes". Este entorno no tiene cámara/Chromium/Playwright — mismo límite que 036.
+
 ### 2026-09-14 — Sesión 056: feature 036 (OCR de lectura, mejor esfuerzo v1) + limpieza de 2 exports muertos de 035
 
 Dos piezas, ambas implementadas directamente por Claude (autorización expresa de Mateo, sin pasar

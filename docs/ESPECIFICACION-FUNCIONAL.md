@@ -422,6 +422,20 @@ Sincroniza al recuperar señal
 Funciona **sin señal** (offline-first). Al recuperar conexión, sincroniza las
 lecturas tomadas. Idempotente: no duplica (`id_cliente_offline`).
 
+**Estado real de este flujo (Sesión 056):** "Ve su ruta asignada" sigue sin construirse (037,
+specs/plan/tasks aprobados, implementación pendiente) — hoy el lector ve todos los suscriptores de
+su acueducto. QR (015) y la sugerencia de lectura por foto/OCR (036, mejor esfuerzo v1) están
+implementados. **El guardado sin señal e idempotente ya es real** (`specs/038-offline-lecturas-lector/`):
+la lectura se guarda en una cola local (IndexedDB) del navegador y se sube sola al recuperar
+conexión, reutilizando el `id_cliente_offline` que ya deduplicaba del lado del servidor desde 004
+pero que hasta esta sesión ningún flujo del frontend generaba. **Matiz honesto sobre "PWA con
+Service Worker" del párrafo de arriba:** 038 decidió, con investigación de comunidad de por medio
+(`specs/038-offline-lecturas-lector/spec.md` §2), **no** construir un Service Worker ni Background
+Sync API en v1 — la sincronización corre en la página mientras AquaLectura está abierta (al montar
+y en cada evento `online` del navegador), lo que cubre el uso real (el fontanero tiene la app
+abierta durante su jornada), no una sincronización en segundo plano con la app cerrada. Esa mejora
+queda anotada, no descartada, para si hace falta más adelante.
+
 ---
 
 ### 2.14.1 Identificación de contador por QR (Feature 015) + sugerencia de lectura por OCR (Feature 036)
