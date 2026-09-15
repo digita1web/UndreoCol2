@@ -973,8 +973,8 @@ export function confirmarImportacion(
 // merging) en vez de dar error — bug real y previo a esta sesión, encontrado
 // al construir PlanEstadoAcueducto (035 T-002): el tipo fusionado exigía
 // campos de ambos significados a la vez. Se renombra este, el menos usado
-// (solo listarAcueductos, hoy sin ningún llamador), para no tocar los 4
-// archivos que ya dependen del otro `Acueducto`.
+// (solo como prop de PlanEstadoAcueducto), para no tocar los 4 archivos que
+// ya dependen del otro `Acueducto`.
 export interface AcueductoPlataforma {
   id: string;
   nombre: string;
@@ -984,10 +984,6 @@ export interface AcueductoPlataforma {
   planId: string | null;
   planNombre: string | null;
   estadoCuenta: 'activa' | 'vencida' | 'suspendida' | 'cancelada';
-}
-
-export function listarAcueductos(): Promise<{ acueductos: AcueductoPlataforma[] }> {
-  return peticion('/plataforma');
 }
 
 export interface CambioPlanEstado {
@@ -1011,10 +1007,6 @@ export interface SaludSistema {
   medidoEn: string;
   ultimoKeepalive: string | null;
   ultimoBackup: { archivo: string; subidoEn: string } | null;
-}
-
-export function obtenerSaludSistema(): Promise<SaludSistema> {
-  return peticion('/plataforma/salud');
 }
 
 export interface DatosAltaAcueducto {
