@@ -85,14 +85,30 @@ tests).
    (acueducto/lector/contador/periodo) solo para re-probar un mecanismo de deduplicación que ya está
    probado y sin cambios; el round-trip real de punta a punta queda dentro de la verificación manual
    de abajo.
-3. **NO VERIFICADO — requiere Mateo, con DevTools reales (Network → Offline):** CA-1 (guardar sin
-   conexión no la pierde), CA-2 (sube sola al reconectar, sin recargar), CA-4 (sobrevive a cerrar y
-   reabrir la app sin conexión), CA-5 en vivo (un rechazo real —ej. duplicado— sale de la cola con
-   mensaje, no reintenta en bucle), CA-6 visual (el badge se ve y es distinto del de "Pendientes").
-   Este entorno no tiene cámara/Chromium/Playwright — mismo límite que 036.
+3. **CA-1, CA-2, CA-4, CA-5, CA-6 — verificados con Playwright + Chromium real (instalado en este
+   entorno específicamente para esto), contra `npm run dev` real y un mock mínimo de `POST
+   /lecturas`** (no contra `wrangler dev`/Postgres — decisión deliberada, ver nota de fidelidad
+   abajo). Metodología: dos rutas temporales (`app/test-038-temporal/`, `app/test-036-temporal/`)
+   renderizando los componentes reales de producción sin cambios, **nunca commiteadas, borradas
+   antes de cerrar la tarea** (`git status` limpio lo confirma). Conectividad simulada bloqueando
+   solo el origen del backend vía `page.route()` + disparo manual del evento `online`/`offline`
+   (no `context.setOffline()`, que bloquea también los recursos de la propia app — más estricto
+   que la señal real de un celular, spec §4: el app-shell offline nunca fue una promesa de esta
+   feature). Las 9 aserciones de 038 (CA-1×2, CA-6, CA-4, CA-2, CA-5×4) pasaron todas. Detalle,
+   script y log completo en `CHANGELOG.md` de esta sesión.
+   **Nota de fidelidad:** esto prueba la lógica real (IndexedDB, el hook, la clasificación de
+   errores, el drenado) contra un mock del backend, no contra el backend real de UndreoCol — sigue
+   sin ser la prueba con un celular Android real y señal real que pedía el spec (§8), pero es
+   evidencia bastante más fuerte que "no verificado".
+4. **Bug real encontrado durante esta verificación (no en producción, en el arnés de prueba):**
+   la primera versión de la página de prueba pasaba un callback sin memoizar a
+   `useColaLecturasOffline()`, lo que confirmó que el hook depende de que el caller estabilice su
+   callback (igual que cualquier hook de React) — `VistaLector` real ya lo hace bien
+   (`recargarLecturasAbiertas` con `useCallback([periodoAbierto])`), así que esto no afectaba el
+   código de producción, pero quedó documentado como una dependencia real del contrato del hook.
 
 **Estado:** HECHO — Sesión 056. T-001/T-002 implementados directamente por Claude (autorización
-expresa de Mateo, no pasó por Luna). T-003 cerrado: build/lint/knip/tests/dry-run en verde en
-ambos proyectos, backend confirmado intacto, esquema de deduplicación confirmado contra Postgres
-real, `docs/ESPECIFICACION-FUNCIONAL.md` y `CHANGELOG.md` actualizados. CA-1/CA-2/CA-4/CA-5/CA-6
-quedan NO VERIFICADOS arriba, pendientes de Mateo con un navegador real.
+expresa de Mateo, no pasó por Luna). T-003 cerrado con verificación real de navegador (Playwright)
+para CA-1/CA-2/CA-4/CA-5/CA-6, además de build/lint/knip/tests/dry-run en verde en ambos proyectos.
+Solo queda pendiente la prueba con un celular Android real y señal real (spec §8) — no algo que
+este entorno pueda simular con evidencia honesta.

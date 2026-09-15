@@ -346,11 +346,26 @@ Más, verificación manual real (no alcanza con build/lint para una feature de c
    % dado el estado del arte sin modelo propio — es para que quede registrado qué tan útil es en la
    práctica).
 
-**NO VERIFICADO — requiere Mateo:** CA-1, CA-2 y CA-4 en un navegador real (este entorno no tiene
-cámara física ni Chromium/Playwright) y una foto real de un contador de agua real, en un celular
-Android real.
+**CA-1, CA-4 y CA-5 — verificados con Playwright + Chromium real** (instalado en este entorno
+específicamente para esto, no estaba disponible al cerrar la tarea originalmente). Metodología:
+`app/test-036-temporal/` (ruta temporal, nunca commiteada, borrada al terminar) renderizando
+`SugerirLecturaFoto` real sin cambios, contra `npm run dev` real. Con una imagen generada con
+PIL (dígitos "012345" en fuente clara, sin ser una foto de contador real — exactamente lo que el
+propio spec permite para la prueba automatizada, §6 CA-1), Tesseract.js leyó **"012345", exacto**.
+Con la misma imagen desenfocada (`GaussianBlur`), el campo quedó vacío, sin mensaje de error. El
+aviso de higiene se confirmó visible en el DOM antes de cualquier interacción. Detalle, script y
+log completo en `CHANGELOG.md` de esta sesión.
+
+**Seguimos sin verificar con Playwright (queda como razonamiento de código, no evidencia de
+navegador):** CA-2 (que el valor se pueda corregir libremente) y CA-3 (que se guarde el valor
+corregido, no el sugerido) — el campo es un `<input>` controlado normal, nunca `readOnly`, y
+`alGuardar` siempre lee `lecturaActual` del estado en el momento de enviar, no un valor cacheado
+del OCR; no cambió respecto al comportamiento anterior a 036. **NO VERIFICADO — requiere Mateo:**
+una foto real de un contador de agua real, en un celular Android real — la única prueba que este
+entorno no puede simular con evidencia honesta, sea cual sea el tooling.
 
 **Estado:** HECHO — Sesión 056. T-001 implementado directamente por Claude (autorización expresa de
-Mateo, no pasó por Luna esta vez). T-002 cerrado: build/lint/knip/tests/dry-run en verde, CA-3/CA-5/
-CA-6 verificados (código + grep), `docs/ESPECIFICACION-FUNCIONAL.md` y `CHANGELOG.md` actualizados.
-CA-1/CA-2/CA-4 y la prueba con foto real quedan NO VERIFICADOS arriba, pendientes de Mateo.
+Mateo, no pasó por Luna esta vez). T-002 cerrado: build/lint/knip/tests/dry-run en verde, CA-3
+(dedup)/CA-5(036 original, higiene)/CA-6 verificados por código + grep en su momento, y ahora
+CA-1/CA-4/CA-5 además con Playwright real. `docs/ESPECIFICACION-FUNCIONAL.md` y `CHANGELOG.md`
+actualizados. Solo la foto real de un contador con Mateo queda pendiente.

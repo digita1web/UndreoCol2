@@ -4,6 +4,62 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-14 — Sesión 056 (continuación 2): verificación real con Playwright de 036 y 038
+
+Al cerrar 036 y 038 quedaron varios criterios de aceptación como "NO VERIFICADO — requiere Mateo",
+con la justificación de que este entorno no tenía cámara ni Chromium/Playwright. Mateo pidió
+verificar; en vez de repetir la misma limitación, se instaló Playwright + Chromium en este entorno
+(aislado en el scratchpad, nunca como dependencia del proyecto — no entra a `package.json`) para
+probar el comportamiento real contra un navegador real, no simulado.
+
+**Metodología:** dos rutas temporales de Next.js (`app/test-038-temporal/`, `app/test-036-temporal/`)
+que renderizan los componentes reales de producción (`NuevaLecturaLector`, `ShellLector`,
+`SugerirLecturaFoto`, `useColaLecturasOffline`) sin ningún cambio, contra `npm run dev` real —
+**nunca commiteadas, borradas antes de cerrar la sesión** (`git status` limpio lo confirma en cada
+commit de esta entrada). Para 038, un mock mínimo de `POST /lecturas` (Node puro, sin dependencias)
+en vez de `wrangler dev` + Postgres + sesión autenticada completa — desproporcionado para re-probar
+un mecanismo de deduplicación que ya estaba cubierto por los 235 tests de backend y sin cambios en
+esta verificación.
+
+**038 — 9 de 9 aserciones en verde, con Chromium real:**
+- CA-1: guardar sin conexión no la pierde (queda en cola, sin mensaje de error).
+- CA-6: el badge "N sin subir" se ve.
+- CA-4: sobrevive a recargar la página sin que el backend responda.
+- CA-2: sube sola al reconectar, sin recargar la página.
+- CA-5 (las 4 aserciones): un rechazo real del backend saca la lectura de la cola con su mensaje,
+  no la reintenta ni una vez más en una ventana de espera de 4 segundos, y "Descartar" funciona.
+
+Conectividad simulada bloqueando **solo** el origen del backend vía `page.route()` + disparo manual
+del evento `online`/`offline` — no `context.setOffline()` de Playwright, que bloquea también los
+recursos de la propia app (más estricto que la señal real de un celular; el app-shell offline nunca
+fue una promesa de esta feature, spec §4).
+
+**Bug real encontrado durante la verificación, en el arnés de prueba, no en producción:** la primera
+versión de la página de prueba pasaba a `useColaLecturasOffline()` un callback sin memoizar
+(`() => setSincronizadas(...)` inline) — el hook reintentaba en loop en cada re-render. Confirmó que
+el hook depende de que el caller estabilice su callback (contrato normal de un hook de React); el
+`VistaLector` real ya lo hace bien (`recargarLecturasAbiertas` con `useCallback([periodoAbierto])`),
+así que el código de producción nunca tuvo este problema — quedó documentado en
+`specs/038-offline-lecturas-lector/tasks.md` como una dependencia real del contrato del hook.
+
+**036 — 3 de 3 aserciones en verde, con Chromium real:**
+- Aviso de higiene visible antes de cualquier interacción.
+- Con una imagen generada con Pillow (dígitos "012345" en fuente clara — spec CA-1 permite
+  explícitamente una imagen de prueba, no exige una foto de contador real), Tesseract.js leyó
+  **"012345", exacto**.
+- Con la misma imagen desenfocada (`GaussianBlur`), el campo quedó vacío, sin mensaje de error.
+
+**Lo que sigue sin verificarse, honestamente, porque este entorno no lo puede simular con
+evidencia real sea cual sea el tooling:** una foto real de un contador de agua real en un celular
+Android real (036, spec §8) — no es una limitación de herramientas, es que no hay ni cámara ni
+contador acá. CA-2/CA-3 de 036 (que el valor OCR se pueda corregir y se guarde el corregido) quedan
+verificados por lectura de código, no por interacción de Playwright (no se llegó a escribir sobre
+el campo tras el OCR en esta corrida) — el `<input>` es un controlado normal, nunca `readOnly`, sin
+cambios de esa parte en 036.
+
+**Verificado además:** `npm run build` del frontend, limpio, después de borrar las rutas temporales
+— confirma que no dejaron ningún residuo.
+
 ### 2026-09-14 — Sesión 056 (continuación): feature 038, guardado offline de lecturas
 
 Cierra el hueco más serio que quedaba documentado en AquaLectura: hasta esta sesión, una lectura
