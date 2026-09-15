@@ -8,6 +8,7 @@ import { InicioLector } from '@/components/lector/inicio-lector';
 import { NuevaLecturaLector } from '@/components/lector/nueva-lectura-lector';
 import { PendientesLector } from '@/components/lector/pendientes-lector';
 import { ShellLector, type PestanaLector } from '@/components/lector/shell-lector';
+import { useColaLecturasOffline } from '@/lib/use-cola-lecturas-offline';
 import {
   crearLectura,
   listarLecturas,
@@ -67,10 +68,20 @@ function VistaLector() {
 
   useEffect(recargarLecturasAbiertas, [recargarLecturasAbiertas]);
 
+  // 038: vive acá, no dentro de NuevaLecturaLector — ese componente se
+  // desmonta al cambiar de pestaña, y la cola tiene que seguir drenando
+  // aunque el fontanero esté en "Historial" cuando vuelve la señal.
+  const colaOffline = useColaLecturasOffline(recargarLecturasAbiertas);
+
   const pendientesCount = (lecturasAbiertas ?? []).filter((l) => l.revision !== 'normal' && !l.revisada).length;
 
   return (
-    <ShellLector pestana={pestana} onPestanaChange={setPestana} pendientesCount={pendientesCount}>
+    <ShellLector
+      pestana={pestana}
+      onPestanaChange={setPestana}
+      pendientesCount={pendientesCount}
+      sinSubirCount={colaOffline.sinSubirCount}
+    >
       {pestana === 'inicio' && (
         <InicioLector nombreAcueducto={acueducto?.nombre ?? null} lecturasAbiertas={lecturasAbiertas} />
       )}
@@ -79,6 +90,7 @@ function VistaLector() {
           suscriptores={suscriptores}
           periodoAbiertoId={periodoAbierto?.id ?? null}
           onCreada={recargarLecturasAbiertas}
+          colaOffline={colaOffline}
         />
       )}
       {pestana === 'pendientes' && <PendientesLector lecturas={lecturasAbiertas} />}

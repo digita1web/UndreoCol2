@@ -84,10 +84,11 @@ interface ShellLectorProps {
   pestana: PestanaLector;
   onPestanaChange: (pestana: PestanaLector) => void;
   pendientesCount?: number;
+  sinSubirCount?: number;
   children: React.ReactNode;
 }
 
-export function ShellLector({ pestana, onPestanaChange, pendientesCount, children }: ShellLectorProps) {
+export function ShellLector({ pestana, onPestanaChange, pendientesCount, sinSubirCount, children }: ShellLectorProps) {
   const enLinea = useEnLinea();
 
   return (
@@ -100,10 +101,20 @@ export function ShellLector({ pestana, onPestanaChange, pendientesCount, childre
             <p className="text-xs leading-tight text-blue-100">Lectura de contadores</p>
           </div>
         </div>
-        <span className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium">
-          <span className={`h-1.5 w-1.5 rounded-full ${enLinea ? 'bg-emerald-300' : 'bg-red-300'}`} />
-          {enLinea ? 'En línea' : 'Sin conexión'}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium">
+            <span className={`h-1.5 w-1.5 rounded-full ${enLinea ? 'bg-emerald-300' : 'bg-red-300'}`} />
+            {enLinea ? 'En línea' : 'Sin conexión'}
+          </span>
+          {/* 038: badge distinto del de la pestaña "Pendientes" (revisión de
+              anomalías, otro concepto) — este cuenta lecturas guardadas en
+              el celular que todavía no confirmó el servidor (CA-6). */}
+          {!!sinSubirCount && (
+            <span className="rounded-full bg-amber-400 px-2.5 py-0.5 text-xs font-semibold text-amber-950">
+              {sinSubirCount} sin subir
+            </span>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 pb-24">{children}</main>
