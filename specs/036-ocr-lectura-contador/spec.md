@@ -40,6 +40,26 @@ feature, no solo su implementación:**
   entrenamiento con fotos reales queda para cuando haya producción real con contadores fotografiados
   (fuera de alcance, §4).
 
+**Segunda ronda de investigación (a pedido de Mateo, antes de aprobar) — confirma dos decisiones más:**
+- **QR y OCR nunca corren sobre el mismo video en vivo, frame a frame — se descarta, no solo se
+  pospone.** Tesseract.js puede tardar hasta ~30 segundos en reconocer texto de una imagen; correrlo
+  en cada cuadro de un video en vivo (30-60 veces por segundo) es inviable en cualquier celular real.
+  El patrón que sí usa la industria para combinar código de barras + texto en un mismo flujo es
+  ejecutar cada reconocedor sobre **una imagen ya capturada**, no sobre el stream en vivo simultáneo
+  ([Dynamsoft — Scan Barcodes and OCR Text from Shipping Labels](https://www.dynamsoft.com/codepool/parcel-scan-barcode-ocr-text.html)).
+  Confirma y refuerza §4: QR (video en vivo, ya implementado en 015) y OCR (una foto fija, este spec)
+  son y deben seguir siendo dos pasos técnicamente separados — no es una limitación a superar después,
+  es como se hace bien.
+- **Se descarta TensorFlow.js con un modelo de dígitos (estilo MNIST) como alternativa a
+  Tesseract.js.** Un clasificador de dígitos aislados por CNN puede superar 98% sobre dígitos
+  individuales ya recortados y centrados — pero ese recorte y centrado (segmentar cada dígito de la
+  fila de números del contador) es exactamente el problema difícil que ya tiene el OCR de un
+  contador, y TensorFlow.js no lo resuelve solo: exigiría escribir o adaptar un paso de segmentación
+  de imagen propio antes de clasificar, además de sumar una dependencia nueva — más esfuerzo de
+  ingeniería que `tessedit_char_whitelist` de Tesseract.js para el mismo resultado incierto en v1
+  "mejor esfuerzo". Se deja anotado por si el entrenamiento propio futuro (fuera de alcance, §4)
+  quisiera revisarlo con datos reales de por medio.
+
 ## 3. Alcance
 
 ### 3.1 Sugerencia de lectura al tomar una foto del contador
@@ -53,7 +73,7 @@ Antes de tomar la foto, un aviso breve: "Limpiá el visor del contador antes de 
 precisión" — ya estaba anotado en la especificación funcional original (`§2.14.1`), se mantiene tal
 cual porque sigue siendo la única palanca real de precisión que tiene el fontanero en el momento.
 
-### 3.3 Corrección de errores nivel H (nueva)
+### 3.3 Confirmación humana obligatoria
 - **Nunca se guarda automáticamente (regla no negociable, ya establecida antes de este spec).** El
   valor sugerido aparece en el campo editable; el fontanero debe confirmarlo (dejarlo tal cual) o
   corregirlo antes de tocar "Guardar lectura" — el mismo botón y el mismo submit que ya exige 004,
@@ -68,13 +88,13 @@ cual porque sigue siendo la única palanca real de precisión que tiene el fonta
   de tener producción real primero (fotos de contadores reales que fotografiar y etiquetar); spec
   futuro, cuando exista ese dataset.
 - **Reconocer QR e identificar el número en la misma captura de video en tiempo real,
-  simultáneamente**, tal como lo describía la especificación funcional original. Corren dos
-  reconocedores independientes (`qr-scanner`/`BarcodeDetector` para el QR, ya implementado en 015;
-  Tesseract.js para el número, este spec) — si conviene ejecutarlos sobre el mismo frame o en dos
-  pasos separados (foto fija) es una decisión técnica de `/plan`, no de este documento; el requisito
-  de negocio es que el fontanero identifique el contador Y reciba la sugerencia dentro del mismo
-  flujo de tomar una lectura, sin pasos extra injustificados — no que ambos reconocedores corran
-  literalmente en el mismo instante.
+  simultáneamente**, tal como lo describía la especificación funcional original. Descartado con
+  evidencia (§2, segunda ronda): Tesseract.js puede tardar ~30 segundos por imagen, inviable sobre un
+  stream de video en vivo. Corren dos reconocedores en dos pasos: `qr-scanner`/`BarcodeDetector`
+  sobre el video en vivo (ya implementado en 015), Tesseract.js sobre una foto fija ya capturada
+  (este spec) — el requisito de negocio es que el fontanero identifique el contador Y reciba la
+  sugerencia dentro del mismo flujo de tomar una lectura, sin pasos extra injustificados, no que
+  ambos reconocedores corran en el mismo instante técnico.
 - **Cualquier procesamiento de imagen en el backend/Worker.** Todo el OCR corre en el navegador del
   fontanero (Tesseract.js es client-side) — ninguna foto se sube a ningún servidor para esta feature,
   ni se agrega ningún binding ni ruta nueva de backend.

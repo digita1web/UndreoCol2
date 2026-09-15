@@ -25,6 +25,16 @@ asignados — en vez de ver todo el acueducto completo, como ocurre hoy.
   el mockup de Figma de AquaLectura ("Zona actual: Sector Centro") — decisión de Mateo: se reutiliza
   ese campo en vez de construir un concepto de "ruta" nuevo y paralelo.
 
+**Segunda ronda de investigación (a pedido de Mateo, antes de aprobar):** una tabla de asignación
+técnico↔territorio filtrando por RLS/permisos, sin geolocalización ni ruteo, **es el patrón
+establecido de la industria** para exactamente este problema — no una simplificación propia. Zoho
+FSM lo llama "Territory-based Permission" (un técnico solo ve clientes/órdenes de su territorio
+asignado) y Salesforce Field Service usa el mismo concepto de "Service Territories". Confirma que
+diseñar esto como una tabla de asignación chica + filtro en RLS, sin construir un sistema de rutas
+geográficas, es la vía correcta y no una versión reducida de algo mejor.
+[Zoho FSM — Territory-based Permission](https://help.zoho.com/portal/en/kb/fsm/set-up-workforce/articles/territory-based-permission),
+[Salesforce — Service Territory Guidelines](https://help.salesforce.com/s/articleView?id=service.fs_territory_guidelines.htm).
+
 ## 3. Alcance
 
 ### 3.1 El admin asigna uno o más sectores a un lector
