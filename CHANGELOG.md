@@ -4,6 +4,52 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-15 — Sesión 056 (continuación 4): hallazgos abiertos de PLAN-PRODUCCION.md
+
+A pedido de Mateo, se revisaron los tres "hallazgos de seguridad/producto genuinamente abiertos"
+que quedaban documentados, uno por uno:
+
+**028 (rol secretaria) — nota vieja corregida, no había nada pendiente de verificar.** El propio
+`PLAN-PRODUCCION.md` decía "pendiente la integración HTTP contra Workers", pero Sesión 046 ya la
+había verificado contra producción real (`GET /salud`/`GET /login` → 200 con el bundle desplegado).
+Solo quedaba desactualizar el doc, corregido.
+
+**"Leaked password protection" de Supabase Auth — bloqueado, no por decisión, por dos causas
+externas reales:** la plataforma de Supabase está en ventana de mantenimiento programado (hasta
+~21:45 GMT de hoy) y, por separado, el conector MCP con acceso de gestión al proyecto real se
+desconectó en esta sesión. Mateo autorizó activarlo directamente vía la API de gestión de Supabase
+en vez de pedírselo a él — queda pendiente reintentarlo cuando alguna de las dos causas se resuelva.
+
+**Vulnerabilidades de dependencias — investigadas a fondo, una corregida con evidencia real, dos
+señaladas como fuera de alcance con la razón concreta encontrada, no solo "es mucho trabajo":**
+- **`vitest` 2→4 en backend: hecho.** Investigación previa (CLAUDE.md §3) encontró que este backend
+  no usa `@cloudflare/vitest-pool-workers` (la guía de migración de Cloudflare para eso no aplicaba)
+  y que el único cambio de comportamiento real de v4 (`vi.restoreAllMocks()` ya no resetea
+  `vi.fn()`/automocks) no afecta los 3 usos existentes del proyecto (todos sobre `vi.spyOn()`).
+  **Bug real encontrado por el bump, corregido:** `tsconfig.json` restringe `types` a
+  `@cloudflare/workers-types` a propósito — `tests/unit/factura-pdf.test.ts` (corre en Node real,
+  usa `zlib`/`Buffer`) dejó de tipar porque el acceso a tipos de Node que antes llegaba
+  transitivamente de `vitest` 2 desapareció con el bump. Corregido con
+  `/// <reference types="node" />` solo en ese archivo, nunca ampliando `types` para todo el
+  proyecto (eso sí reintroduciría el riesgo real: código de Worker compilando con APIs que no
+  existen en producción). Verificado: 251 tests + build + lint + knip + `wrangler deploy --dry-run`
+  en verde. La vulnerabilidad **crítica** del audit desapareció (10 → 6 hallazgos, ninguno crítico
+  ni moderado).
+- **`wrangler`/`miniflare`/`undici`/`ws`/`sharp`/`esbuild` en backend: investigado, fuera de alcance
+  por una razón concreta, no por pereza.** Arreglarlos exige `wrangler@4.132+`, que a su vez exige
+  `@cloudflare/workers-types@^5` como *peer dependency* — un cambio mayor que toca los tipos de
+  Worker en `src/index.ts` completo, no solo dependencias de test. Ninguna tiene ruta de explotación
+  real (herramientas de desarrollo, nunca código que llega al Worker desplegado desde
+  `wrangler.toml`).
+- **`postcss`/`next` en frontend: investigado, no ejecutado.** Confirmado que `next@16` tiene un
+  cambio disruptivo real y concreto para este proyecto — `middleware.ts` se renombra a `proxy.ts` (y
+  el proyecto sí tiene `frontend/middleware.ts`) — más Turbopack como bundler por defecto (ignora
+  config de Webpack si existiera) y APIs async endurecidas (`cookies()`/`headers()`/`params` deben
+  `await`-earse siempre). El `postcss` vulnerable vive dentro de `node_modules/next/node_modules/`,
+  usado solo en tiempo de build sobre archivos propios y confiables — sin ruta de explotación real
+  tampoco. Con un cambio confirmado y no trivial de por medio, se dejó para su propia tarea en vez
+  de hacerlo de rebote de esta revisión.
+
 ### 2026-09-15 — Sesión 056 (continuación 3): feature 037, rutas/zonas del lector
 
 Cierra el último feature grande pendiente del roadmap del lector: un `admin_acueducto` asigna
