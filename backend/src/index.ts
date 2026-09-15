@@ -98,6 +98,12 @@ import {
 import cierreFacturacion from './queues/cierre-facturacion';
 import { encolarNotificacion } from './lib/notificaciones';
 import {
+  asignarSector,
+  listarLectoresConSectores,
+  listarSectoresDisponibles,
+  quitarSector,
+} from './lib/lectores-sectores';
+import {
   contenidoConfirmacionPago,
   contenidoCorteEjecutado,
   contenidoReconexionCompletada,
@@ -371,8 +377,18 @@ app.get('/dashboard', async (c) => {
     p_cliente_id: activo.clienteId,
   });
   if (error) return c.json({ error: 'No se pudo consultar usuarios_servicio' }, 500);
+
+  // 037: sectores asignados al usuario actual en este acueducto — vacío si no
+  // es lector o si no tiene ninguno asignado (sigue viendo todo, spec CA-3).
+  const { data: misSectores } = await supabase.rpc('mis_sectores_asignados', {
+    p_cliente_id: activo.clienteId,
+  });
+
   return c.json({
-    cliente: activo,
+    cliente: {
+      ...activo,
+      sectoresAsignados: ((misSectores ?? []) as Array<{ sector: string }>).map((f) => f.sector),
+    },
     perfil: { id: sesion.perfilId, email: sesion.email, nombre: (perfil as { nombre?: string } | null)?.nombre ?? sesion.email },
     conteoUsuariosServicio: usuariosServicio?.length ?? 0,
   });
@@ -582,6 +598,65 @@ async function requerirClienteActivo(c: Context<{ Bindings: Env }>): Promise<Res
   }
   return { ctx: { supabase, clienteId: activo.clienteId, perfilId: sesion.perfilId, rol: activo.rol } };
 }
+
+// --- Sectores y asignación a lectores (037) --------------------------------
+
+app.get('/sectores', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  try {
+    const sectores = await listarSectoresDisponibles(ctx.supabase, ctx.clienteId);
+    return c.json({ sectores });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron listar los sectores' }, 500);
+  }
+});
+
+app.get('/lectores', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede gestionar lectores' }, 403);
+  }
+  try {
+    const lectores = await listarLectoresConSectores(ctx.supabase, ctx.clienteId);
+    return c.json({ lectores });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudieron listar los lectores' }, 500);
+  }
+});
+
+app.post('/lectores/:perfilId/sectores', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede asignar sectores' }, 403);
+  }
+  const body = await c.req.json<{ sector?: string }>().catch(() => ({ sector: undefined }));
+  const sector = body.sector?.trim();
+  if (!sector) return c.json({ error: 'sector es requerido' }, 400);
+  try {
+    await asignarSector(ctx.supabase, ctx.clienteId, c.req.param('perfilId'), sector);
+    return c.json({ ok: true }, 201);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'No se pudo asignar el sector';
+    return c.json({ error: msg }, msg.includes('ya está asignado') ? 409 : 400);
+  }
+});
+
+app.delete('/lectores/:perfilId/sectores/:sector', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede quitar sectores' }, 403);
+  }
+  try {
+    await quitarSector(ctx.supabase, ctx.clienteId, c.req.param('perfilId'), decodeURIComponent(c.req.param('sector')));
+    return c.json({ ok: true });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'No se pudo quitar el sector' }, 400);
+  }
+});
 
 // GET /dashboard/indicadores — indicadores operativos del acueducto (011).
 // Solo `admin_acueducto`: cualquier otro rol autenticado recibe 403 EXPLÍCITO
