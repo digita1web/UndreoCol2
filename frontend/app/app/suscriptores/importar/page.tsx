@@ -44,12 +44,16 @@ export default function ImportarSuscriptoresPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Importar suscriptores</h1>
-        <Link href="/app/suscriptores" className="text-sm text-muted-foreground hover:underline">
-          Volver a suscriptores
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-accent">Suscriptores</p>
+          <h1 className="text-[28px] font-bold tracking-tight">Importar suscriptores</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Cargá un archivo Excel o CSV con tus suscriptores.</p>
+        </div>
+        <Link href="/app/suscriptores" className="text-sm text-accent hover:underline">
+          ← Suscriptores
         </Link>
-      </div>
+      </section>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
