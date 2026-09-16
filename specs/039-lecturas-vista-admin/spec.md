@@ -1,6 +1,6 @@
 # SPEC — 039: lecturas-vista-admin
 
-**Estado:** Borrador para aprobación
+**Estado:** Aprobado (2026-09-16) — implementado Sesión 056
 **Depende de:** 004-lecturas-y-consumo, 026-shell-panel-admin, 030-facturacion-lista (mismo patrón de
 tabla/`Badge`)
 

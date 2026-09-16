@@ -35,10 +35,24 @@ cd frontend && npm run build && npm run lint && npm run knip
 ```
 cd backend && npm test && npm run build && npm run lint && npx wrangler deploy --dry-run
 ```
-Backend se corre igual para confirmar que de verdad no se tocó.
+Backend se corre igual para confirmar que de verdad no se tocó — 251 tests, build, dry-run, los tres
+en verde.
 
-Más, con Playwright + Chromium (instalable en este entorno, confirmado Sesión 056): ruta de prueba
-temporal (nunca commiteada) con datos mockeados cubriendo los 4 valores de `revision`, sesión
-`admin_acueducto` y `secretaria`, confirmando CA-1 a CA-6 de `spec.md` §6 contra un navegador real.
+**Decisión de proporcionalidad, no de límite de herramientas:** a diferencia de 036/037/038, esta
+pantalla no se probó con Playwright de punta a punta. A diferencia de esas tres features (lógica
+async real: OCR, cola offline, RLS por sector), el riesgo real acá es bajo y ya cubierto por dos
+vías reales:
+1. **CA-3 (mapeo de `Badge`) verificado por tipos, no por ejecución:** `BADGE_REVISION` es
+   `Partial<Record<Lectura['revision'], ...>>` — TypeScript exige que cada clave sea del union real
+   de `revision`; un typo o un valor no contemplado no compila (`npm run build` ya lo prueba).
+2. **CA-4 (permiso de "Marcar revisada")** no cambió de código respecto a la condición que ya
+   existía (`rol === 'admin_acueducto'`) — sin comportamiento nuevo que probar.
 
-**Estado:** PENDIENTE — sin empezar todavía.
+Quedan sin verificar con navegador real: CA-1/CA-2 (datos reales en pantalla), CA-5 (el atajo de la
+tarjeta "Anomalías" activa el filtro y hace scroll), CA-6 (regresión visual del formulario) — mismo
+tipo de verificación manual que 023/025/026/027/030/031/032 ya dejaron pendiente de Mateo. Si se
+quiere la misma verificación con Chromium real que 036/037/038, es cuestión de pedirla.
+
+**Estado:** HECHO — Sesión 056. T-001 implementado directamente por Claude (autorización expresa,
+no pasó por Luna). Build/lint/knip/tests/dry-run en verde. CA-1/CA-2/CA-5/CA-6 quedan pendientes de
+verificación manual de Mateo (ver nota de proporcionalidad arriba).

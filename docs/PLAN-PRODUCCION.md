@@ -514,15 +514,22 @@ física) — no la falta de un navegador.
 - **Portal del suscriptor y descarga de PDF** — de punta a punta contra producción real (ya
   verificado en local, sesión de PDF/portal de esta misma sesión de trabajo).
 
-### Rediseño visual — en curso, 5 de 15 pantallas
+### Rediseño visual — en curso, 6 de 15 pantallas
 
 `specs/026-shell-panel-admin/propuesta-referencia.html` es la referencia completa. Hecho: el marco
-compartido (026), el Panel principal (027), Facturación — lista (030), Detalle de factura (031) y
+compartido (026), el Panel principal (027), Facturación — lista (030), Detalle de factura (031),
 Cartera (032) — las últimas tres redactadas por Luna vía el flujo Luna/Claude, auditadas y
-corregidas contra `next build`/`lint` reales antes de cerrar. `PagoForm` (compartido por las 3
-pantallas de dinero) quedó re-vestido en su contenedor, sin tocar su lógica. Faltan, cada una su
-propio spec cuando se decida seguir: Lecturas (vista admin), Suscriptores (lista + ficha + importar), Catálogo y
-tarifas, Cortes, Notificaciones.
+corregidas contra `next build`/`lint` reales antes de cerrar — y Lecturas, vista admin (039, Sesión
+056, implementada directamente por Claude). `PagoForm` (compartido por las 3 pantallas de dinero)
+quedó re-vestido en su contenedor, sin tocar su lógica. **Corrección real encontrada en 039 antes de
+escribir código:** el plan había asumido que las pantallas re-vestidas usan los componentes
+`Input`/`Label` — verificado contra 030/031/032 y es falso, las tres siguen con `<input>`/`<button>`
+y clases de Tailwind sueltas (el mismo patrón que ya tenía la pantalla sin re-vestir); `Input`/
+`Label` es el patrón de una familia distinta (formularios de modal/detalle). Faltan, cada una su
+propio spec cuando se decida seguir (orden definido por Mateo, Sesión 056): Suscriptores (lista +
+ficha + importar — la ficha incluye construir la edición de suscriptor, hueco pendiente desde antes),
+Catálogo y tarifas, Cortes, Notificaciones, Configuración (sin auditar todavía si ya está re-vestida
+o sigue pendiente), y la pantalla nueva `/app/lectores` (037, todavía sin el sistema visual de 026).
 AquaLectura (025, vista del lector) ya tiene su propia identidad y no se reemplaza por la versión
 del prototipo.
 

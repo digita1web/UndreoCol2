@@ -4,6 +4,44 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-16 — Sesión 056 (continuación 5): feature 039, rediseño de Lecturas (vista admin)
+
+Primera de las pantallas que quedaban del rediseño visual (Mateo pidió continuar con las 15; definió
+el orden: Lecturas → Suscriptores → Catálogo → Cortes → Notificaciones → Configuración → `/app/lectores`).
+Re-viste `/app/lecturas` para `admin_acueducto`/`secretaria` con el sistema de 026 — `Badge`, `Card`,
+tokens — sin tocar AquaLectura (025 ya tiene su propia identidad, confirmado que no se reemplaza).
+
+**Corrección real, encontrada antes de escribir código, no después:** el plan había asumido
+`Input`/`Label` como el patrón a seguir para el formulario — verificado contra las tres pantallas ya
+re-vestidas (030/031/032) y es falso: ninguna usa esos componentes, las tres siguen con
+`<input>`/`<button>` y clases de Tailwind sueltas. `Input`/`Label` es el patrón real de otra familia
+de pantallas (formularios de modal/detalle, como `suscriptor-form.tsx`). Corregido en `plan.md`
+antes de implementar.
+
+**Decisiones documentadas con fuente (CLAUDE.md §3):**
+- La propuesta visual trae una tarjeta "Lector OCR" que no aplica a este rol — el OCR de 036 es solo
+  de la cámara del celular en AquaLectura, el admin trabaja desde escritorio. Se omite en vez de
+  agregar un botón sin funcionalidad real detrás.
+- `Badge` de revisión: `consumo_cero` se trata con más severidad (`danger`) que `consumo_alto`/
+  `consumo_bajo` (`warning`) — confirmado contra prácticas reales de la industria de facturación de
+  servicios públicos (consumo cero suele indicar contador roto/atascado o un bypass, no solo una
+  variación esperable), no inventado.
+
+El nombre del suscriptor por lectura se resuelve cruzando en el cliente `lecturas[].contador_id`
+contra `suscriptores[].contador_actual_id` — cero llamadas nuevas al backend, mismo criterio que 030.
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos; backend confirmado
+intacto (251 tests + build + `wrangler deploy --dry-run`, sin tocar ningún archivo de `backend/`).
+El mapeo de `Badge` (CA-3) queda verificado por tipos, no por ejecución: `BADGE_REVISION` es
+`Partial<Record<Lectura['revision'], ...>>`, TypeScript exige que cada clave sea del union real —
+un valor de `revision` no contemplado no compila.
+
+**Decisión de proporcionalidad, no de límite de herramientas:** a diferencia de 036/037/038 (lógica
+async real: OCR, cola offline, RLS), esta pantalla no se probó con Playwright de punta a punta — el
+riesgo real es bajo (re-vestido + una función pura de cruce de datos) y ya cubierto por tipos +
+build/lint. Mismo tipo de verificación visual manual pendiente de Mateo que ya quedó para
+023/025/026/027/030/031/032.
+
 ### 2026-09-15 — Sesión 056 (continuación 4): hallazgos abiertos de PLAN-PRODUCCION.md
 
 A pedido de Mateo, se revisaron los tres "hallazgos de seguridad/producto genuinamente abiertos"
