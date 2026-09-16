@@ -7,7 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { crearSuscriptor, type Suscriptor } from '@/lib/api';
 
-const CATEGORIAS = [
+// 040: exportada para que editar-suscriptor-form.tsx la reutilice — una
+// sola fuente de verdad para las 9 categorías tarifarias.
+export const CATEGORIAS = [
   'estrato_1', 'estrato_2', 'estrato_3', 'estrato_4', 'estrato_5', 'estrato_6',
   'comercial', 'industrial', 'oficial',
 ] as const;
