@@ -1,6 +1,6 @@
 # SPEC — 043: notificaciones-vista
 
-**Estado:** Borrador para aprobación
+**Estado:** Aprobado (2026-09-16) — implementado Sesión 056
 **Depende de:** 010-notificaciones, 026-shell-panel-admin, 042-cortes-vista (mismo patrón de
 `Badge`)
 

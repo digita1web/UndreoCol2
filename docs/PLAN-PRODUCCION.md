@@ -514,7 +514,7 @@ física) — no la falta de un navegador.
 - **Portal del suscriptor y descarga de PDF** — de punta a punta contra producción real (ya
   verificado en local, sesión de PDF/portal de esta misma sesión de trabajo).
 
-### Rediseño visual — en curso, 12 de 15 pantallas
+### Rediseño visual — en curso, 13 de 15 pantallas
 
 `specs/026-shell-panel-admin/propuesta-referencia.html` es la referencia completa. Hecho: el marco
 compartido (026), el Panel principal (027), Facturación — lista (030), Detalle de factura (031),
@@ -538,13 +538,15 @@ Claude — puramente visual, sin ningún hueco de funcionalidad encontrado esta 
 040); dos `Badge` nuevos sobre datos que ya existían (servicio activo/inactivo, tarifa
 vigente/histórica). Tratada con cuidado extra por ser la pantalla más sensible del rediseño hasta
 ahora (dinero, tarifas versionadas e inmutables, CLAUDE.md §10 puntos 0-0d) — cero cambios a
-`TarifaForm`/`core/tarifas.ts`. **Cortes (042, Sesión 056)** también implementado directamente por
-Claude — pantalla chica, puramente visual; la propuesta muestra "Ejecutar corte" por fila, no
-adoptado (decisión ya aprobada de 009: el corte real solo se ejecuta desde la ficha, con motivo
-obligatorio). Faltan, cada una su propio spec cuando se decida seguir (orden definido por Mateo,
-Sesión 056): Notificaciones, Configuración (sin auditar todavía si ya está re-vestida o sigue
-pendiente), y la pantalla nueva `/app/lectores` (037, todavía sin el sistema visual de 026).
-AquaLectura (025, vista del lector) ya tiene su propia identidad y no se reemplaza por la versión
+`TarifaForm`/`core/tarifas.ts`. **Cortes (042)** también implementado directamente por Claude —
+pantalla chica, puramente visual; la propuesta muestra "Ejecutar corte" por fila, no adoptado
+(decisión ya aprobada de 009: el corte real solo se ejecuta desde la ficha, con motivo obligatorio).
+**Notificaciones (043)** también — se mantiene como lista, no tabla (más detalle por fila del que
+cabe en una tabla sin inventar una vista de "Detalle" que no existe). Faltan, cada una su propio
+spec cuando se decida seguir (orden definido por Mateo, Sesión 056): Configuración (sin auditar
+todavía si ya está re-vestida o sigue pendiente), y la pantalla nueva `/app/lectores` (037, todavía
+sin el sistema visual de 026). AquaLectura (025, vista del lector) ya tiene su propia identidad y no
+se reemplaza por la versión
 del prototipo.
 
 ### Roadmap — features grandes sin empezar

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   listarNotificaciones,
@@ -19,11 +20,13 @@ const ETIQUETAS_TIPO: Record<TipoNotificacion, string> = {
   reconexion_completada: 'Reconexión completada',
 };
 
-const ETIQUETAS_ESTADO: Record<EstadoNotificacion, string> = {
-  pendiente: 'Pendiente',
-  enviada: 'Enviada',
-  fallida: 'Fallida',
-  cancelada: 'Cancelada',
+// 043: sustituye a la antigua ETIQUETAS_ESTADO (solo texto) — una sola
+// fuente de verdad, la etiqueta ya viene junto con la variante de Badge.
+const BADGE_ESTADO: Record<EstadoNotificacion, { variante: 'success' | 'warning' | 'danger' | 'gray'; etiqueta: string }> = {
+  enviada: { variante: 'success', etiqueta: 'Enviada' },
+  fallida: { variante: 'danger', etiqueta: 'Fallida' },
+  pendiente: { variante: 'warning', etiqueta: 'Pendiente' },
+  cancelada: { variante: 'gray', etiqueta: 'Cancelada' },
 };
 
 export default function NotificacionesPage() {
@@ -43,19 +46,24 @@ export default function NotificacionesPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Notificaciones</h1>
-        <Link href="/app/dashboard" className="text-sm text-blue-600 hover:underline">
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-accent">Comunicaciones</p>
+          <h1 className="text-[28px] font-bold tracking-tight">Notificaciones</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Historial de envíos de facturas y recordatorios.</p>
+        </div>
+        <Link href="/app/dashboard" className="text-sm text-accent hover:underline">
           ← Dashboard
         </Link>
-      </div>
+      </section>
+
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="flex flex-wrap gap-4 text-sm">
         <label className="flex items-center gap-2">
           Tipo
           <select
-            className="h-9 rounded-md border border-border bg-transparent px-2"
+            className="h-9 rounded-md border border-border bg-background px-2"
             value={tipo}
             onChange={(e) => setTipo(e.target.value as TipoNotificacion | '')}
           >
@@ -68,12 +76,12 @@ export default function NotificacionesPage() {
         <label className="flex items-center gap-2">
           Estado
           <select
-            className="h-9 rounded-md border border-border bg-transparent px-2"
+            className="h-9 rounded-md border border-border bg-background px-2"
             value={estado}
             onChange={(e) => setEstado(e.target.value as EstadoNotificacion | '')}
           >
             <option value="">Todos</option>
-            {Object.entries(ETIQUETAS_ESTADO).map(([valor, etiqueta]) => (
+            {Object.entries(BADGE_ESTADO).map(([valor, { etiqueta }]) => (
               <option key={valor} value={valor}>{etiqueta}</option>
             ))}
           </select>
@@ -89,33 +97,26 @@ export default function NotificacionesPage() {
           {notificaciones?.length === 0 && (
             <p className="text-sm text-muted-foreground">Sin notificaciones para los filtros seleccionados.</p>
           )}
-          {notificaciones?.map((n) => (
-            <div key={n.id} className="flex flex-col gap-1 border-b border-border pb-3 text-sm last:border-0">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-medium">{ETIQUETAS_TIPO[n.tipo] ?? n.tipo}</p>
-                <span
-                  className={
-                    n.estado === 'fallida'
-                      ? 'font-medium text-red-600'
-                      : n.estado === 'enviada'
-                        ? 'text-green-700'
-                        : 'text-muted-foreground'
-                  }
-                >
-                  {ETIQUETAS_ESTADO[n.estado] ?? n.estado}
-                </span>
+          {notificaciones?.map((n) => {
+            const badge = BADGE_ESTADO[n.estado];
+            return (
+              <div key={n.id} className="flex flex-col gap-1 border-b border-border pb-3 text-sm last:border-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium">{ETIQUETAS_TIPO[n.tipo] ?? n.tipo}</p>
+                  <Badge variante={badge?.variante ?? 'gray'}>{badge?.etiqueta ?? n.estado}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {n.destinatario ?? 'Sin destinatario'} · {n.canal} · {new Date(n.created_at).toLocaleString('es-CO')}
+                </p>
+                {n.asunto && <p className="text-xs">{n.asunto}</p>}
+                <p className="text-xs text-muted-foreground">
+                  Intentos: {n.intentos}
+                  {n.enviada_en && ` · Enviada: ${new Date(n.enviada_en).toLocaleString('es-CO')}`}
+                </p>
+                {n.ultimo_error && <p className="text-xs text-red-600">Error: {n.ultimo_error}</p>}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {n.destinatario ?? 'Sin destinatario'} · {n.canal} · {new Date(n.created_at).toLocaleString('es-CO')}
-              </p>
-              {n.asunto && <p className="text-xs">{n.asunto}</p>}
-              <p className="text-xs text-muted-foreground">
-                Intentos: {n.intentos}
-                {n.enviada_en && ` · Enviada: ${new Date(n.enviada_en).toLocaleString('es-CO')}`}
-              </p>
-              {n.ultimo_error && <p className="text-xs text-red-600">Error: {n.ultimo_error}</p>}
-            </div>
-          ))}
+            );
+          })}
         </CardContent>
       </Card>
     </main>

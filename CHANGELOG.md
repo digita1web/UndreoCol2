@@ -4,6 +4,21 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-16 — Sesión 056 (continuación 9): feature 043, rediseño de Notificaciones
+
+Quinta de las pantallas que quedaban. Re-viste `/app/notificaciones` con el sistema de 026 —
+puramente visual. `Badge` de estado (`enviada`/`fallida`/`pendiente`/`cancelada` →
+`success`/`danger`/`warning`/`gray`) reemplaza el texto con color condicional que ya usaba.
+
+**Se mantiene como lista, no tabla**, a diferencia de 039-042: cada notificación ya muestra más
+detalle del que cabe en una tabla legible (destinatario, canal, fecha, asunto, intentos, fecha de
+envío real, error completo) sin construir una vista de "Detalle" que hoy no existe — mismo criterio
+que 041 usó con el historial de tarifas.
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos; backend confirmado
+intacto (251 tests + build + `wrangler deploy --dry-run`). Pendiente de Mateo: verificación visual
+con `wrangler dev` real.
+
 ### 2026-09-16 — Sesión 056 (continuación 8): feature 042, rediseño de Cortes
 
 Cuarta de las pantallas que quedaban (orden definido por Mateo). Re-viste `/app/cortes` con el
