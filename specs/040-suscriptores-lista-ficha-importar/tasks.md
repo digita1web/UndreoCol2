@@ -55,7 +55,17 @@ cd backend && npm test && npm run build && npm run lint && npx wrangler deploy -
 Backend se corre igual para confirmar que de verdad no se tocó. `npm run knip` confirma que
 `actualizarSuscriptor`/`DatosActualizarSuscriptor` dejan de estar huérfanos.
 
-**Archivos:** `CHANGELOG.md`, `docs/PLAN-PRODUCCION.md` (contador de rediseño a 7/15... en realidad
-cuenta como 3 pantallas más funcionalidad nueva — a definir el conteo real al cerrar).
+**Archivos:** `CHANGELOG.md`, `docs/PLAN-PRODUCCION.md`
 
-**Estado:** PENDIENTE — sin empezar todavía.
+**Verificado:** 251 tests de backend + build + `wrangler deploy --dry-run` en verde (backend
+intacto, `git status` sin cambios ahí). `npm run knip` en frontend confirma que
+`actualizarSuscriptor`/`DatosActualizarSuscriptor` dejaron de estar huérfanos.
+
+**Conteo real para PLAN-PRODUCCION.md:** las 3 pantallas (lista, ficha, importar) cuentan como 3 de
+las 15 — la edición de suscriptor es funcionalidad nueva dentro de la ficha, no una pantalla aparte.
+Contador pasa de 6/15 a 9/15.
+
+**Estado:** HECHO — Sesión 056. T-001 a T-003 implementados directamente por Claude (autorización
+expresa, no pasaron por Luna). CA-1/CA-2/CA-5 verificados por tipos/inspección; CA-3/CA-4/CA-6/CA-7
+quedan pendientes de verificación manual de Mateo contra `wrangler dev` real (mismo criterio de
+proporcionalidad que 039).

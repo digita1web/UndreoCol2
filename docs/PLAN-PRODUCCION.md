@@ -514,24 +514,30 @@ física) — no la falta de un navegador.
 - **Portal del suscriptor y descarga de PDF** — de punta a punta contra producción real (ya
   verificado en local, sesión de PDF/portal de esta misma sesión de trabajo).
 
-### Rediseño visual — en curso, 6 de 15 pantallas
+### Rediseño visual — en curso, 9 de 15 pantallas
 
 `specs/026-shell-panel-admin/propuesta-referencia.html` es la referencia completa. Hecho: el marco
 compartido (026), el Panel principal (027), Facturación — lista (030), Detalle de factura (031),
 Cartera (032) — las últimas tres redactadas por Luna vía el flujo Luna/Claude, auditadas y
-corregidas contra `next build`/`lint` reales antes de cerrar — y Lecturas, vista admin (039, Sesión
-056, implementada directamente por Claude). `PagoForm` (compartido por las 3 pantallas de dinero)
-quedó re-vestido en su contenedor, sin tocar su lógica. **Corrección real encontrada en 039 antes de
-escribir código:** el plan había asumido que las pantallas re-vestidas usan los componentes
-`Input`/`Label` — verificado contra 030/031/032 y es falso, las tres siguen con `<input>`/`<button>`
-y clases de Tailwind sueltas (el mismo patrón que ya tenía la pantalla sin re-vestir); `Input`/
-`Label` es el patrón de una familia distinta (formularios de modal/detalle). Faltan, cada una su
-propio spec cuando se decida seguir (orden definido por Mateo, Sesión 056): Suscriptores (lista +
-ficha + importar — la ficha incluye construir la edición de suscriptor, hueco pendiente desde antes),
-Catálogo y tarifas, Cortes, Notificaciones, Configuración (sin auditar todavía si ya está re-vestida
-o sigue pendiente), y la pantalla nueva `/app/lectores` (037, todavía sin el sistema visual de 026).
-AquaLectura (025, vista del lector) ya tiene su propia identidad y no se reemplaza por la versión
-del prototipo.
+corregidas contra `next build`/`lint` reales antes de cerrar —, Lecturas vista admin (039) y
+Suscriptores — lista, ficha, importar (040) — las últimas dos, Sesión 056, implementadas
+directamente por Claude. `PagoForm` (compartido por las 3 pantallas de dinero) quedó re-vestido en
+su contenedor, sin tocar su lógica. **Corrección real encontrada en 039 antes de escribir código,
+confirmada de nuevo en 040:** el plan había asumido que las pantallas re-vestidas usan los
+componentes `Input`/`Label` — verificado contra 030/031/032 y es falso, las tres siguen con
+`<input>`/`<button>` y clases de Tailwind sueltas; `Input`/`Label` es el patrón de una familia
+distinta (formularios de modal/detalle, como `SuscriptorForm`/`EditarSuscriptorForm`). **040 además
+cerró un hueco real, no solo visual:** la ficha de suscriptor no tenía forma de editar sus datos —
+`actualizarSuscriptor()`/`DatosActualizarSuscriptor` existían desde antes en el backend
+(`PATCH /suscriptores/:id`) sin ningún componente que los llamara (hallazgo de Knip, Sesiones
+055/056); se construyó `EditarSuscriptorForm`, que deliberadamente nunca expone `codigo_suscriptor`
+(credencial del portal) ni `estado` (ya tiene su camino correcto vía `CorteForm`/`ReconexionForm`,
+con las reglas reales de mora/motivo — exponerlo en un editar genérico abriría un atajo para
+saltárselas). Faltan, cada una su propio spec cuando se decida seguir (orden definido por Mateo,
+Sesión 056): Catálogo y tarifas, Cortes, Notificaciones, Configuración (sin auditar todavía si ya
+está re-vestida o sigue pendiente), y la pantalla nueva `/app/lectores` (037, todavía sin el sistema
+visual de 026). AquaLectura (025, vista del lector) ya tiene su propia identidad y no se reemplaza
+por la versión del prototipo.
 
 ### Roadmap — features grandes sin empezar
 

@@ -4,6 +4,51 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-16 — Sesión 056 (continuación 6): feature 040, rediseño de Suscriptores + edición
+
+Segunda de las pantallas que quedaban del rediseño visual (orden definido por Mateo). Re-viste las
+3 pantallas de Suscriptores (`/app/suscriptores`, ficha, importar) con el sistema de 026, y cierra
+un hueco real: la ficha no tenía forma de editar los datos de un suscriptor.
+
+**Cierra el hallazgo de Knip de las Sesiones 055/056:** `actualizarSuscriptor()`/
+`DatosActualizarSuscriptor` existían desde antes — `PATCH /suscriptores/:id` ya funciona en el
+backend (`backend/src/lib/suscriptores.ts`), confirmado leyendo el código real antes de escribir el
+plan — pero ningún componente los llamaba. `EditarSuscriptorForm` (nuevo, mismo patrón que
+`suscriptor-form.tsx`: `Input`/`Label`/`Button`, `useHidratado`) cierra el hueco.
+
+**Dos exclusiones deliberadas del formulario nuevo, con razón de negocio, no un recorte de
+alcance sin avisar:**
+- `codigo_suscriptor` — nunca se acepta (D-2, es la credencial del portal); ya tiene su propio flujo
+  separado ("Regenerar código del portal").
+- `estado` — aunque el backend lo admite en el `PATCH`, esta pantalla ya tiene el camino correcto
+  para cambiarlo (`CorteForm`/`ReconexionForm`, con las reglas reales de CLAUDE.md §10 puntos
+  16-19: motivo, deuda vencida, autorización de excepción). Exponerlo en un "editar" genérico
+  abriría un atajo para saltarse esas reglas.
+
+El `PATCH` de edición solo manda los campos que efectivamente cambiaron (diff contra el valor
+inicial), nunca los 9 siempre — evita sobrescribir con el mismo valor si otro admin editó casi al
+mismo tiempo, sin necesitar optimistic locking en la tabla.
+
+**Otros cambios reales, no solo visuales:**
+- La vista de solo lectura de la ficha ahora muestra teléfono, email, sector y notas — existían en
+  el suscriptor desde 003/la importación de Excel, pero la pantalla nunca los mostraba.
+- La lista gana búsqueda por nombre/código (100% cliente, sin llamada nueva) y una tabla real con
+  `Badge` de estado. Se omite la columna "Contador" de la propuesta visual: `Suscriptor` no trae el
+  serial del contador, solo un uuid — traerlo exigiría una llamada extra por fila, desproporcionado
+  (mismo criterio que 039 omitiendo la tarjeta "Lector OCR").
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend — Knip confirma que
+`actualizarSuscriptor`/`DatosActualizarSuscriptor` dejaron de estar huérfanos, solo quedan los 2
+hallazgos preexistentes de shadcn (`buttonVariants`/`ButtonProps`, ya revisados). Backend confirmado
+intacto: 251 tests + build + `wrangler deploy --dry-run`, sin tocar ningún archivo de `backend/`.
+CA-1 (búsqueda sin llamada nueva), CA-2 (colores de `Badge`) y CA-5 (el formulario nunca expone
+`codigo_suscriptor`/`estado`) verificados por tipos e inspección de código, no por ejecución —
+mismo criterio de proporcionalidad que 039.
+
+**Pendiente de Mateo, con `wrangler dev` real:** CA-3 (el formulario arranca pre-llenado), CA-4 (el
+`PATCH` persiste de verdad contra la base), CA-6 (regresión de los flujos existentes de la ficha),
+CA-7 (importación de punta a punta).
+
 ### 2026-09-16 — Sesión 056 (continuación 5): feature 039, rediseño de Lecturas (vista admin)
 
 Primera de las pantallas que quedaban del rediseño visual (Mateo pidió continuar con las 15; definió
