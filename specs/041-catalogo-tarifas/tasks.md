@@ -41,4 +41,10 @@ cd backend && npm test && npm run build && npm run lint && npx wrangler deploy -
 
 **Archivos:** `CHANGELOG.md`, `docs/PLAN-PRODUCCION.md` (contador de rediseño a 11/15).
 
-**Estado:** PENDIENTE — sin empezar todavía.
+**Verificado:** 251 tests de backend + build + `wrangler deploy --dry-run` en verde (backend
+intacto). `npm run build`/`lint`/`knip` en frontend, sin hallazgos nuevos.
+
+**Estado:** HECHO — Sesión 056. T-001/T-002 implementados directamente por Claude (autorización
+expresa, no pasaron por Luna). CA-1/CA-2 verificados por tipos/inspección; CA-2 (cierre automático
+de vigencia al crear tarifa nueva), CA-3/CA-4/CA-5 (regresión de los tres flujos de negocio) quedan
+pendientes de verificación manual de Mateo contra `wrangler dev` real.

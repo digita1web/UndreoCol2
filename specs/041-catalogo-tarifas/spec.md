@@ -1,6 +1,6 @@
 # SPEC — 041: catalogo-tarifas
 
-**Estado:** Borrador para aprobación
+**Estado:** Aprobado (2026-09-16) — implementado Sesión 056
 **Depende de:** 002-catalogo-y-tarifas, 026-shell-panel-admin, 029-autorizacion-tarifas-secretaria,
 040-suscriptores-lista-ficha-importar (mismo patrón de tabla/`Badge`)
 

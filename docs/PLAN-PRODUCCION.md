@@ -514,7 +514,7 @@ física) — no la falta de un navegador.
 - **Portal del suscriptor y descarga de PDF** — de punta a punta contra producción real (ya
   verificado en local, sesión de PDF/portal de esta misma sesión de trabajo).
 
-### Rediseño visual — en curso, 9 de 15 pantallas
+### Rediseño visual — en curso, 11 de 15 pantallas
 
 `specs/026-shell-panel-admin/propuesta-referencia.html` es la referencia completa. Hecho: el marco
 compartido (026), el Panel principal (027), Facturación — lista (030), Detalle de factura (031),
@@ -533,8 +533,13 @@ cerró un hueco real, no solo visual:** la ficha de suscriptor no tenía forma d
 055/056); se construyó `EditarSuscriptorForm`, que deliberadamente nunca expone `codigo_suscriptor`
 (credencial del portal) ni `estado` (ya tiene su camino correcto vía `CorteForm`/`ReconexionForm`,
 con las reglas reales de mora/motivo — exponerlo en un editar genérico abriría un atajo para
-saltárselas). Faltan, cada una su propio spec cuando se decida seguir (orden definido por Mateo,
-Sesión 056): Catálogo y tarifas, Cortes, Notificaciones, Configuración (sin auditar todavía si ya
+saltárselas). **Catálogo y tarifas (041, Sesión 056)** también implementado directamente por
+Claude — puramente visual, sin ningún hueco de funcionalidad encontrado esta vez (a diferencia de
+040); dos `Badge` nuevos sobre datos que ya existían (servicio activo/inactivo, tarifa
+vigente/histórica). Tratada con cuidado extra por ser la pantalla más sensible del rediseño hasta
+ahora (dinero, tarifas versionadas e inmutables, CLAUDE.md §10 puntos 0-0d) — cero cambios a
+`TarifaForm`/`core/tarifas.ts`. Faltan, cada una su propio spec cuando se decida seguir (orden
+definido por Mateo, Sesión 056): Cortes, Notificaciones, Configuración (sin auditar todavía si ya
 está re-vestida o sigue pendiente), y la pantalla nueva `/app/lectores` (037, todavía sin el sistema
 visual de 026). AquaLectura (025, vista del lector) ya tiene su propia identidad y no se reemplaza
 por la versión del prototipo.

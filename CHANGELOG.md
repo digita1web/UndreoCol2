@@ -4,6 +4,34 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-16 — Sesión 056 (continuación 7): feature 041, rediseño de Catálogo y tarifas
+
+Tercera de las pantallas que quedaban (orden definido por Mateo). Re-viste `/app/catalogo` (lista
+de servicios) y `/app/catalogo/[servicioId]` (historial de tarifas + autorización de `secretaria`,
+029) con el sistema de 026. **Puramente visual esta vez** — a diferencia de 040, no se encontró
+ningún hueco de funcionalidad real. Tratada con cuidado extra por ser la pantalla más sensible del
+rediseño hasta ahora: dinero, tarifas versionadas e inmutables (CLAUDE.md §10 puntos 0-0d) — cero
+cambios a `TarifaForm`, `core/tarifas.ts`, ni a ninguna función de `lib/api.ts` ya existente.
+
+**Dos `Badge` reales sobre datos que ya existían, no agregados:**
+- Servicio `activo`/`inactivo` → `success`/`gray`.
+- Tarifa `vigencia_hasta === null` (vigente) vs con fecha (histórica) → `success`/`gray` — antes
+  solo se distinguía leyendo texto plano ("vigente" en la fecha de fin).
+
+**Corrección verificada antes del plan, mismo tipo de hallazgo que 039:** `/app/catalogo` usaba el
+componente `Button` de `components/ui/`, inconsistente con el patrón real de 030/032/039/040
+(`<button>` con clases de Tailwind sueltas) — homologado al patrón real, no se mantuvo la
+inconsistencia previa al rediseño.
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos; backend confirmado
+intacto (251 tests + build + `wrangler deploy --dry-run`). CA-1/CA-2 (mapeo de `Badge`) verificados
+por tipos, no por ejecución.
+
+**Pendiente de Mateo, con `wrangler dev` real:** que el cierre automático de la tarifa anterior se
+refleje sin recargar al crear una nueva (CA-2), y regresión de los tres flujos de negocio
+(activar/desactivar servicio, autorizar/revocar/aplicar tarifa como `secretaria`, crear tarifa
+directa como `admin_acueducto` — CA-3/CA-4/CA-5).
+
 ### 2026-09-16 — Sesión 056 (continuación 6): feature 040, rediseño de Suscriptores + edición
 
 Segunda de las pantallas que quedaban del rediseño visual (orden definido por Mateo). Re-viste las
