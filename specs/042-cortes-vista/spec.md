@@ -1,6 +1,6 @@
 # SPEC — 042: cortes-vista
 
-**Estado:** Borrador para aprobación
+**Estado:** Aprobado (2026-09-16) — implementado Sesión 056
 **Depende de:** 009-cortes-y-reconexiones, 026-shell-panel-admin, 041-catalogo-tarifas (mismo
 patrón de `Badge`)
 

@@ -4,6 +4,23 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-16 — Sesión 056 (continuación 8): feature 042, rediseño de Cortes
+
+Cuarta de las pantallas que quedaban (orden definido por Mateo). Re-viste `/app/cortes` con el
+sistema de 026 — pantalla chica, puramente visual. Tabla real (antes lista vertical) con `Badge
+danger` fijo para todos los candidatos: sin el umbral configurado disponible en el frontend, estar
+en esta lista ya significa que superaron el umbral real (`listarCandidatosCorte()` filtra
+server-side, CLAUDE.md §10 punto 16) — no hay una categoría "menos urgente" real que graduar.
+
+**La propuesta muestra un botón "Ejecutar corte" por fila — no se adopta:** es una decisión ya
+aprobada de la feature 009 (comentario real en el código desde antes: el corte nunca se ejecuta
+desde esta lista, siempre desde la ficha del suscriptor, con motivo obligatorio — CLAUDE.md §10
+puntos 16-19). Mismo criterio que 030 no colapsó Simular→Confirmar en un botón.
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos; backend confirmado
+intacto (251 tests + build + `wrangler deploy --dry-run`). Pendiente de Mateo: verificación visual
+con `wrangler dev` real (mismo criterio de proporcionalidad que 039/040/041).
+
 ### 2026-09-16 — Sesión 056 (continuación 7): feature 041, rediseño de Catálogo y tarifas
 
 Tercera de las pantallas que quedaban (orden definido por Mateo). Re-viste `/app/catalogo` (lista
