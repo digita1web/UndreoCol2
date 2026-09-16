@@ -1,6 +1,8 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TarifaForm } from '@/components/tarifa-form';
 import {
@@ -19,6 +21,14 @@ const CATEGORIAS = [
   'estrato_1', 'estrato_2', 'estrato_3', 'estrato_4', 'estrato_5', 'estrato_6',
   'comercial', 'industrial', 'oficial',
 ] as const;
+
+// 041: función, no Record — vigencia_hasta es string | null, no un union
+// chico (mismo criterio que suscriptorDelContador en 039).
+function badgeVigencia(tarifa: Tarifa): { variante: 'success' | 'gray'; etiqueta: string } {
+  return tarifa.vigencia_hasta === null
+    ? { variante: 'success', etiqueta: 'Vigente' }
+    : { variante: 'gray', etiqueta: 'Histórica' };
+}
 
 interface PageProps {
   params: Promise<{ servicioId: string }>;
@@ -95,7 +105,17 @@ export default function HistorialTarifasPage({ params }: PageProps) {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <h1 className="text-2xl font-semibold">{servicio?.nombre ?? 'Servicio'}</h1>
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-accent">Catálogo y tarifas</p>
+          <h1 className="text-[28px] font-bold tracking-tight">{servicio?.nombre ?? 'Servicio'}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Historial de tarifas por categoría.</p>
+        </div>
+        <Link href="/app/catalogo" className="text-sm text-accent hover:underline">
+          ← Catálogo
+        </Link>
+      </section>
+
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <Card>
@@ -114,16 +134,20 @@ export default function HistorialTarifasPage({ params }: PageProps) {
           </select>
           {tarifas === null && <p className="text-sm text-muted-foreground">Cargando…</p>}
           {tarifas?.length === 0 && <p className="text-sm text-muted-foreground">Sin tarifas para esta categoría.</p>}
-          {tarifas?.map((t) => (
-            <div key={t.id} className="border-b border-border py-2 text-sm last:border-0">
-              <p className="font-medium">
-                {t.vigencia_desde} — {t.vigencia_hasta ?? 'vigente'}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Cargo fijo {t.cargo_fijo} · límite {t.limite_basico_m3} m³ · básico {t.precio_basico_m3}/m³ · no básico {t.precio_no_basico_m3}/m³
-              </p>
-            </div>
-          ))}
+          {tarifas?.map((t) => {
+            const badge = badgeVigencia(t);
+            return (
+              <div key={t.id} className="border-b border-border py-2 text-sm last:border-0">
+                <p className="flex items-center gap-2 font-medium">
+                  <Badge variante={badge.variante}>{badge.etiqueta}</Badge>
+                  {t.vigencia_desde} — {t.vigencia_hasta ?? 'hoy'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Cargo fijo {t.cargo_fijo} · límite {t.limite_basico_m3} m³ · básico {t.precio_basico_m3}/m³ · no básico {t.precio_no_basico_m3}/m³
+                </p>
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
 
@@ -134,13 +158,16 @@ export default function HistorialTarifasPage({ params }: PageProps) {
             <p className="text-sm text-muted-foreground">Autorización específica, temporal y de un solo uso para {categoria}.</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <input className="h-9 rounded-md border border-border px-3 text-sm" placeholder="Motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-            <input className="h-9 rounded-md border border-border px-3 text-sm" type="datetime-local" value={expiraEn} onChange={(e) => setExpiraEn(e.target.value)} />
-            <button className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white" onClick={crearAutorizacion}>Crear autorización</button>
+            <input className="h-9 rounded-md border border-border bg-background px-3 text-sm" placeholder="Motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+            <input className="h-9 rounded-md border border-border bg-background px-3 text-sm" type="datetime-local" value={expiraEn} onChange={(e) => setExpiraEn(e.target.value)} />
+            <button className="h-9 w-fit rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700" onClick={crearAutorizacion}>Crear autorización</button>
             {autorizacionesDeEstaCategoria.map((a) => (
-              <div key={a.id} className="flex items-center justify-between rounded border p-2 text-sm">
-                <span>{a.motivo} · expira {new Date(a.expira_en).toLocaleString('es-CO')}</span>
-                <button className="text-red-600 hover:underline" onClick={() => revocar(a.id)}>Revocar</button>
+              <div key={a.id} className="flex items-center justify-between gap-2 rounded-md border border-border p-3 text-sm">
+                <span className="flex items-center gap-2">
+                  <Badge variante="info">Autorización vigente</Badge>
+                  {a.motivo} · expira {new Date(a.expira_en).toLocaleString('es-CO')}
+                </span>
+                <button className="text-sm font-medium text-red-600 hover:underline" onClick={() => revocar(a.id)}>Revocar</button>
               </div>
             ))}
           </CardContent>
@@ -157,7 +184,7 @@ export default function HistorialTarifasPage({ params }: PageProps) {
               <p className="text-sm text-muted-foreground">No hay una autorización vigente para esta categoría.</p>
             ) : (
               <>
-                <select className="h-9 rounded-md border border-border px-3 text-sm" value={autorizacionId} onChange={(e) => setAutorizacionId(e.target.value)}>
+                <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={autorizacionId} onChange={(e) => setAutorizacionId(e.target.value)}>
                   <option value="">Selecciona una autorización…</option>
                   {autorizacionesDeEstaCategoria.map((a) => <option key={a.id} value={a.id}>{a.motivo} · {new Date(a.expira_en).toLocaleString('es-CO')}</option>)}
                 </select>
