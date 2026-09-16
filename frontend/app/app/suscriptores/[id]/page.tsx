@@ -1,12 +1,15 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ContadorForm } from '@/components/contador-form';
 import { ReemplazoContadorForm } from '@/components/reemplazo-contador-form';
 import { CorteForm } from '@/components/corte-form';
 import { ReconexionForm } from '@/components/reconexion-form';
 import { EtiquetaQrContador } from '@/components/etiqueta-qr-contador';
+import { EditarSuscriptorForm } from '@/components/editar-suscriptor-form';
 import {
   historialCortes,
   matrizTarifas,
@@ -23,6 +26,20 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
+// 040: Badge por estado del suscriptor y por tipo de evento de corte —
+// constantes, mismo criterio que 030/039.
+const BADGE_ESTADO: Record<Suscriptor['estado'], { variante: 'success' | 'warning' | 'danger' | 'gray'; etiqueta: string }> = {
+  activo: { variante: 'success', etiqueta: 'Activo' },
+  suspendido: { variante: 'warning', etiqueta: 'Suspendido' },
+  cortado: { variante: 'danger', etiqueta: 'Cortado' },
+  inactivo: { variante: 'gray', etiqueta: 'Inactivo' },
+};
+
+const BADGE_EVENTO: Record<EventoCorte['tipo'], { variante: 'danger' | 'success'; etiqueta: string }> = {
+  corte: { variante: 'danger', etiqueta: 'Corte' },
+  reconexion: { variante: 'success', etiqueta: 'Reconexión' },
+};
+
 export default function DetalleSuscriptorPage({ params }: PageProps) {
   const { id } = use(params);
   const [suscriptor, setSuscriptor] = useState<Suscriptor | null>(null);
@@ -34,6 +51,7 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
   const [aviso, setAviso] = useState<string | null>(null);
   const [rol, setRol] = useState<string | null>(null);
   const [mostrarEtiqueta, setMostrarEtiqueta] = useState(false);
+  const [editando, setEditando] = useState(false);
 
   function recargar() {
     setError(null);
@@ -88,9 +106,21 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
       .catch(() => setSinTarifaConfigurada(false));
   }, [suscriptor?.categoria]);
 
+  const badgeEstado = suscriptor ? BADGE_ESTADO[suscriptor.estado] : null;
+
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <h1 className="text-2xl font-semibold">{suscriptor?.nombre ?? 'Suscriptor'}</h1>
+      <section className="flex flex-wrap items-start justify-between gap-4 print:hidden">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-accent">Suscriptores</p>
+          <h1 className="text-[28px] font-bold tracking-tight">{suscriptor?.nombre ?? 'Suscriptor'}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{suscriptor?.codigo_suscriptor}</p>
+        </div>
+        <Link href="/app/suscriptores" className="text-sm text-accent hover:underline">
+          ← Suscriptores
+        </Link>
+      </section>
+
       {error && <p className="text-sm text-red-600">{error}</p>}
       {aviso && <p className="text-sm text-green-700">{aviso}</p>}
       {sinTarifaConfigurada && (
@@ -102,21 +132,50 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
       )}
 
       <Card className="print:hidden">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Datos</CardTitle>
+          {!editando && rol === 'admin_acueducto' && (
+            <button
+              className="h-8 w-fit rounded-md border border-border px-3 text-xs font-medium hover:bg-muted"
+              onClick={() => setEditando(true)}
+            >
+              Editar
+            </button>
+          )}
         </CardHeader>
-        <CardContent className="text-sm">
-          <p>Código: {suscriptor?.codigo_suscriptor}</p>
-          <p>Documento: {suscriptor?.numero_documento}</p>
-          <p>Dirección: {suscriptor?.direccion}</p>
-          <p>Categoría: {suscriptor?.categoria}</p>
-          <p>Estado: {suscriptor?.estado}</p>
-          {rol === 'admin_acueducto' && <button
-            className="mt-3 h-9 w-fit rounded-md border border-blue-300 px-4 text-sm font-medium text-blue-700 hover:bg-blue-50"
-            onClick={alRegenerarCodigo}
-          >
-            Regenerar código del portal
-          </button>}
+        <CardContent>
+          {editando && suscriptor ? (
+            <EditarSuscriptorForm
+              suscriptor={suscriptor}
+              onActualizado={(actualizado) => {
+                setSuscriptor(actualizado);
+                setEditando(false);
+                setAviso('Datos del suscriptor actualizados.');
+              }}
+              onCancelar={() => setEditando(false)}
+            />
+          ) : (
+            <div className="flex flex-col gap-2 text-sm">
+              <p className="flex items-center gap-2">
+                Estado: {badgeEstado && <Badge variante={badgeEstado.variante}>{badgeEstado.etiqueta}</Badge>}
+              </p>
+              <p>Documento: {suscriptor?.tipo_documento ?? '—'} {suscriptor?.numero_documento ?? '—'}</p>
+              <p>Dirección: {suscriptor?.direccion ?? '—'}</p>
+              <p>Sector: {suscriptor?.sector ?? '—'}</p>
+              <p>Categoría: {suscriptor?.categoria ?? '—'}</p>
+              <p>Teléfono: {suscriptor?.telefono ?? '—'}</p>
+              <p>Email: {suscriptor?.email ?? '—'}</p>
+              <p>Notas: {suscriptor?.notas ?? '—'}</p>
+              {rol === 'admin_acueducto' && (
+                <button
+                  className="mt-3 h-9 w-fit rounded-md border border-blue-300 px-4 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                  onClick={alRegenerarCodigo}
+                >
+                  Regenerar código del portal
+                </button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -144,8 +203,11 @@ export default function DetalleSuscriptorPage({ params }: PageProps) {
         <CardContent className="flex flex-col gap-2">
           {historialEventos.length === 0 && <p className="text-sm text-muted-foreground">Sin eventos registrados.</p>}
           {historialEventos.map((ev) => (
-            <div key={ev.id} className="border-b border-border py-2 text-sm last:border-0">
-              <p className="font-medium">{ev.fecha} · {ev.tipo === 'corte' ? 'Corte' : 'Reconexión'}</p>
+            <div key={ev.id} className="flex flex-col gap-1 border-b border-border py-2 text-sm last:border-0">
+              <p className="flex items-center gap-2 font-medium">
+                <Badge variante={BADGE_EVENTO[ev.tipo].variante}>{BADGE_EVENTO[ev.tipo].etiqueta}</Badge>
+                {ev.fecha}
+              </p>
               <p className="text-xs text-muted-foreground">
                 {ev.motivo}
                 {ev.deuda_vencida_al_reconectar !== null &&
