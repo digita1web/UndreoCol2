@@ -13,8 +13,15 @@
        provisorio en toda la app. --primary es el que usa <Button> (shadcn,
        formato HSL crudo sin hsl(), ver tailwind.config.ts) — cubre todos los
        botones de submit del proyecto. --accent es el de 026 (enlaces,
-       navegación activa). Decisión directa de Mateo: "cambiar todo a verde". */
-    --primary: 158.7 93.1% 34.3%;
+       navegación activa). Decisión directa de Mateo: "cambiar todo a verde".
+       --primary usa el mismo tono/saturación pero más oscuro (L 27%, no
+       34.3%) que --accent: con blanco encima (texto de los botones),
+       #06A96F da un contraste real de 3.04:1 — no pasa WCAG AA para texto
+       normal (exige 4.5:1). #058557 (misma familia de color) da 4.67:1,
+       calculado con la fórmula de contraste real de WCAG, no a ojo.
+       --accent no lleva texto blanco encima (es texto/fondo suave para
+       nav activa), así que se queda con el tono más brillante. */
+    --primary: 158.7 93.1% 27%;
     --primary-foreground: 210 40% 98%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;

@@ -4,6 +4,29 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): 3 ajustes de la identidad de marca (contraste, favicon, maskable)
+
+Revisión propia (no un hallazgo de Mateo) tras implementar la identidad de marca: 3 ajustes
+concretos, verificados con cálculo real, no a ojo.
+
+1. **Contraste del botón verde no pasaba WCAG AA.** `#06A96F` con texto blanco encima (los botones
+   de `<Button>`) da un contraste real de **3.04:1** — el estándar exige 4.5:1 para texto normal.
+   Calculado con la fórmula real de luminancia relativa de WCAG, no estimado. `--primary` bajó a la
+   misma familia de color pero más oscura (`158.7 93.1% 27%` = `#058557`), contraste **4.67:1**,
+   ya cumple. `--accent` (enlaces, nav activa, sin texto blanco encima) se queda en el verde
+   brillante original — ahí no aplica la regla.
+2. **`favicon.ico` generado y agregado en `app/favicon.ico`** (convención de Next.js — se sirve
+   solo). Contenedor ICO real (header + 1 entrada PNG), no un PNG renombrado.
+3. **Íconos "maskable" agregados al manifest** (`icon-192-maskable.png`, `icon-512-maskable.png`,
+   generados con `sharp` desde un SVG sin esquinas redondeadas propias — el sistema operativo
+   aplica su propia máscara, un ícono con esquinas ya redondeadas se ve mal recortado en Android).
+   Buena práctica estándar de PWA instalables (Google/web.dev), antes el manifest solo tenía íconos
+   "any".
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos. `favicon.ico`,
+manifest e íconos maskable confirmados con `curl` contra `next dev` real (200 los tres). Captura de
+`/login` con el botón corregido, contra Playwright real.
+
 ### 2026-09-17 — Sesión 057 (continuación): identidad de marca real (logo, favicon, PWA, verde)
 
 Mateo trajo `undreocol_brand_kit/` (logo, favicons, íconos PWA, splash screens, manifest, paleta) y
