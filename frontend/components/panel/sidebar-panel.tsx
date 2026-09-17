@@ -66,9 +66,8 @@ export function SidebarPanel() {
   return (
     <aside className="flex w-full flex-col border-b border-border bg-background p-4 sm:fixed sm:inset-y-0 sm:left-0 sm:w-[250px] sm:border-b-0 sm:border-r print:hidden">
       <div className="flex items-center gap-2.5 px-2 pb-5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] bg-accent text-lg font-extrabold text-white">
-          U
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element -- SVG estático de public/, sin optimización de next/image necesaria */}
+        <img src="/logo/logo.svg" alt="" aria-hidden className="h-9 w-9 shrink-0 rounded-[11px]" />
         <div>
           <p className="text-[17px] font-bold leading-tight tracking-tight">UndreoCol</p>
           <p className="text-[11px] leading-tight text-muted-foreground">Gestión de acueductos</p>

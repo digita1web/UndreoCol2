@@ -4,6 +4,37 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): identidad de marca real (logo, favicon, PWA, verde)
+
+Mateo trajo `undreocol_brand_kit/` (logo, favicons, íconos PWA, splash screens, manifest, paleta) y
+pidió implementarlo. Queda versionado en el repo como fuente maestra (mismo criterio que
+`specs/026-shell-panel-admin/propuesta-referencia.html`); lo que la app realmente usa se copió a
+`frontend/public/`.
+
+**Cambios:**
+- **Favicon real** (antes no había ninguno) y **`manifest.webmanifest` + íconos de PWA** conectados
+  en `app/layout.tsx` (Metadata API de Next) — esto cierra el hueco real que se había encontrado
+  antes en la sesión ("no hay manifest.json, no es instalable de verdad"): "Agregar a pantalla de
+  inicio" ahora da una app real, con ícono e identidad propios.
+- **Logo real** en la barra lateral (reemplaza el cuadrado con una "U" a mano de 026).
+- **Wordmark real** en `/login` (antes sin ningún logo, solo texto).
+- **Color de marca verde (`#06A96F`) en toda la interfaz** — decisión directa de Mateo,
+  reemplazando el azul/negro provisorio: `--accent` (026: enlaces, navegación activa) y `--primary`
+  (shadcn: todos los botones de `<Button>`, formato HSL crudo — `158.7 93.1% 34.3%`, mismo verde
+  convertido). **Hallazgo propio al verificar visualmente:** el botón "Ingresar" de `/login` seguía
+  azul oscuro después del primer cambio — usaba `--primary`, un token distinto de `--accent` que no
+  había tocado; corregido para que "todo a verde" sea real, no parcial.
+- **Sprite de 9 íconos del kit, sin usar todavía:** no coincide 1:1 con los 10 íconos ya
+  construidos a mano para la barra lateral (026) — reemplazarlos a ciegas bajaría la calidad.
+  Disponible en `frontend/public/system-icons/icons.svg` para uso puntual futuro (ej. cámara para
+  QR/OCR) si hace falta.
+
+**Verificado con Playwright real** (Chromium instalado de forma aislada, nunca como dependencia del
+proyecto): capturas reales de `/login` (wordmark + botón verde) y de la barra lateral (logo +
+`text-accent`) contra rutas temporales nunca commiteadas, borradas al terminar. `npm run
+build`/`lint`/`knip` en frontend sin hallazgos nuevos (2 preexistentes de shadcn). Backend sin
+cambios.
+
 ### 2026-09-17 — Sesión 057 (continuación): crear lectores desde /app/lectores (hueco real)
 
 Mateo quiso probar el flujo del fontanero con "Idroredes del Sur" (el piloto real) y encontró que

@@ -8,19 +8,21 @@
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
+    /* Verde de marca real (undreocol_brand_kit/web/brand.css,
+       --undreo-primary = #06A96F), Sesión 057 — reemplaza el azul/negro
+       provisorio en toda la app. --primary es el que usa <Button> (shadcn,
+       formato HSL crudo sin hsl(), ver tailwind.config.ts) — cubre todos los
+       botones de submit del proyecto. --accent es el de 026 (enlaces,
+       navegación activa). Decisión directa de Mateo: "cambiar todo a verde". */
+    --primary: 158.7 93.1% 34.3%;
     --primary-foreground: 210 40% 98%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
     --border: 214.3 31.8% 91.4%;
     --radius: 0.5rem;
 
-    /* 026: tokens nuevos, agregados a los de arriba — ningún componente
-       existente los usa todavía. --accent es el mismo azul que ya es el
-       acento real de la app (Tailwind blue-600), así que nada cambia de
-       color hasta que una pantalla se re-vista a propósito. */
-    --accent: #2563eb;
-    --accent-soft: #eff6ff;
+    --accent: #06a96f;
+    --accent-soft: #ecfdf5;
     --success: #15803d;
     --success-soft: #f0fdf4;
     --warning: #b45309;
