@@ -7,5 +7,6 @@
     "src/cron/monitor-db.ts"
   ],
   "project": ["src/**/*.ts"],
-  "ignoreBinaries": ["psql"]
+  "ignoreBinaries": ["psql"],
+  "ignoreExportsUsedInFile": { "interface": true, "type": true }
 }

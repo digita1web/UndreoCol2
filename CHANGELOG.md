@@ -4,6 +4,33 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): mantenimiento — `ignoreExportsUsedInFile` en Knip
+
+Pedido de Mateo: revisar `knip.json` (backend y frontend) contra lo que recomienda la comunidad,
+"lo más preciso y sólido posible". Investigado y **probado de verdad contra el proyecto real**, no
+solo leído (CLAUDE.md §3, precedente de mantenimiento — mismo criterio que Knip sobre `ts-prune` en
+Sesiones 054-055):
+
+- **Aplicado:** `ignoreExportsUsedInFile: { interface: true, type: true }` en los dos `knip.json` —
+  es la recomendación oficial de Knip para exports usados solo dentro de su propio archivo, el caso
+  exacto que `CLAUDE.md §7` ya trata como regla manual ("se achica, no se borra"). Confirmado con
+  una corrida real: el hallazgo de `ButtonProps` (interface, ya marcado "preexistente, revisado" en
+  el proyecto) desaparece solo — la decisión que ya se había tomado queda codificada en la
+  herramienta, en vez de tener que re-verificarla a mano cada commit. `buttonVariants` (función,
+  no `interface`/`type`) sigue apareciendo, sin cambios — sigue siendo el mismo hallazgo
+  preexistente de siempre.
+- **Investigado y descartado, con evidencia real (no se adoptó):** el modo `--production` de Knip.
+  Probado contra el backend: primero un falso positivo real (`pdf-lib` — sí se usa en
+  `factura-pdf.ts`, D-9) causado por no declarar `src/index.ts` como entrada explícita para el modo
+  producción; corregido eso, aparecen ~20 hallazgos más — pero son, casi todos, funciones puras de
+  `core/`/`lib/` exportadas a propósito para que sus tests unitarios las prueben directo (el patrón
+  que exige `CLAUDE.md §5.3`), no código muerto real. Adoptarlo hoy generaría ruido para revisar a
+  mano, no precisión real — queda documentado acá por si se revisa con más tiempo más adelante, sin
+  cambio de config por ahora.
+
+**Verificado:** `npm run knip` corrido en los dos proyectos contra los `knip.json` reales — backend
+sin hallazgos, frontend solo con el hallazgo preexistente ya conocido (`buttonVariants`).
+
 ### 2026-09-17 — Sesión 057 (continuación): checklist de onboarding para el admin nuevo (046)
 
 Pedido de Mateo tras la maqueta de navegación móvil (aprobada, queda en cola): con el primer

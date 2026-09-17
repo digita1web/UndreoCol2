@@ -2,5 +2,6 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "next": true,
   "entry": ["open-next.config.ts"],
-  "ignoreDependencies": ["eslint-config-next"]
+  "ignoreDependencies": ["eslint-config-next"],
+  "ignoreExportsUsedInFile": { "interface": true, "type": true }
 }
