@@ -95,9 +95,22 @@ sin necesidad real declarada de conservarlos).
   es una feature distinta con sus propias reglas (qué campos se pueden pisar, con qué
   confirmación).
 - **Guardar el mapeo de columnas por acueducto para reutilizarlo** — ver nota en 3.1.
-- **Formatos distintos de `.xlsx`/`.csv`** (Google Sheets exportado, `.xls` viejo, etc.) — se
-  soportan `.xlsx` y `.csv` únicamente; si Mateo necesita otro formato, se agrega en `/plan` cuando
-  se sepa cuál es.
+- **Formatos distintos de `.xlsx`/`.xls`/`.csv`** (Google Sheets exportado, `.ods`, etc.) — ampliado
+  en Sesión 057 para aceptar también `.xls` (Excel 97-2003), a pedido de Mateo ("cualquier base de
+  Excel"); otros formatos siguen fuera de alcance, se agregan cuando se sepa cuál hace falta.
+
+### 3.7 Robustez del parseo (agregado Sesión 057, hallazgo propio + investigación de la comunidad)
+A pedido de Mateo ("que cualquier base de Excel se pueda importar"), se investigó contra
+`docs.sheetjs.com` (la librería ya elegida) y se corrigieron 4 brechas reales del parseo en el
+navegador, sin tocar el mapeo configurable de 3.1 ni la validación/RPC de 3.3/3.4:
+- **Selector de hoja** cuando el archivo tiene más de una.
+- **Selector de fila de encabezado** (con detección automática por heurística, editable): un
+  archivo con una fila de título antes de la tabla real ya no rompe el mapeo.
+- **`raw: false`** al parsear — un `numero_documento`/`codigo_suscriptor` largo que Excel interpreta
+  como número ya no pierde ceros a la izquierda ni cae en notación científica.
+- **Codepage heredado** (`XLSX.set_cptable`) — un `.csv`/`.xls` en Windows-1252/Latin-1 (frecuente en
+  exportes de Excel en Colombia) ya no pierde caracteres fuera del rango Latin-1 (confirmado con un
+  byte propio de CP1252 que antes se descartaba en silencio, no solo se veía mal).
 
 ## 5. Reglas de negocio que aplican
 

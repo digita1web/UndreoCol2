@@ -4,6 +4,46 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): 012, robustez del parseo de Excel/CSV
+
+A pedido de Mateo ("que cualquier base de Excel se pueda importar"), auditada la importación masiva
+de suscriptores (012): la validación y la RPC de importación ya estaban sólidas (verificado de
+nuevo con el test de aislamiento `012_importacion_aislamiento.sql` contra Postgres real), pero el
+parseo en el navegador (`ImportacionMapeo`) tenía 4 brechas reales frente a un Excel real de un
+cliente, no uno de prueba prolijo — investigadas contra `docs.sheetjs.com` (misma librería ya
+elegida, sin cambiar de dependencia):
+
+1. **Solo leía la primera hoja** — ahora, si el archivo tiene más de una, se muestra un selector.
+2. **Asumía la fila 1 como encabezado** — ahora hay un selector de fila de encabezado con detección
+   automática por heurística (primera fila con 2+ celdas no vacías), editable si el archivo trae una
+   fila de título antes de la tabla real.
+3. **Números vs. texto** — `raw: false` en `sheet_to_json`: un `numero_documento`/`codigo_suscriptor`
+   largo que Excel interpreta como número ya no pierde ceros a la izquierda ni cae en notación
+   científica.
+4. **Sin codepage heredado** — `XLSX.set_cptable()` con la tabla completa de SheetJS
+   (`cpexcel.full.mjs`): un `.csv`/`.xls` en Windows-1252/Latin-1 (frecuente en exportes de Excel en
+   Colombia) ya no pierde caracteres fuera del rango Latin-1. **Confirmado el riesgo real antes de
+   corregirlo:** un byte propio de CP1252 (comilla tipográfica, fuera de Latin-1) se descartaba en
+   silencio sin la tabla — no solo se veía mal, desaparecía. De paso se amplió el `accept` del input
+   a `.xls` (Excel 97-2003), ya soportado por la misma librería una vez cargado el codepage.
+
+**Verificado con Playwright real** (Chromium instalado de forma aislada en este entorno, nunca como
+dependencia del proyecto — mismo criterio que Sesión 056): archivo `.xlsx` de 2 hojas con fila de
+título y tildes/ñ (detección de hoja y fila de encabezado correctas, texto intacto) y `.csv`
+codificado a mano en Windows-1252 (texto decodificado correctamente). Verificación hecha contra una
+ruta temporal nunca commiteada (`frontend/app/dev-test-importacion`, borrada al terminar).
+
+**Costo de bundle transparente:** la tabla completa de codepages agrega ~170 KB al bundle de
+`/app/suscriptores/importar` únicamente (no afecta el resto de la app) — costo aceptado por ser una
+pantalla de uso ocasional (carga masiva), no de uso diario.
+
+`spec.md` de 012 actualizado (§3.7 nueva, §4 corregida). Sin cambios a `core/`, a la RPC
+`importar_suscriptores()` ni al backend — la validación y la ruta ya eran agnósticas de cómo
+llegaron las filas.
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos (2 preexistentes de
+shadcn); backend sin cambios.
+
 ### 2026-09-16 — Sesión 057 (continuación): security-review + 2 hallazgos corregidos
 
 Corrida la skill `security-review` pedida por Mateo sobre el diff completo de las Sesiones 056/057
