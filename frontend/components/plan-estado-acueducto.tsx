@@ -5,13 +5,14 @@ import { useHidratado } from '@/lib/use-hidratado';
 import { Button } from '@/components/ui/button';
 import { cambiarPlanEstadoAcueducto, type AcueductoPlataforma } from '@/lib/api';
 
-// 035: lista fija de planes reales (Basico/Pro, sembrados por fixture) — el
-// catálogo de planes en sí no se gestiona desde acá (spec §4, fuera de
-// alcance). Si Mateo agrega un plan nuevo alguna vez, esta lista se actualiza
-// a mano hasta que exista una ruta de catálogo de planes.
+// 035, corregido Sesión 057: un solo plan real — sin niveles Básico/Pro, se
+// cobra por suscriptor (decisión directa de Mateo, migración
+// 20260929090000_plan-unico-por-suscriptor.sql). El catálogo de planes en sí
+// no se gestiona desde acá (spec §4, fuera de alcance). Si aparece un plan
+// nuevo, esta lista se actualiza a mano hasta que exista una ruta de
+// catálogo de planes.
 const PLANES_CONOCIDOS = [
-  { id: '10000000-0000-0000-0000-000000000001', nombre: 'Basico' },
-  { id: '10000000-0000-0000-0000-000000000002', nombre: 'Pro' },
+  { id: '20000000-0000-0000-0000-000000000001', nombre: 'Estándar (por suscriptor)' },
 ];
 
 const ESTADOS_CUENTA = ['activa', 'vencida', 'suspendida', 'cancelada'] as const;

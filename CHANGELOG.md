@@ -4,6 +4,40 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): hallazgo real de producción — tabla `planes` vacía
+
+Mateo probó el sistema en producción real (creó un acueducto desde `/plataforma`) y encontró un
+`400` real al asignarle un plan: la tabla `planes` (creada por
+`20260831150000_fundacion-tenancy.sql`) nunca tuvo filas en producción — "Básico"/"Pro" solo
+existían en `tests/fixtures/fundacion.sql`, un fixture de datos de prueba, jamás migrado.
+Diagnosticado con evidencia real: `wrangler tail` contra `undreocol-frontend` y `undreocol-api` en
+producción (token de Cloudflare de Mateo, alcance acotado a Workers Tail/Scripts:Read), leyendo el
+código real de `plan-estado-acueducto.tsx` y del handler `PATCH /plataforma/acueductos/:id`.
+
+**Decisión de negocio de Mateo, no inventada:** sin niveles Básico/Pro — se cobra por cada
+suscriptor del acueducto, $2.000 COP/suscriptor/mes hoy (modificable, sujeto a inflación), sin
+mínimo mensual, sin descuento por pago anual (12 × el mensual). Investigada la comunidad antes de
+decidir cómo modelarlo (CLAUDE.md §3, sin precedente interno para ciclo de facturación): el patrón
+estándar de un campo de intervalo en el propio plan, y el descuento anual típico de 15-20% —
+descartado el descuento porque Mateo no lo pidió, aplicado el criterio de proporcionalidad (sin
+motor de suscripciones automático, es una tabla que Mateo actualiza a mano).
+
+Migración `20260929090000_plan-unico-por-suscriptor.sql`: un solo plan "Estándar",
+`limite_usuarios = null` (ilimitado), `valor_suscriptor = 2000`, `valor_minimo_mes = 0`.
+`frontend/components/plan-estado-acueducto.tsx` actualizado para ofrecer ese único plan real en vez
+de los dos falsos de prueba.
+
+**Nota aparte, también encontrada revisando esto:** los errores "Sin acueducto" que veía Mateo en
+la barra lateral/cabecera al navegar `/app/*` como superadmin **no son un bug** — un `administrador`
+de plataforma no es miembro de ningún acueducto, así que no hay nada que mostrar ahí; su lugar es
+`/plataforma`, no `/app/*`.
+
+**Verificado:** migración aplicada y confirmada contra Postgres local (`supabase db reset` +
+consulta real a la tabla `planes`); `npm run build`/`lint` en frontend sin hallazgos. **Pendiente:**
+aplicar la migración a producción — requiere confirmación explícita de Mateo antes de tocar la base
+real (regla de esta sesión, no de CLAUDE.md: escritura directa a producción se confirma aparte de
+un `git push`).
+
 ### 2026-09-17 — Sesión 057 (continuación): 012, robustez del parseo de Excel/CSV
 
 A pedido de Mateo ("que cualquier base de Excel se pueda importar"), auditada la importación masiva
