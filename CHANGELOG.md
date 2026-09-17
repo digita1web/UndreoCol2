@@ -4,6 +4,28 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): causa real del enlace roto — configuración de Supabase Auth
+
+El fix de código de la entrada anterior (`ddd2bcf`, preferir el origen que no sea localhost) no
+alcanzaba: con un correo nuevo, el enlace seguía yendo a `localhost:3000`. Causa real, encontrada
+con Mateo revisando el dashboard de Supabase en vivo: **`Site URL` en Authentication → URL
+Configuration seguía en `http://localhost:3000`, y `Redirect URLs` estaba completamente vacía.**
+Supabase ignora en silencio el `redirectTo` que manda el código cuando la URL no está en esa lista
+permitida, y usa siempre el Site URL como respaldo — el `redirectTo` correcto que ya mandaba
+`enviarEnlaceDefinirContrasena()` nunca llegaba a importar.
+
+**Corregido por Mateo directo en el dashboard de Supabase** (no es algo que el código pueda
+arreglar): `Site URL` → `https://undreocol-frontend.undreocol.workers.dev`; `Redirect URLs` →
+agregado `https://undreocol-frontend.undreocol.workers.dev/**`. Probado de punta a punta con una
+invitación real — el enlace ya lleva a la página correcta.
+
+Documentado en `docs/INFRAESTRUCTURA.md §3.4` (configuración nueva) para que no se pierda si el
+proyecto de Supabase se recrea alguna vez — incluye también el hallazgo, todavía sin resolver, de
+que el pipeline de CI despliega el backend sin `--env production` (por qué el fix de código de la
+entrada anterior seguía siendo necesario como red de seguridad, aunque esta vez no fuera la causa
+raíz).
+
+### 2026-09-17 — Sesión 057 (continuación): el enlace de invitación por correo llevaba a localhost
 ### 2026-09-17 — Sesión 057 (continuación): el enlace de invitación por correo llevaba a localhost
 
 Mateo probó el botón "Corregir correo del admin" en producción real: el correo llegó, pero al

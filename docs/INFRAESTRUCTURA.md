@@ -53,6 +53,40 @@ de Supabase Free.
 
 Mismo stack que staging, en el proyecto principal de Cloudflare y Supabase.
 
+### 3.4 Configuración de Supabase Auth para producción (Site URL, Redirect URLs, SMTP)
+
+**Hallazgo real de producción, Sesión 057:** el proyecto de Supabase se crea con `Site URL =
+http://localhost:3000` y la lista de `Redirect URLs` vacía por defecto. Ningún enlace de correo de
+Auth (invitación de admin, restablecer contraseña — `enviarEnlaceDefinirContrasena()`,
+`backend/src/lib/auth.ts`) funciona en producción hasta corregir esto — Supabase **ignora en
+silencio** el `redirectTo` que manda el código si la URL no está en la lista permitida, y usa
+siempre el Site URL (localhost) como respaldo. El código no puede arreglar esto: es configuración
+del proyecto de Supabase, fuera del repositorio.
+
+**Al crear o recrear el proyecto de producción, antes de que cualquier invitación funcione:**
+
+1. Supabase Dashboard → **Authentication → URL Configuration**:
+   - **Site URL:** la URL real del frontend en producción (hoy `https://undreocol-frontend.undreocol.workers.dev`).
+   - **Redirect URLs:** agregar `https://undreocol-frontend.undreocol.workers.dev/**` (el `/**`
+     cubre cualquier ruta de ese dominio, no solo `/restablecer-contrasena`).
+2. Supabase Dashboard → **Authentication → Emails → SMTP Settings**: el envío de correo que trae
+   Supabase por defecto limita a **2 correos por hora** (pensado para pruebas, no producción) — hay
+   que conectar un proveedor SMTP real (Resend, con dominio propio verificado) antes de dar de alta
+   ningún acueducto real. Ver CHANGELOG Sesión 057 para el detalle completo de la configuración
+   usada (subdominio dedicado para aislar reputación, DMARC en `p=none` al empezar).
+3. Las plantillas de correo (**Authentication → Email Templates**) vienen en inglés por defecto —
+   se editan a mano ahí, no hay selector de idioma.
+
+**Nota aparte, sin resolver todavía:** `ALLOWED_ORIGIN` en `backend/wrangler.toml` tiene un bloque
+`[vars]` (desarrollo, con `localhost` primero) y uno `[env.production.vars]` (solo el origen real) —
+pero `.github/workflows/deploy-backend.yml`/`deploy-frontend.yml` corren `wrangler deploy` **sin**
+`--env production`, así que siempre se despliega el bloque de desarrollo. `enviarEnlaceDefinirContrasena()`
+se corrigió para tolerar esto (prefiere el primer origen que no sea localhost), pero el pipeline de
+CI sigue sin usar el entorno de producción — cualquier otro código nuevo que asuma
+`ALLOWED_ORIGIN.split(',')[0]` va a pisar el mismo bug. Corregir el pipeline de CI queda pendiente,
+fuera de alcance de este hallazgo puntual (cambiar el entorno de despliegue completo afecta otros
+bindings sin auditar).
+
 ---
 
 ## 4. Estructura del repositorio
