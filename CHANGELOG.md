@@ -4,6 +4,31 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-16 — Sesión 057: feature 044, rediseño de Configuración — cierra las 15 pantallas
+
+Sexta y última de las pantallas que quedaban del rediseño visual (orden definido por Mateo).
+Re-viste `/app/configuracion` con el sistema de 026 — pantalla chica, puramente visual, sin dinero
+ni datos de suscriptores de por medio.
+
+**Grid de 2 columnas `.9fr 1.1fr`**, la correspondencia más directa a la propuesta de todo el
+rediseño junto con 041: formulario a la izquierda (datos del acueducto de solo lectura + selector
+de color), vista previa en vivo a la derecha en su propia tarjeta — patrón "Split Pane"/"Live
+Preview" (fuentes en `plan.md` §5). El botón "Guardar" se queda dentro de la tarjeta de color, no
+sube al `page-head` como en la maqueta: los 11 formularios existentes del proyecto colocan su botón
+de submit dentro del propio `<form>`, sin excepción — se sigue esa convención interna en vez de
+inventar una nueva (excepción de proporcionalidad, CLAUDE.md §3). Cero cambios a
+`actualizarColorAcentoAcueducto()` ni a `obtenerAcueducto()`.
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos (los 2 preexistentes
+de shadcn, ya revisados); backend confirmado intacto (251 tests + `tsc` + `wrangler deploy
+--dry-run`). Pendiente de Mateo: verificación visual con `wrangler dev` real (mismo criterio de
+proporcionalidad que 039-043).
+
+**Con esto, el rediseño visual de las 15 pantallas originales queda 15/15.** Falta todavía, fuera
+de ese conteo: la pantalla nueva `/app/lectores` (037, agregada por Mateo a la lista de pendientes)
+y correr `security-review` sobre todo lo de la Sesión 056 — pedido explícito de Mateo, todavía no
+se hizo.
+
 ### 2026-09-16 — Sesión 056 (continuación 9): feature 043, rediseño de Notificaciones
 
 Quinta de las pantallas que quedaban. Re-viste `/app/notificaciones` con el sistema de 026 —
