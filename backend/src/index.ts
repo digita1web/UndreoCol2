@@ -16,6 +16,7 @@ import { estadoLoginAdmin, registrarIntentoLoginAdmin } from './lib/auth-intento
 import {
   asignarAdminAcueducto,
   crearAcueductoBase,
+  desactivarAdminAnterior,
   generarContrasenaInterna,
   obtenerAdminsDeAcueductos,
   actualizarPlanEstadoAcueducto,
@@ -477,6 +478,83 @@ app.patch('/plataforma/acueductos/:id', async (c) => {
   }
   if (!actualizado) return c.json({ error: 'Acueducto no encontrado' }, 404);
   return c.json(actualizado);
+});
+
+// PATCH /plataforma/acueductos/:id/admin — corrige el correo del admin (ej.
+// se cargó mal al crear el acueducto). Reemplaza al admin: invita a la
+// persona correcta en vez de tocar el email real de la cuenta anterior en
+// Supabase Auth (lib/plataforma.ts, desactivarAdminAnterior). Mismos 3 pasos
+// que el alta original (POST /plataforma/acueductos), en orden distinto: el
+// admin nuevo se crea y vincula ANTES de desactivar al anterior, así un
+// fallo nunca deja el acueducto sin ningún admin activo.
+app.patch('/plataforma/acueductos/:id/admin', async (c) => {
+  const { ctx, respuesta } = await requerirAdminPlataforma(c);
+  if (!ctx) return respuesta;
+  const clienteId = c.req.param('id');
+
+  const body = await c.req
+    .json<{ nombreAdmin?: string; correoAdmin?: string }>()
+    .catch(() => ({ nombreAdmin: undefined, correoAdmin: undefined }));
+  const nombreAdmin = body.nombreAdmin?.trim() ?? '';
+  const correoAdmin = body.correoAdmin?.trim().toLowerCase() ?? '';
+  if (!nombreAdmin || !correoAdmin) {
+    return c.json({ error: 'nombreAdmin y correoAdmin son requeridos' }, 400);
+  }
+
+  const contrasenaInterna = generarContrasenaInterna();
+  let usuarioId: string;
+  try {
+    ({ usuarioId } = await signUpAdminAcueducto(c.env, correoAdmin, contrasenaInterna));
+  } catch (e) {
+    return c.json(
+      { error: `No se pudo dar de alta el correo del nuevo admin: ${e instanceof Error ? e.message : 'error desconocido'}` },
+      400,
+    );
+  }
+
+  try {
+    await asignarAdminAcueducto(ctx.supabase, clienteId, usuarioId, nombreAdmin, correoAdmin);
+  } catch (e) {
+    return c.json(
+      {
+        error: `El usuario de ${correoAdmin} se creó pero no se pudo vincularlo al acueducto: ${
+          e instanceof Error ? e.message : 'error desconocido'
+        }. El admin anterior sigue activo.`,
+      },
+      400,
+    );
+  }
+
+  try {
+    await desactivarAdminAnterior(ctx.supabase, clienteId, usuarioId);
+  } catch (e) {
+    return c.json(
+      {
+        error: `El nuevo admin (${correoAdmin}) ya quedó vinculado, pero no se pudo desactivar al admin anterior: ${
+          e instanceof Error ? e.message : 'error desconocido'
+        }. Requiere corrección manual.`,
+        correoAdmin,
+      },
+      500,
+    );
+  }
+
+  try {
+    await enviarEnlaceDefinirContrasena(c.env, correoAdmin);
+  } catch (e) {
+    return c.json(
+      {
+        correoAdmin,
+        invitacionEnviada: false,
+        avisoCorreo: `El admin se reemplazó, pero no se pudo enviar el correo de invitación: ${
+          e instanceof Error ? e.message : 'error desconocido'
+        }. Podés reintentar con "Restablecer contraseña" en la lista de acueductos.`,
+      },
+      200,
+    );
+  }
+
+  return c.json({ correoAdmin, invitacionEnviada: true });
 });
 
 app.get('/plataforma/salud', async (c) => {

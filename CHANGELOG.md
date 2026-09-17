@@ -4,6 +4,35 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): corregir el correo del admin de un acueducto
+
+Pedido directo de Mateo, probando producción real con su primer acueducto piloto ("IDROREDES DEL
+SUR"): un botón en `/plataforma` para corregir el correo del admin si se cargó mal al crear el
+acueducto — hasta ahora no había forma de arreglarlo desde la interfaz.
+
+**Decisión de alcance, confirmada con Mateo (no asumida):** reemplaza al admin en vez de renombrar
+la cuenta existente — se invita a la persona correcta, la invitación/cuenta vieja (si no se usó
+todavía) queda desactivada. Reusa exactamente el mismo mecanismo de invitación por correo que ya
+existe para el alta inicial (`signUpAdminAcueducto` + `asignarAdminAcueducto` +
+`enviarEnlaceDefinirContrasena`), en vez de tocar el email real en Supabase Auth — evita depender
+de la reconfirmación de dos correos que ofrece Supabase para "cambiar mi email", que no aplica bien
+acá porque quien corrige (el superadmin) no es el dueño de la cuenta.
+
+**Nueva ruta `PATCH /plataforma/acueductos/:id/admin`:** mismos 3 pasos que el alta original, en
+orden distinto — el admin nuevo se crea y vincula primero; recién después se desactiva al anterior
+(`desactivarAdminAnterior`, nuevo en `lib/plataforma.ts`), para que un fallo a mitad de camino
+nunca deje el acueducto sin ningún admin activo. Sin migración nueva: reusa `membresias.activo`
+(ya existía) y la política RLS `membresias_plataforma` (ya le daba acceso total al superadmin).
+
+Botón "Corregir correo del admin" en `/plataforma`, junto a "Restablecer contraseña" — revela un
+formulario chico (nombre + correo) al hacer clic, mismo patrón de toggle que `EditarSuscriptorForm`.
+
+**Verificado:** backend 257 tests (255 + 2 nuevos para `desactivarAdminAnterior`, incluyendo que
+excluye al admin recién creado del `UPDATE`) + `tsc` + `wrangler deploy --dry-run` + `knip` en
+verde; frontend `build`/`lint`/`knip` sin hallazgos nuevos. El flujo real de invitación por correo
+(¿llega el mail en producción?) queda pendiente de que Mateo lo pruebe una vez desplegado — depende
+de la configuración de envío de producción, que un test local no puede representar fielmente.
+
 ### 2026-09-17 — Sesión 057 (continuación): hallazgo real de producción — tabla `planes` vacía
 
 Mateo probó el sistema en producción real (creó un acueducto desde `/plataforma`) y encontró un

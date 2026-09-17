@@ -89,6 +89,36 @@ export async function asignarAdminAcueducto(
   }
 }
 
+// Corrige un correo de admin mal escrito al crear el acueducto (hallazgo de
+// Mateo, Sesión 057). Reemplaza al admin en vez de renombrar la cuenta:
+// reusa exactamente el mismo mecanismo de invitación por correo que ya
+// existe para el alta inicial (signUpAdminAcueducto + asignarAdminAcueducto
+// + enviarEnlaceDefinirContrasena en el handler), en vez de tocar el email
+// real en Supabase Auth — evita depender de la reconfirmación de dos
+// correos que ofrece Supabase para "cambiar mi email", que no aplica bien
+// acá porque quien corrige no es el dueño de la cuenta, es el superadmin.
+//
+// Se llama DESPUÉS de que el admin nuevo ya quedó creado y vinculado (ver
+// el orden en el handler de index.ts): si algo falla antes, el admin viejo
+// sigue activo — nunca se deja un acueducto sin ningún admin activo a mitad
+// de camino de un fallo.
+export async function desactivarAdminAnterior(
+  supabase: SupabaseClient,
+  clienteId: string,
+  perfilIdNuevo: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('membresias')
+    .update({ activo: false })
+    .eq('cliente_id', clienteId)
+    .eq('rol', 'admin_acueducto')
+    .eq('activo', true)
+    .neq('perfil_id', perfilIdNuevo);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 // Email del admin_acueducto activo de cada cliente_id, para GET /plataforma (033).
 // SECURITY INVOKER: RLS del cliente del superadmin decide qué puede leer.
 export async function obtenerAdminsDeAcueductos(

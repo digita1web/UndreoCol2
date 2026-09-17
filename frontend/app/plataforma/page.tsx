@@ -5,6 +5,7 @@ import { urlBaseApiServidor } from '@/lib/url-base-api-servidor';
 import { BotonSalir } from '@/components/boton-salir';
 import { CambiarContrasenaForm } from '@/components/cambiar-contrasena-form';
 import { RestablecerContrasenaAcueducto } from '@/components/restablecer-contrasena-acueducto';
+import { CorregirAdminAcueducto } from '@/components/corregir-admin-acueducto';
 import { PlanEstadoAcueducto } from '@/components/plan-estado-acueducto';
 import { SaludSistema as SaludSistemaCard } from '@/components/salud-sistema';
 import type { SaludSistema as TipoSaludSistema } from '@/lib/api';
@@ -131,7 +132,10 @@ export default async function PlataformaPage() {
                       {a.adminEmail ?? 'sin admin asignado'}
                     </p>
                   </div>
-                  <RestablecerContrasenaAcueducto email={a.adminEmail} />
+                  <div className="flex flex-col items-end gap-2">
+                    <RestablecerContrasenaAcueducto email={a.adminEmail} />
+                    <CorregirAdminAcueducto clienteId={a.id} />
+                  </div>
                 </div>
                 <PlanEstadoAcueducto acueducto={a} />
               </li>

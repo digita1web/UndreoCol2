@@ -1033,6 +1033,30 @@ export function crearAcueductoPlataforma(datos: DatosAltaAcueducto): Promise<Res
   });
 }
 
+export interface DatosCorregirAdminAcueducto {
+  nombreAdmin: string;
+  correoAdmin: string;
+}
+
+export interface RespuestaCorregirAdminAcueducto {
+  correoAdmin: string;
+  invitacionEnviada: boolean;
+  avisoCorreo?: string;
+}
+
+// Corrige el correo del admin de un acueducto ya creado (ej. se cargó mal al
+// darlo de alta) — reemplaza al admin, invitación nueva a la persona
+// correcta (Sesión 057).
+export function corregirAdminAcueducto(
+  clienteId: string,
+  datos: DatosCorregirAdminAcueducto,
+): Promise<RespuestaCorregirAdminAcueducto> {
+  return peticion(`/plataforma/acueductos/${clienteId}/admin`, {
+    method: 'PATCH',
+    body: JSON.stringify(datos),
+  });
+}
+
 // --- Credenciales del panel de plataforma (033) -----------------------------
 
 export function restablecerContrasenaAcueducto(email: string): Promise<{ ok: true }> {

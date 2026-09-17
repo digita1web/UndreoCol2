@@ -12,12 +12,32 @@ let respuestaRpc: { data: unknown; error: { message: string } | null } = { data:
 let llamadasRpc: Array<{ fn: string; args: Record<string, unknown> }> = [];
 let rpcLanza = false;
 
+let respuestaUpdate: { error: { message: string } | null } = { error: null };
+let llamadasUpdate: Array<{ tabla: string; patch: Record<string, unknown>; filtros: Array<[string, string, unknown]> }> = [];
+
 const supabaseFalso = {
   rpc: (fn: string, args: Record<string, unknown>) => {
     llamadasRpc.push({ fn, args });
     if (rpcLanza) throw new Error('la red se cayó');
     return Promise.resolve(respuestaRpc);
   },
+  from: (tabla: string) => ({
+    update: (patch: Record<string, unknown>) => {
+      const filtros: Array<[string, string, unknown]> = [];
+      const encadenable = {
+        eq: (col: string, val: unknown) => {
+          filtros.push(['eq', col, val]);
+          return encadenable;
+        },
+        neq: (col: string, val: unknown) => {
+          filtros.push(['neq', col, val]);
+          llamadasUpdate.push({ tabla, patch, filtros: [...filtros] });
+          return Promise.resolve(respuestaUpdate);
+        },
+      };
+      return encadenable;
+    },
+  }),
 } as never;
 
 let respuestaSignUp: { data: { user: { id: string } | null }; error: { message: string } | null } = {
@@ -45,6 +65,7 @@ const {
   crearAcueductoBase,
   signUpAdminAcueducto,
   asignarAdminAcueducto,
+  desactivarAdminAnterior,
 } = await import('../../src/lib/plataforma');
 
 const env = {
@@ -61,6 +82,8 @@ beforeEach(() => {
   rpcLanza = false;
   respuestaSignUp = { data: { user: null }, error: null };
   llamadasSignUp = [];
+  respuestaUpdate = { error: null };
+  llamadasUpdate = [];
   vi.restoreAllMocks();
 });
 
@@ -160,5 +183,31 @@ describe('asignarAdminAcueducto', () => {
     await expect(
       asignarAdminAcueducto(supabaseFalso, 'cliente-1', 'usuario-1', 'Admin Nuevo', 'admin@nuevo.local'),
     ).rejects.toThrow(/foreign key violation/);
+  });
+});
+
+describe('desactivarAdminAnterior', () => {
+  it('filtra por cliente, rol admin_acueducto, activo=true, y EXCLUYE al admin nuevo', async () => {
+    respuestaUpdate = { error: null };
+    await desactivarAdminAnterior(supabaseFalso, 'cliente-1', 'usuario-nuevo');
+    expect(llamadasUpdate).toEqual([
+      {
+        tabla: 'membresias',
+        patch: { activo: false },
+        filtros: [
+          ['eq', 'cliente_id', 'cliente-1'],
+          ['eq', 'rol', 'admin_acueducto'],
+          ['eq', 'activo', true],
+          ['neq', 'perfil_id', 'usuario-nuevo'],
+        ],
+      },
+    ]);
+  });
+
+  it('error del UPDATE -> LANZA (la ruta debe reportar corrección manual, no tragárselo)', async () => {
+    respuestaUpdate = { error: { message: 'permission denied' } };
+    await expect(
+      desactivarAdminAnterior(supabaseFalso, 'cliente-1', 'usuario-nuevo'),
+    ).rejects.toThrow(/permission denied/);
   });
 });
