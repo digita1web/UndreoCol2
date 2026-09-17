@@ -4,6 +4,34 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): crear lectores desde /app/lectores (hueco real)
+
+Mateo quiso probar el flujo del fontanero con "Idroredes del Sur" (el piloto real) y encontró que
+no había forma de crear un lector nuevo: `ESPECIFICACION-FUNCIONAL.md` ya decía "el admin_acueducto
+puede crear usuarios con rol lector", y la política RLS `membresias_gestion_acueducto` ya lo
+autorizaba, pero nunca se construyó la ruta ni la pantalla — `/app/lectores` solo asignaba sectores
+a lectores que ya existían.
+
+**Nueva ruta `POST /lectores`:** mismos 3 pasos que el alta de admin de plataforma (signUp → vincular
+→ invitar por correo, reusando `signUpAdminAcueducto()` y `enviarEnlaceDefinirContrasena()` tal
+cual). `sectores` es opcional en el mismo pedido — sin ninguno, el lector ve todo el acueducto
+(retrocompatibilidad, CA-3 de 037).
+
+**Nueva función SQL `asignar_lector_acueducto()`** (migración `crear-lector-acueducto`): mismo
+patrón que `asignar_admin_acueducto()` (018), pero `SECURITY DEFINER` con `es_admin_de()` explícito
+adentro en vez de `SECURITY INVOKER` — la única política de INSERT de `perfiles`
+(`perfiles_alta_plataforma`) exige `es_admin_plataforma()`, así que un `admin_acueducto` normal
+nunca la pasaría solo con RLS. Mismo criterio que `bloquear_cambio_plan_estado()` (035).
+
+Formulario "Nuevo lector" en `/app/lectores` (nombre + correo + sectores por checkbox, mismo
+componente de asignación que ya existía).
+
+**Verificado:** backend 269 tests (260 + 9 nuevos) + `tsc` + `wrangler deploy --dry-run` + `knip` en
+verde; frontend `build`/`lint`/`knip` sin hallazgos nuevos. La RPC se probó además con SQL real
+contra Postgres local (no solo mockeada): un `admin_acueducto` crea el lector correctamente, una
+`secretaria` queda bloqueada por la guarda interna — ambos casos confirmados con datos reales, no
+solo el contrato mockeado de los tests unitarios.
+
 ### 2026-09-17 — Sesión 057 (continuación): causa real del enlace roto — configuración de Supabase Auth
 
 El fix de código de la entrada anterior (`ddd2bcf`, preferir el origen que no sea localhost) no

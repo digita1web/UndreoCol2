@@ -24,10 +24,29 @@ let filasMembresias: unknown[] = [
   { cliente_id: 'cliente-1', rol: 'admin_acueducto', clientes: { nombre: 'Acueducto de prueba' } },
 ];
 
+let enviarInvitacionLanza: string | null = null;
+let ultimoCorreoInvitado: string | null = null;
+
 vi.mock('../../src/lib/auth', async (original) => ({
   ...(await original<Record<string, unknown>>()),
   verificarSesionAdministrativa: vi.fn(async () => sesionActiva),
   obtenerAccessToken: vi.fn(() => 'token-de-prueba'),
+  enviarEnlaceDefinirContrasena: vi.fn(async (_env: unknown, correo: string) => {
+    ultimoCorreoInvitado = correo;
+    if (enviarInvitacionLanza) throw new Error(enviarInvitacionLanza);
+  }),
+}));
+
+let signUpLanza: string | null = null;
+let ultimoSignUp: { email: string } | null = null;
+
+vi.mock('../../src/lib/plataforma', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  signUpAdminAcueducto: vi.fn(async (_env: unknown, email: string) => {
+    ultimoSignUp = { email };
+    if (signUpLanza) throw new Error(signUpLanza);
+    return { usuarioId: 'usuario-lector-nuevo' };
+  }),
 }));
 
 vi.mock('../../src/lib/db', async (original) => ({
@@ -48,6 +67,8 @@ let lectoresMock: Array<{ perfilId: string; nombre: string; email: string; secto
 let asignarLanza: string | null = null;
 let quitarLanza: string | null = null;
 let ultimaAsignacion: { clienteId: string; perfilId: string; sector: string } | null = null;
+let asignarLectorLanza: string | null = null;
+let ultimoAsignarLector: { clienteId: string; usuarioId: string; nombre: string; email: string } | null = null;
 
 vi.mock('../../src/lib/lectores-sectores', () => ({
   listarSectoresDisponibles: vi.fn(async () => sectoresDisponiblesMock),
@@ -59,6 +80,12 @@ vi.mock('../../src/lib/lectores-sectores', () => ({
   quitarSector: vi.fn(async () => {
     if (quitarLanza) throw new Error(quitarLanza);
   }),
+  asignarLectorAcueducto: vi.fn(
+    async (_s: unknown, clienteId: string, usuarioId: string, nombre: string, email: string) => {
+      ultimoAsignarLector = { clienteId, usuarioId, nombre, email };
+      if (asignarLectorLanza) throw new Error(asignarLectorLanza);
+    },
+  ),
 }));
 
 const app = (await import('../../src/index')).default;
@@ -91,6 +118,12 @@ beforeEach(() => {
   asignarLanza = null;
   quitarLanza = null;
   ultimaAsignacion = null;
+  asignarLectorLanza = null;
+  ultimoAsignarLector = null;
+  signUpLanza = null;
+  ultimoSignUp = null;
+  enviarInvitacionLanza = null;
+  ultimoCorreoInvitado = null;
 });
 
 describe('GET /sectores', () => {
@@ -137,6 +170,79 @@ describe('GET /lectores', () => {
     const r = await peticion('/lectores');
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ lectores: lectoresMock });
+  });
+});
+
+describe('POST /lectores', () => {
+  function crear(body: Record<string, unknown>) {
+    return peticion('/lectores', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  it('sin sesión -> 401', async () => {
+    sesionActiva = null;
+    const r = await crear({ nombre: 'Juan', correo: 'juan@test.local' });
+    expect(r.status).toBe(401);
+  });
+
+  it('rol lector -> 403, no llega a crear nada', async () => {
+    filasMembresias = [{ cliente_id: 'cliente-1', rol: 'lector', clientes: { nombre: 'Acueducto de prueba' } }];
+    const r = await crear({ nombre: 'Juan', correo: 'juan@test.local' });
+    expect(r.status).toBe(403);
+    expect(ultimoSignUp).toBeNull();
+  });
+
+  it('sin nombre o sin correo -> 400', async () => {
+    expect((await crear({ correo: 'juan@test.local' })).status).toBe(400);
+    expect((await crear({ nombre: 'Juan' })).status).toBe(400);
+  });
+
+  it('falla el signUp -> 400, no llega a vincular', async () => {
+    signUpLanza = 'User already registered';
+    const r = await crear({ nombre: 'Juan', correo: 'juan@test.local' });
+    expect(r.status).toBe(400);
+    expect(ultimoAsignarLector).toBeNull();
+  });
+
+  it('falla asignarLectorAcueducto -> 400', async () => {
+    asignarLectorLanza = 'permission denied';
+    const r = await crear({ nombre: 'Juan', correo: 'juan@test.local' });
+    expect(r.status).toBe(400);
+  });
+
+  it('falla la asignación de un sector -> 207, pero el lector ya quedó creado', async () => {
+    asignarLanza = 'algo salió mal';
+    const r = await crear({ nombre: 'Juan', correo: 'juan@test.local', sectores: ['Centro'] });
+    expect(r.status).toBe(207);
+    expect(ultimoAsignarLector).toEqual({
+      clienteId: 'cliente-1',
+      usuarioId: 'usuario-lector-nuevo',
+      nombre: 'Juan',
+      email: 'juan@test.local',
+    });
+  });
+
+  it('éxito completo, con sectores -> 201, invita por correo, asigna cada sector', async () => {
+    const r = await crear({ nombre: 'Juan', correo: 'Juan@Test.Local', sectores: ['Centro', 'Norte'] });
+    expect(r.status).toBe(201);
+    expect(await r.json()).toEqual({ correo: 'juan@test.local', invitacionEnviada: true });
+    expect(ultimoAsignarLector?.email).toBe('juan@test.local');
+    expect(ultimaAsignacion).toEqual({ clienteId: 'cliente-1', perfilId: 'usuario-lector-nuevo', sector: 'Norte' });
+    expect(ultimoCorreoInvitado).toBe('juan@test.local');
+  });
+
+  it('éxito sin sectores -> 201, no llama a asignarSector', async () => {
+    const r = await crear({ nombre: 'Juan', correo: 'juan@test.local' });
+    expect(r.status).toBe(201);
+    expect(ultimaAsignacion).toBeNull();
+  });
+
+  it('falla el envío de la invitación -> 201 igual, invitacionEnviada: false', async () => {
+    enviarInvitacionLanza = 'Email rate limit exceeded';
+    const r = await crear({ nombre: 'Juan', correo: 'juan@test.local' });
+    expect(r.status).toBe(201);
+    const cuerpo = await r.json();
+    expect(cuerpo.invitacionEnviada).toBe(false);
+    expect(cuerpo.avisoCorreo).toMatch(/rate limit/);
   });
 });
 

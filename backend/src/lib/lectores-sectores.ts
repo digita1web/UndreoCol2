@@ -62,6 +62,29 @@ export async function listarLectoresConSectores(
   }));
 }
 
+// RPC asignar_lector_acueducto (migración crear-lector-acueducto). Mismo
+// criterio que asignarAdminAcueducto (lib/plataforma.ts): `supabase` es el
+// cliente del admin_acueducto que llama, SECURITY DEFINER con guarda
+// explícita adentro de la función SQL — RLS de `perfiles` no lo autorizaría
+// solo (perfiles_alta_plataforma exige es_admin_plataforma()).
+export async function asignarLectorAcueducto(
+  supabase: SupabaseClient,
+  clienteId: string,
+  usuarioId: string,
+  nombre: string,
+  email: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('asignar_lector_acueducto', {
+    p_cliente_id: clienteId,
+    p_usuario_id: usuarioId,
+    p_nombre: nombre,
+    p_email: email,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function asignarSector(
   supabase: SupabaseClient,
   clienteId: string,

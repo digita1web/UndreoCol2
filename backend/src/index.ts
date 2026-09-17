@@ -99,6 +99,7 @@ import {
 import cierreFacturacion from './queues/cierre-facturacion';
 import { encolarNotificacion } from './lib/notificaciones';
 import {
+  asignarLectorAcueducto,
   asignarSector,
   listarLectoresConSectores,
   listarSectoresDisponibles,
@@ -702,6 +703,88 @@ app.get('/lectores', async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : 'No se pudieron listar los lectores' }, 500);
   }
+});
+
+// POST /lectores — crea un lector nuevo dentro del acueducto activo (hallazgo
+// real de producción, Sesión 057: ESPECIFICACION-FUNCIONAL.md ya decía que el
+// admin_acueducto puede crear lectores, y la RLS de membresias ya lo permitía,
+// pero nunca existió la ruta). Mismos 3 pasos que el alta de admin de
+// plataforma (POST /plataforma/acueductos): signUp -> vincular -> invitar por
+// correo, reusando exactamente las mismas funciones. `sectores` es opcional —
+// sin ninguno, el lector ve todo el acueducto (retrocompatibilidad, CA-3 de 037).
+app.post('/lectores', async (c) => {
+  const { ctx, respuesta } = await requerirClienteActivo(c);
+  if (!ctx) return respuesta;
+  if (ctx.rol !== 'admin_acueducto') {
+    return c.json({ error: 'Solo el administrador del acueducto puede crear lectores' }, 403);
+  }
+
+  const body = await c.req
+    .json<{ nombre?: string; correo?: string; sectores?: string[] }>()
+    .catch(() => ({ nombre: undefined, correo: undefined, sectores: undefined }));
+  const nombre = body.nombre?.trim() ?? '';
+  const correo = body.correo?.trim().toLowerCase() ?? '';
+  const sectores = (body.sectores ?? []).map((s) => s.trim()).filter(Boolean);
+  if (!nombre || !correo) {
+    return c.json({ error: 'nombre y correo son requeridos' }, 400);
+  }
+
+  const contrasenaInterna = generarContrasenaInterna();
+  let usuarioId: string;
+  try {
+    ({ usuarioId } = await signUpAdminAcueducto(c.env, correo, contrasenaInterna));
+  } catch (e) {
+    return c.json(
+      { error: `No se pudo dar de alta el correo del lector: ${e instanceof Error ? e.message : 'error desconocido'}` },
+      400,
+    );
+  }
+
+  try {
+    await asignarLectorAcueducto(ctx.supabase, ctx.clienteId, usuarioId, nombre, correo);
+  } catch (e) {
+    return c.json(
+      {
+        error: `El usuario de ${correo} se creó pero no se pudo vincularlo como lector: ${
+          e instanceof Error ? e.message : 'error desconocido'
+        }.`,
+      },
+      400,
+    );
+  }
+
+  for (const sector of sectores) {
+    try {
+      await asignarSector(ctx.supabase, ctx.clienteId, usuarioId, sector);
+    } catch (e) {
+      return c.json(
+        {
+          error: `El lector se creó, pero no se pudo asignar el sector '${sector}': ${
+            e instanceof Error ? e.message : 'error desconocido'
+          }. Podés asignarlo después desde la lista de lectores.`,
+          usuarioId,
+        },
+        207,
+      );
+    }
+  }
+
+  try {
+    await enviarEnlaceDefinirContrasena(c.env, correo);
+  } catch (e) {
+    return c.json(
+      {
+        correo,
+        invitacionEnviada: false,
+        avisoCorreo: `El lector se creó, pero no se pudo enviar el correo de invitación: ${
+          e instanceof Error ? e.message : 'error desconocido'
+        }.`,
+      },
+      201,
+    );
+  }
+
+  return c.json({ correo, invitacionEnviada: true }, 201);
 });
 
 app.post('/lectores/:perfilId/sectores', async (c) => {

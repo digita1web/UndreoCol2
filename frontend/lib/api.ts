@@ -1139,6 +1139,28 @@ export function listarLectoresConSectores(): Promise<{ lectores: LectorConSector
   return peticion('/lectores');
 }
 
+export interface DatosCrearLector {
+  nombre: string;
+  correo: string;
+  sectores?: string[];
+}
+
+export interface RespuestaCrearLector {
+  correo: string;
+  invitacionEnviada: boolean;
+  avisoCorreo?: string;
+}
+
+// Crea un lector nuevo del acueducto activo — hueco real que no tenía
+// interfaz hasta ahora (Sesión 057): el admin_acueducto puede crearlos
+// según la especificación funcional, pero nunca hubo pantalla.
+export function crearLector(datos: DatosCrearLector): Promise<RespuestaCrearLector> {
+  return peticion('/lectores', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
+
 export function asignarSectorLector(perfilId: string, sector: string): Promise<{ ok: true }> {
   return peticion(`/lectores/${perfilId}/sectores`, {
     method: 'POST',
