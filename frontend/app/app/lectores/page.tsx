@@ -43,11 +43,15 @@ export default function LectoresPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Lectores</h1>
-      <p className="text-sm text-muted-foreground">
-        Asigná uno o más sectores a cada lector. Sin ningún sector asignado, el lector sigue viendo
-        todo el acueducto.
-      </p>
+      <section>
+        <p className="text-xs font-bold uppercase tracking-wide text-accent">Equipo</p>
+        <h1 className="text-[28px] font-bold tracking-tight">Lectores</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Asigná uno o más sectores a cada lector. Sin ningún sector asignado, el lector sigue
+          viendo todo el acueducto.
+        </p>
+      </section>
+
       {error && <p className="text-sm text-red-600">{error}</p>}
       {sectoresDisponibles.length === 0 && (
         <p className="text-sm text-muted-foreground">

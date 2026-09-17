@@ -548,11 +548,15 @@ propuesta junto con 041), vista previa movida a tarjeta propia en la columna der
 Pane"/"Live Preview"), botón "Guardar" sin mover al `page-head` (convención interna: los 11
 formularios del proyecto colocan su submit dentro del propio `<form>`), cero cambios a
 `actualizarColorAcentoAcueducto()`. **Con esto el rediseño visual de las 15 pantallas originales
-queda completo.** Falta todavía, fuera de ese conteo: la pantalla nueva `/app/lectores` (037,
-agregada por Mateo a la lista de pendientes, todavía sin el sistema visual de 026), y correr
-`security-review` sobre todo lo de la Sesión 056 — pedido explícito de Mateo, todavía no se hizo.
-AquaLectura (025, vista del lector) ya tiene su propia identidad y no se reemplaza por la versión
-del prototipo.
+queda completo.** **Lectores (045, Sesión 057, continuación)** cierra la única pendiente fuera de
+ese conteo: `/app/lectores` no tiene sección propia en `propuesta-referencia.html` (su `id="lector"`
+es la vista móvil de AquaLectura/025, no esta pantalla administrativa) — se reusa el `page-head` ya
+establecido en 039-044 sin investigación externa (excepción de proporcionalidad, CLAUDE.md §3); el
+layout de `Card` por lector con checkboxes de sector queda igual, esa decisión ya la había fijado
+037. **Con 045, todas las pantallas del panel administrativo quedan re-vestidas con el sistema de
+026 — nada pendiente de este rediseño.** Sigue pendiente, pedido explícito de Mateo: correr
+`security-review` sobre todo lo de la Sesión 056/057. AquaLectura (025, vista del lector) ya tiene su
+propia identidad y no se reemplaza por la versión del prototipo.
 
 ### Roadmap — features grandes sin empezar
 

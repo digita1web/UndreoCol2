@@ -4,6 +4,28 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-16 — Sesión 057 (continuación): feature 045, rediseño de Lectores
+
+Última pantalla pendiente del rediseño visual, agregada por Mateo a la lista después de que la
+propia feature 037 creara `/app/lectores` — no forma parte de las 15 pantallas originales. Re-viste
+con el sistema de 026: `page-head` (eyebrow "Equipo") reemplaza el `<h1>` suelto que tenía.
+
+**Sin sección propia en `propuesta-referencia.html`** — su `id="lector"` es el mockup de la
+experiencia móvil de AquaLectura (025), no esta pantalla administrativa. Documentado en `spec.md`
+§3.2 en vez de forzar una correspondencia inexistente: se reusa el patrón de `page-head` ya
+establecido en 039-044 (excepción de proporcionalidad, CLAUDE.md §3 — sin investigación externa
+necesaria). El layout de una `Card` por lector con checkboxes de sector queda igual, esa decisión ya
+la había fijado 037. Cero cambios a `asignarSectorLector()`/`quitarSectorLector()`/
+`listarLectoresConSectores()`/`listarSectoresDisponibles()`.
+
+**Verificado:** `npm run build`/`lint`/`knip` en frontend sin hallazgos nuevos (2 preexistentes de
+shadcn, ya revisados); backend confirmado intacto (251 tests + `tsc` + `wrangler deploy
+--dry-run`). Pendiente de Mateo: verificación visual con `wrangler dev` real.
+
+**Con esto, todas las pantallas del rediseño visual (las 15 originales + esta) quedan re-vestidas.**
+Sigue pendiente, pedido explícito de Mateo: correr `security-review` sobre todo lo de la Sesión
+056/057.
+
 ### 2026-09-16 — Sesión 057: feature 044, rediseño de Configuración — cierra las 15 pantallas
 
 Sexta y última de las pantallas que quedaban del rediseño visual (orden definido por Mateo).
