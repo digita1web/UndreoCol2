@@ -240,7 +240,7 @@ describe('POST /lectores', () => {
     enviarInvitacionLanza = 'Email rate limit exceeded';
     const r = await crear({ nombre: 'Juan', correo: 'juan@test.local' });
     expect(r.status).toBe(201);
-    const cuerpo = await r.json();
+    const cuerpo = (await r.json()) as { invitacionEnviada: boolean; avisoCorreo: string };
     expect(cuerpo.invitacionEnviada).toBe(false);
     expect(cuerpo.avisoCorreo).toMatch(/rate limit/);
   });
