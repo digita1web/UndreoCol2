@@ -343,9 +343,11 @@ export function obtenerSuscriptor(id: string): Promise<RespuestaDetalleSuscripto
 }
 
 // codigo_suscriptor NUNCA se acepta aquí (es la credencial del futuro portal, D-2).
+// estado tampoco (hallazgo de security-review, Sesión 057): tiene su propio
+// camino autorizado, corte/reconexión (009) — el backend lo rechaza (400) si
+// llega en el body, esto solo evita construirlo desde acá.
 export interface DatosActualizarSuscriptor {
   nombre?: string;
-  estado?: EstadoSuscriptor;
   tipo_documento?: string;
   numero_documento?: string;
   telefono?: string;

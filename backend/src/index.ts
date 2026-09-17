@@ -1015,14 +1015,14 @@ app.patch('/suscriptores/:id', async (c) => {
   const errorCampos = validarCamposEditablesSuscriptor(body);
   if (errorCampos) return c.json({ error: errorCampos }, 400);
   const {
-    nombre, estado, tipo_documento, numero_documento, telefono, email, direccion, sector, categoria, notas,
+    nombre, tipo_documento, numero_documento, telefono, email, direccion, sector, categoria, notas,
   } = body as {
-    nombre?: string; estado?: string; tipo_documento?: string; numero_documento?: string; telefono?: string;
+    nombre?: string; tipo_documento?: string; numero_documento?: string; telefono?: string;
     email?: string; direccion?: string; sector?: string; categoria?: string; notas?: string;
   };
   try {
     const suscriptor = await actualizarSuscriptor(ctx.supabase, c.req.param('id'), {
-      nombre, estado, tipo_documento, numero_documento, telefono, email, direccion, sector, categoria, notas,
+      nombre, tipo_documento, numero_documento, telefono, email, direccion, sector, categoria, notas,
     });
     return c.json({ suscriptor });
   } catch (e) {

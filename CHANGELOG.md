@@ -4,6 +4,44 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-16 — Sesión 057 (continuación): security-review + 2 hallazgos corregidos
+
+Corrida la skill `security-review` pedida por Mateo sobre el diff completo de las Sesiones 056/057
+(60 commits, `5f17b68..HEAD`): 037 rutas/zonas del lector, 036 OCR, 038 offline, y el rediseño
+visual 039-045. Metodología: sub-agente de identificación + sub-agente independiente de
+verificación/filtro de falsos positivos por cada hallazgo (mismo proceso que la skill documenta).
+Dos hallazgos reales, ambos corregidos y verificados; el resto quedó descartado (sin explotación
+real encontrada) — detalle completo en la conversación de la sesión.
+
+**Fix 1 — `lecturas_inserta` sin filtro de sector (severidad Media).** 037 le agregó el filtro de
+sector a `lecturas_lectura` (SELECT) pero nunca tocó `lecturas_inserta` (INSERT): un lector
+restringido a un sector podía insertar una lectura para un contador de OTRO sector llamando
+`POST /lecturas` directo — ni `contadores_lectura` ni la política de inserción filtran por sector,
+así que nada lo bloqueaba. Cierra la mitad de "crea" de CLAUDE.md §10 punto 24 que 037 dejó
+pendiente (la mitad de "ve" ya estaba cerrada). Migración nueva
+`20260928090000_endurecer-lecturas-inserta-sector.sql`: mismo guard (`mis_contadores_por_sector()`)
+que ya usa `lecturas_lectura`, aplicado ahora también al `WITH CHECK` del INSERT — sin investigación
+externa, es el patrón que el propio 037 ya estableció (excepción de proporcionalidad, CLAUDE.md §3).
+PASO 8 nuevo en `tests/aislamiento/905_rutas_zonas_lector_aislamiento.sql` (negativo: bloqueado;
+positivo: un lector sigue pudiendo insertar dentro de su propio sector) — **corrido contra Postgres
+real** (`supabase db reset` local + `psql` con `tests/fixtures/fundacion.sql`), las 8 aserciones en
+verde.
+
+**Fix 2 — `PATCH /suscriptores/:id` permitía cambiar `estado` sin pasar por corte/reconexión
+(severidad Media-Alta).** `estado` era un campo editable más de `DatosActualizarSuscriptor`, sin
+ningún bloqueo — un `admin_acueducto` o `secretaria` (`usuarios_servicio_escritura` ya cubre a
+ambos desde 028) podía poner `estado = 'cortado'`/`'activo'` directo por este PATCH genérico,
+saltándose `POST /suscriptores/:id/corte`/`/reconexion` (motivo obligatorio, solo `admin_acueducto`,
+CLAUDE.md §10 puntos 16-19) y el registro en `cortes_reconexiones`. `validarCamposEditables()` ahora
+rechaza `estado` con el mismo criterio que ya usaba para `codigo_suscriptor` — sin investigación
+externa (excepción de proporcionalidad, CLAUDE.md §3). `estado` se quitó también de
+`DatosActualizarSuscriptor` (backend y frontend) y de la ruta, no solo de la validación. 4 tests
+nuevos en `backend/tests/unit/suscriptores.test.ts` (antes sin ninguna cobertura de esta función).
+
+**Verificado:** backend 255 tests (251 + 4 nuevos) + `tsc` + `wrangler deploy --dry-run` + `knip`
+(sin hallazgos) en verde; frontend `build`/`lint`/`knip` sin hallazgos nuevos (2 preexistentes de
+shadcn, ya revisados).
+
 ### 2026-09-16 — Sesión 057 (continuación): feature 045, rediseño de Lectores
 
 Última pantalla pendiente del rediseño visual, agregada por Mateo a la lista después de que la

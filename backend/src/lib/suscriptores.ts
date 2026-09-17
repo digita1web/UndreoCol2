@@ -121,10 +121,11 @@ export async function crearSuscriptor(
 
 // codigo_suscriptor NUNCA se acepta aquí (plan.md §5): es la futura
 // credencial del portal (D-2); regenerarla es una acción explícita de la
-// feature 008, fuera de 003.
+// feature 008, fuera de 003. estado tampoco (hallazgo de security-review,
+// Sesión 057): tiene su propio camino autorizado, POST .../corte y
+// .../reconexion (009) — motivo obligatorio, solo admin_acueducto.
 export interface DatosActualizarSuscriptor {
   nombre?: string;
-  estado?: string;
   tipo_documento?: string;
   numero_documento?: string;
   telefono?: string;
@@ -138,6 +139,17 @@ export interface DatosActualizarSuscriptor {
 export function validarCamposEditables(body: Record<string, unknown>): string | null {
   if ('codigo_suscriptor' in body) {
     return "El campo 'codigo_suscriptor' no se puede editar (es la credencial del portal)";
+  }
+  // Hallazgo de security-review (Sesión 057): `estado` tiene su propio camino
+  // autorizado (POST /suscriptores/:id/corte y /reconexion — solo
+  // admin_acueducto, motivo obligatorio, CLAUDE.md §10 puntos 16-19). Antes
+  // de este bloqueo, este PATCH genérico (alcanzable por `secretaria` vía
+  // usuarios_servicio_escritura, es_staff_de) permitía cambiar `estado`
+  // directo, saltándose esa autorización y el motivo — mismo criterio ya
+  // usado acá para `codigo_suscriptor`, sin investigación externa
+  // (excepción de proporcionalidad, CLAUDE.md §3).
+  if ('estado' in body) {
+    return "El campo 'estado' no se puede editar aquí — use corte o reconexión";
   }
   return null;
 }

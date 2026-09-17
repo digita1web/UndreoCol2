@@ -206,6 +206,67 @@ begin
   end if;
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- PASO 8 (security-review Sesión 057, migración
+--   20260928090000_endurecer-lecturas-inserta-sector.sql): lecturas_inserta
+--   gana el mismo filtro de sector que lecturas_lectura ya tenía. Antes de
+--   este fix, un lector restringido a un sector podía insertar una lectura
+--   para un contador de OTRO sector llamando POST /lecturas directo.
+--
+-- Lector propio (A7, asignado solo a Centro) y datos propios (A-004/Centro,
+-- A-006/Norte, sin lecturas previas) para no interferir con los conteos ya
+-- verificados en PASO 1-7 — se corre al final, justo antes del rollback.
+-- ---------------------------------------------------------------------------
+insert into usuarios_servicio (id, cliente_id, codigo_suscriptor, nombre, sector) values
+  ('d0000000-0000-0000-0000-0000000000a4', 'a0000000-0000-0000-0000-000000000001', 'A-004', 'Suscriptor A4', 'Centro'),
+  ('d0000000-0000-0000-0000-0000000000a6', 'a0000000-0000-0000-0000-000000000001', 'A-006', 'Suscriptor A6', 'Norte');
+insert into contadores (id, cliente_id, usuario_servicio_id, serial, capacidad_maxima, fecha_instalacion) values
+  ('e0000000-0000-0000-0000-0000000000a4', 'a0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-0000000000a4', 'SERIAL-A4', 9999, '2026-01-01'),
+  ('e0000000-0000-0000-0000-0000000000a6', 'a0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-0000000000a6', 'SERIAL-A6', 9999, '2026-01-01');
+insert into perfiles (id, nombre, email) values
+  ('a0000000-0000-0000-0000-0000000000a7', 'Lector A7 (solo Centro)', 'lector-a7-centro@test.local');
+insert into membresias (perfil_id, cliente_id, rol) values
+  ('a0000000-0000-0000-0000-0000000000a7', 'a0000000-0000-0000-0000-000000000001', 'lector');
+insert into lector_sectores (cliente_id, perfil_id, sector) values
+  ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-0000000000a7', 'Centro');
+
+do $$
+declare bloqueado boolean := false;
+begin
+  -- Negativo: Lector A7 (solo Centro) NO puede insertar una lectura para el
+  -- contador de Norte (A-006).
+  begin
+    set local role authenticated;
+    perform set_config('request.jwt.claim.sub','a0000000-0000-0000-0000-0000000000a7',true);
+    insert into lecturas (cliente_id, contador_id, periodo_id, fecha_lectura, lectura_anterior, lectura_actual, consumo_m3)
+      values ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-0000000000a6', 'f0000000-0000-0000-0000-000000000001', '2026-09-10', 0, 5, 5);
+    reset role;
+  exception when insufficient_privilege or others then
+    reset role;
+    bloqueado := true;
+  end;
+  if not bloqueado then
+    raise exception 'PASO 8 FALLÓ: Lector A7 (solo Centro) pudo insertar una lectura para un contador de Norte';
+  end if;
+end $$;
+
+do $$
+declare n int;
+begin
+  -- Positivo (no-regresión): el mismo Lector A7 SÍ puede insertar una
+  -- lectura para un contador de su propio sector (Centro, A-004) — el fix
+  -- no bloquea el flujo legítimo.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub','a0000000-0000-0000-0000-0000000000a7',true);
+  insert into lecturas (cliente_id, contador_id, periodo_id, fecha_lectura, lectura_anterior, lectura_actual, consumo_m3)
+    values ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-0000000000a4', 'f0000000-0000-0000-0000-000000000001', '2026-09-10', 0, 5, 5);
+  select count(*) into n from lecturas where contador_id = 'e0000000-0000-0000-0000-0000000000a4';
+  reset role;
+  if n <> 1 then
+    raise exception 'PASO 8 FALLÓ: Lector A7 (Centro) no pudo insertar una lectura para su propio sector';
+  end if;
+end $$;
+
 rollback;
 
-\echo '905: RUTAS-ZONAS-LECTOR-AISLAMIENTO OK — filtro de sector en usuarios_servicio_lector() y lecturas_lectura, regresión CA-3/CA-6, protección de escritura de lector_sectores y aislamiento multi-tenant verificados'
+\echo '905: RUTAS-ZONAS-LECTOR-AISLAMIENTO OK — filtro de sector en usuarios_servicio_lector() y lecturas_lectura, regresión CA-3/CA-6, protección de escritura de lector_sectores, aislamiento multi-tenant y filtro de sector en lecturas_inserta verificados'
