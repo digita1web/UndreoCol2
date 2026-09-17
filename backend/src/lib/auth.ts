@@ -197,11 +197,25 @@ export async function completarRecuperacion(
 
 // Dispara el correo con el enlace para definir contraseña, tanto para una
 // cuenta existente como para el admin recién creado de un acueducto.
+//
+// Hallazgo real de producción (Sesión 057, confirmado con Mateo: el enlace
+// del correo de invitación llevaba a localhost): `wrangler deploy` en CI
+// (.github/workflows/deploy-backend.yml) corre sin `--env production`, así
+// que el Worker se despliega con el bloque `[vars]` de wrangler.toml — el
+// de DESARROLLO, que trae `http://localhost:3000` primero en
+// ALLOWED_ORIGIN. Tomar `split(',')[0]` a ciegas (como hacía antes este
+// código) agarraba justo ese valor de desarrollo, aunque el origen real de
+// producción también estuviera en la lista. Corregido acá, en el punto que
+// realmente rompía (en vez de tocar el pipeline de CI, cambio con más
+// alcance y más riesgo de afectar otros bindings que no se auditaron):
+// se prefiere el primer origen que NO sea localhost; si no hay ninguno
+// (desarrollo local, un solo valor), se usa ese.
 export async function enviarEnlaceDefinirContrasena(env: Env, email: string): Promise<void> {
   const supabase = crearClienteAnon(env);
-  const primerOrigen = env.ALLOWED_ORIGIN.split(',')[0]?.trim() ?? '';
+  const origenes = env.ALLOWED_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
+  const origenPreferido = origenes.find((o) => !o.includes('localhost')) ?? origenes[0] ?? '';
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${primerOrigen}/restablecer-contrasena`,
+    redirectTo: `${origenPreferido}/restablecer-contrasena`,
   });
   if (error) {
     throw new Error(error.message);

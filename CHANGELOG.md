@@ -4,6 +4,37 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): el enlace de invitación por correo llevaba a localhost
+
+Mateo probó el botón "Corregir correo del admin" en producción real: el correo llegó, pero al
+hacer clic en el enlace la página no cargaba ("no se puede acceder a este sitio").
+
+**Causa real, confirmada leyendo el código y la config real desplegada** (no una suposición): el
+workflow de CI (`deploy-backend.yml`/`deploy-frontend.yml`) corre `wrangler deploy` **sin
+`--env production`**, así que el Worker se despliega con el bloque `[vars]` de
+`backend/wrangler.toml` — el de DESARROLLO, que trae `ALLOWED_ORIGIN =
+"http://localhost:3000,https://undreocol-frontend.undreocol.workers.dev"` (localhost primero).
+`enviarEnlaceDefinirContrasena()` (`lib/auth.ts`) tomaba `split(',')[0]` a ciegas — el valor de
+desarrollo, no el real — para armar el `redirectTo` del enlace. Confirmado con
+`npx wrangler deploy --dry-run` contra producción real: el binding `ALLOWED_ORIGIN` desplegado hoy
+mismo mostraba exactamente ese orden.
+
+**Afecta a los dos flujos que ya se habían usado hoy** (no solo al nuevo botón): también
+`POST /auth/recuperar` ("Restablecer contraseña" en `/plataforma`), y la invitación original de
+Jaider al crear "Idroredes del Sur" — probablemente también quedó rota, sin que nadie lo hubiera
+notado todavía.
+
+**Fix acotado, no se tocó el pipeline de CI** (cambiar a `--env production` tiene más alcance —
+afectaría otros bindings sin auditar todavía): `enviarEnlaceDefinirContrasena()` ahora prefiere el
+primer origen de `ALLOWED_ORIGIN` que no contenga "localhost"; si no hay ninguno (desarrollo local,
+un solo valor), usa ese. 3 tests nuevos en `backend/tests/unit/auth-enlace-contrasena.test.ts`
+(localhost+real → real; solo localhost → localhost; solo real → real).
+
+**Verificado:** backend 260 tests (257 + 3 nuevos) + `tsc` + `wrangler deploy --dry-run` + `knip` en
+verde. **Pendiente para Jaider:** una vez desplegado este fix, reenviar la invitación (o pedirle que
+la pida de nuevo con "Restablecer contraseña") — el correo que ya tiene sigue apuntando a
+localhost.
+
 ### 2026-09-17 — Sesión 057 (continuación): corregir el correo del admin de un acueducto
 
 Pedido directo de Mateo, probando producción real con su primer acueducto piloto ("IDROREDES DEL
