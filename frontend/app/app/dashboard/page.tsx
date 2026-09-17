@@ -6,6 +6,7 @@ import {
   type IndicadoresDashboard,
 } from '@/components/indicadores-dashboard';
 import { SaludoHora } from '@/components/panel/saludo-hora';
+import { ChecklistOnboarding } from '@/components/panel/checklist-onboarding';
 import { urlBaseApiServidor } from '@/lib/url-base-api-servidor';
 
 // Server component: llama a GET /dashboard reenviando la cookie de sesión
@@ -38,6 +39,7 @@ interface RespuestaDashboard {
   cliente: ClienteActivo;
   perfil: { id: string; email: string; nombre: string };
   conteoUsuariosServicio: number;
+  conteoServicios: number;
 }
 
 async function obtenerDashboard(): Promise<RespuestaDashboard> {
@@ -141,10 +143,20 @@ export default async function DashboardPage() {
 
       {datos.cliente.rol === 'admin_acueducto' && indicadores ? (
         <>
-          <DashboardIndicadores indicadores={indicadores} />
-          <Link href="/app/configuracion" className="text-sm text-accent hover:underline">
-            Configuración del acueducto →
-          </Link>
+          <ChecklistOnboarding
+            nombreAcueducto={datos.cliente.nombre}
+            vacio={datos.conteoUsuariosServicio === 0}
+            conteoServicios={datos.conteoServicios}
+            conteoUsuariosServicio={datos.conteoUsuariosServicio}
+          />
+          {datos.conteoUsuariosServicio > 0 && (
+            <>
+              <DashboardIndicadores indicadores={indicadores} />
+              <Link href="/app/configuracion" className="text-sm text-accent hover:underline">
+                Configuración del acueducto →
+              </Link>
+            </>
+          )}
         </>
       ) : (
         <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-8 text-center">

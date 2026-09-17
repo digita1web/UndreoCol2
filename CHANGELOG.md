@@ -4,6 +4,34 @@ Formato: una entrada por sesión de trabajo. Lo más reciente arriba.
 
 ## [Sin publicar]
 
+### 2026-09-17 — Sesión 057 (continuación): checklist de onboarding para el admin nuevo (046)
+
+Pedido de Mateo tras la maqueta de navegación móvil (aprobada, queda en cola): con el primer
+acueducto piloto real ("Idroredes del Sur") completamente vacío tras el alta, priorizar esto sobre
+la navegación — investigada la comunidad (CLAUDE.md §3, sin precedente interno de "primer uso"): el
+consenso de onboarding B2B SaaS es maximizar el "time to value" del admin con un checklist corto en
+los primeros minutos, antes que pulir navegación sobre un panel que ya funciona.
+
+**Aclaración importante, para no confundir con algo que ya existe:** la ruta `/onboarding` actual
+es un caso de error (cuenta sin ninguna membresía activa) — no se toca. Esto es para un
+`admin_acueducto` con membresía real cuyo acueducto simplemente no tiene datos todavía.
+
+**Checklist en `/app/dashboard`, no un wizard con pantallas propias:** 3 pasos (Catálogo y tarifas,
+Suscriptores —manual o Excel—, Lector opcional), cada uno enlaza a la pantalla real que ya existe.
+El estado hecho/pendiente sale siempre de conteos reales (`conteoServicios`/`conteoUsuariosServicio`
+nuevos en `GET /dashboard`, mismo patrón que el conteo que ya traía; el de lectores se resuelve
+client-side con `listarLectoresConSectores()`, ya existente) — nunca un flag propio que
+desincronizar. Mientras el acueducto está vacío se oculta el bloque de indicadores (una fila de
+ceros no informa nada); en cuanto tiene el primer suscriptor, el checklist se colapsa solo detrás de
+un enlace permanente "Ver guía de inicio" — pedido explícito de Mateo, para poder repasarlo cuando
+quiera.
+
+**Verificado:** backend 272 tests (269 + 3 nuevos) + `tsc` + `wrangler deploy --dry-run` + `knip` en
+verde; frontend `build`/`lint`/`knip` sin hallazgos nuevos. Capturas reales con Playwright de los
+dos estados (vacío y colapsado con el toggle) contra una ruta temporal nunca commiteada. Falta
+probar contra el acueducto piloto real en producción (Idroredes del Sur está vacío hoy mismo, caso
+ideal para CA-1) — pendiente de que Mateo lo confirme una vez desplegado.
+
 ### 2026-09-17 — Sesión 057 (continuación): 3 ajustes de la identidad de marca (contraste, favicon, maskable)
 
 Revisión propia (no un hallazgo de Mateo) tras implementar la identidad de marca: 3 ajustes

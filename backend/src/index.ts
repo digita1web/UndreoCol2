@@ -386,6 +386,15 @@ app.get('/dashboard', async (c) => {
     p_cliente_id: activo.clienteId,
   });
 
+  // 046: conteo de servicios del catálogo, para el checklist de onboarding
+  // del admin_acueducto ("¿ya cargó al menos un servicio con tarifa?") — sin
+  // RPC nueva, servicios_lectura (002) ya autoriza a cualquier miembro leer
+  // los servicios de su propio cliente.
+  const { count: conteoServicios } = await supabase
+    .from('servicios')
+    .select('id', { count: 'exact', head: true })
+    .eq('cliente_id', activo.clienteId);
+
   return c.json({
     cliente: {
       ...activo,
@@ -393,6 +402,7 @@ app.get('/dashboard', async (c) => {
     },
     perfil: { id: sesion.perfilId, email: sesion.email, nombre: (perfil as { nombre?: string } | null)?.nombre ?? sesion.email },
     conteoUsuariosServicio: usuariosServicio?.length ?? 0,
+    conteoServicios: conteoServicios ?? 0,
   });
 });
 
